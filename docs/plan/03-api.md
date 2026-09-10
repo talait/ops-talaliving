@@ -123,9 +123,9 @@ PR chain:
 | PUT | `/pr/{doc_no}/lines` | edit while DRAFT; after submit → supersede |
 | POST | `/pr/{doc_no}/submit` | DRAFT → SUBMITTED, lines get `-LNN` |
 | POST | `/pr/{doc_no}/reopen` | only while no gate has decided |
-| POST | `/pr/lines/{line_no}/approve` | `{step, decision, approved_qty, approved_amount, reason}`; `step` ∈ `GOODS` · `FUNDS` — **there is no IT step** (D20). **422 if approved > requested** (A8). **403 without the matching authority** — `approve_goods` is the CEO's alone (D19). 409 if you already decided this line at this step |
-| GET | `/pr/queue` | the standing approval queue: every requested line neither approved, rejected nor withdrawn (D21). A `HOLD` stays in it |
-| POST | `/pr/lines/{line_no}/withdraw` | the requester takes their own line back, before any decision (Q17). Soft — the row stays, with who and when |
+| POST | `/pr/lines/{line_no}/approve` | `{approved: true\|false, approved_qty?, approved_amount?}` — a **checkbox**, not a vocabulary (D28). `step` ∈ `GOODS` · `FUNDS`; there is no IT step (D20). **422 if approved_amount > requested** (A8). **403 without the matching authority** — `approve_goods` is the CEO's alone (D19). Each toggle writes an append-only row carrying timestamp, name, email and channel |
+| GET | `/pr/queue` | the standing approval queue: every submitted line not approved and not removed (D21). Nothing ages out |
+| POST | `/pr/lines/{line_no}/remove` | no longer needed (D29). Soft — the row stays with who and when. **409 once any money has been allocated to the line**: that is a return or a credit, not a removal |
 | GET | `/pr/lines/{line_no}/history` | approvals, revisions, allocations, receipts — the full trail |
 
 Rounds:

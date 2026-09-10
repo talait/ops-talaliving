@@ -92,9 +92,9 @@ Every new route is one line in `nav.ts`.
 
 | Route | Screen | Milestone |
 |---|---|---|
-| ▸ `/procurement/pr` | PR list: filter bar, table, row → drawer with lines, coverage, trail, evidence. Line actions: **attach a document here**. Header: **Buat PR** | M4 |
+| ▸ `/procurement/pr` | PR list: filter bar, table, row → drawer with lines, coverage, trail, evidence. Line actions: **attach a document here**, **remove** (until money has reached it). Header: **Buat PR** | M4 |
 | ✚ `/procurement/pr/baru` | multi-line create. A full page, not a drawer — this is the one place people type for ten minutes. Item combobox with last price and unit, vendor type-ahead that accepts a new name, running total | M4 |
-| ✚ `/procurement/persetujuan` | **the standing queue** — every requested line not yet approved, rejected or withdrawn, grouped by document. Per line: APPROVED · HOLD · REJECTED, an editable approved amount that **cannot exceed requested**, a mandatory reason on HOLD/REJECTED. Visible only with `approve_goods` | M5 |
+| ✚ `/procurement/persetujuan` | **the standing queue** — every submitted line not approved and not removed, grouped by document. Per line: **a checkbox**, and an approved amount that starts at what was requested and may only be reduced. Nothing else. Visible only with `approve_goods` | M5 |
 | ✚ `/procurement/ronde` | the OPEN round: requested, paying-account balances, TO TRANSFER, remaining after payment. Approve round · record transfer · **close round** (with the list of what closing releases) | M6 |
 | ✚ `/procurement/rapat` | meeting board, four columns: ✅ lunas · ⏳ disetujui belum bayar · ⚠️ dibayar belum disetujui · • belum keduanya | M12 |
 | ▸ `/procurement/po` | PO list + detail drawer: **two separate progress bars**, payment and delivery, never merged. Exposure stated in words | M11 |
@@ -180,6 +180,36 @@ advisory and point at *Tautkan* rather than blocking.
 And one number on it that is not decoration: **how many documents came in
 this way this week.** If the exception road grows, the normal road has a
 problem — people are routing around it, and the reason is worth finding.
+
+## The approval screen
+
+Worth drawing, because it is now almost nothing — and that is the point.
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  pr-26-09-11_02 · Andi · 11 Sep                              │
+├───┬──────────────────────────────────────────┬───────────────┤
+│ ☑ │ KAYU JATI SORTIMEN A      4,2 m³         │ Rp 18.900.000 │
+│ ☐ │ AMPLAS 120 GRIT           50 lembar      │ Rp    375.000 │
+│ ☑ │ LEM PUTIH FOX 5 KG         2 pail        │ Rp    460.000 │
+│   │                            ↳ disetujui   │ Rp    230.000 │
+└───┴──────────────────────────────────────────┴───────────────┘
+   3 baris · 2 dicentang · Rp 19.130.000 akan naik ke ronde
+```
+
+- **A checkbox is the whole decision** (D28). Checked is approved; unchecked
+  is not yet. There is no hold, no reject, no reason field.
+- **An unchecked line simply stays.** It is on the list tomorrow and the day
+  after, until it is checked or removed. Nothing expires (D21, D29).
+- **The amount may come down, never up.** It starts at what was requested;
+  editing it below is how the CEO approves two of the five that were asked
+  for (A8). The reduction shows inline, as above.
+- **A line nobody wants is removed, not rejected** — from the PR drawer, by
+  whoever knows it is no longer needed, and never once money has reached it.
+- **Every toggle is recorded**: time, name, email, and which door it came
+  through. That is the metadata the owner asked for, and it is why the
+  checkbox can be this plain — the audit trail carries the nuance the status
+  vocabulary used to.
 
 ## The demo layer, from the screen's point of view
 

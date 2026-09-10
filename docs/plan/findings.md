@@ -133,3 +133,46 @@ a queue nobody could see in full.
 withdraw and until when (Q17), what happens when the CEO is away (Q18), and
 whether `HOLD` survives without a digest to reappear in (Q19). Q18 is the one
 worth a real answer before somebody is on a plane.
+
+## F3 · 2026-09-11 · before any code — approval becomes a checkbox
+
+**Answered.** No substitute for the CEO; a co-CEO grant can come later (Q18).
+A line is removed because it is no longer needed — no deadline, nothing ages
+out (Q17). **Approval is a checkbox: approved or not, no other status** (Q19).
+Attaching a payment proof to a line with no transaction offers to post one
+(Q14). Chat approvals cover goods and receiving, not money (Q16).
+
+**Q19 is the structural one.** The line status ladder drops from nine values
+to eight, and two of the old ones disappear together: `HELD` and `REJECTED`.
+
+What is striking is that **nothing is lost**. `HELD` meant "seen, not decided,
+comes back" — an unchecked line does exactly that, because the queue is now a
+standing list of everything outstanding (D21). `REJECTED` meant "can never be
+paid" — a removed line carries the same guarantee. The middle state existed
+because the spreadsheet had *both* a checkbox and a status column, and someone
+had to reconcile them. With one surface there is one fact.
+
+**Where the nuance went.** Into the audit trail rather than the vocabulary.
+Every toggle writes an append-only row with time, name, email and channel, so
+"approved at 14:02, un-approved at 14:09, approved again at 16:30" is fully
+legible — which the old three-value column could not express at all. The
+screen gets simpler and the record gets richer, which is the right direction.
+
+**A word that needed a guard.** "Removed because we no longer need it" is
+open-ended by design, and mostly that is fine. But it cannot stay open-ended
+once money has moved: a line with an allocation against it is not something
+you stop needing, it is something you return, credit, or void. So removal is
+refused past that point (D29) — the one place the owner's "no deadline" needs
+a boundary that is not a deadline.
+
+**One fork we defaulted rather than decided** (Q20): the checkbox is the
+*status*, but the approved *amount* is a separate field. We kept the ability
+to reduce it before checking, because that is how "approve two of the five"
+works and it is what A8 exists to protect. Removing it would mean the CEO can
+only accept in full or remove — a real business change, and one worth making
+deliberately if that is what "no other status" was meant to imply.
+
+**What surprised us.** Three of the five answers this round simplify the model
+rather than extend it. The system being replaced accumulated states because
+several surfaces each needed their own; with one surface, most of them turn
+out to be the same two facts wearing different names.

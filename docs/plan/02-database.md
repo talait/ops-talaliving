@@ -305,7 +305,7 @@ erDiagram
         uuid id PK
         uuid line_id FK
         approval_step_t step "GOODS|FUNDS"
-        approval_decision_t decision "APPROVED|HOLD|REJECTED"
+        boolean approved "checked, or not yet"
         numeric approved_qty
         bigint approved_amount "CHECK not above item_total"
         uuid recorded_by FK
@@ -348,6 +348,24 @@ erDiagram
         uuid decided_by FK
     }
 ```
+
+**Approval is a checkbox** (D28). `pr_approvals` keeps its append-only shape
+and its identity columns — a toggle writes a row, so "approved at 14:02, then
+un-approved at 14:09" survives — but the vocabulary is two states, not three.
+The approved amount is a separate thing from the decision: it defaults to what
+was requested and may be **reduced before checking**, never raised (A8).
+
+**Removal, and the one guard it needs** (D29). A line is removed because it is
+no longer needed — there is no deadline and nothing ages out. Soft: the row
+stays, with `removed_by` and `removed_at`, and a removed line can never be
+paid, which is the guarantee `REJECTED` used to carry.
+
+The guard: **a line cannot be removed once money has reached it.** Removal is
+for something not yet bought. Once an allocation exists, the right words are
+return, vendor credit, or a void on the transaction — never a quiet
+disappearance (A17, A18). Removing a line that sits in an `OPEN` round pulls
+it out of that round; a round already `APPROVED` has frozen its numbers, so
+the line leaves the queue but the round's record does not change.
 
 ### PO
 
@@ -608,7 +626,7 @@ does today — proposes, and never posts.
 | `v_transaction_complete` | acct | is the evidence chain complete for this row |
 | `v_allocations_public` | acct | the published seam procurement reads (ADR-004) |
 | `v_pr_line_coverage` | procure | `approved` = coalesce(approved_amount, item_total, 0); `covered` = Σ non-superseded allocations; `remaining`; `settled`. Tolerance from `core.settings` |
-| `v_pr_line_status` | procure | the **one** ladder, resolved in order: DRAFT → REJECTED → COMPLETED → PARTIAL → PAID → WAITING FOR PAYMENT → APPROVED → HELD → WAITING FOR APPROVAL (§3.8 `line_status` v7, carried over exactly) |
+| `v_pr_line_status` | procure | the **one** ladder, resolved in order: DRAFT → REMOVED → COMPLETED → PARTIAL → PAID → WAITING FOR PAYMENT → APPROVED → WAITING FOR APPROVAL. Eight values, down from nine: `HELD` and `REJECTED` collapse into "not checked" and "removed" (D28) |
 | `v_po_status` | procure | `contract_value`, `paid_to_date`, `outstanding`, `value_received`, **`exposure` = paid − received**, and the two independent axes |
 | `v_po_line_status` | procure | per-line delivery and payment |
 | `v_round_summary` | procure | REQUESTED, paying-account balance, TO TRANSFER, remaining after payment |

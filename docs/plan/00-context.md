@@ -44,9 +44,14 @@ Copied from §7. These strings are data. Do not translate, re-spell, or
   `PREPAID VENDOR` · `SUPPLIERS` · `BANK CHARGES` · `ONLINE` · `CHINA` ·
   `RECCURING - PAYROLL` · `CASHFLOW` · `OTHERS` · `PRODUCTION` · `OFFICE` ·
   `WAREHOUSE`. (`EJO` exists in data and is unclassified — open question.)
-- **Line status ladder** (view, 9 values): `DRAFT` · `HELD` ·
+- **Line status ladder** (view, 8 values, owner 2026-09-11): `DRAFT` ·
   `WAITING FOR APPROVAL` · `APPROVED` · `WAITING FOR PAYMENT` · `PAID` ·
-  `PARTIAL` · `COMPLETED` · `REJECTED`.
+  `PARTIAL` · `COMPLETED` · `REMOVED`.
+  `HELD` and `REJECTED` are gone, and nothing is lost by it: an unchecked line
+  stays in the queue exactly as `HELD` did, and a line nobody wants is
+  **removed** rather than rejected — softly, with a name and a timestamp, and
+  it can never be paid. The middle state existed only because the spreadsheet
+  had both a checkbox *and* a status column.
 - **Payment round**: `OPEN` → `APPROVED` → `TRANSFERRED` → `CLOSED`.
   Only `CLOSED` settles.
 - **PO**: `DRAFT` · `ISSUED` · `CLOSED` · `CANCELLED`; two independent axes
@@ -62,8 +67,10 @@ Copied from §7. These strings are data. Do not translate, re-spell, or
   `CANCELLED` · `NOTED`. `CONFIRMED` means this row *produced* a transaction;
   `ATTACHED` means it hangs on one that already existed.
 - **Approval**: step `GOODS` (CEO) · `FUNDS` (finance) — **the IT gate is
-  gone** (owner, 2026-09-11); decision `APPROVED` · `HOLD` · `REJECTED`;
-  channel `web` · `chat` · `sheet` · `script` · `api`.
+  gone**. The decision is a **checkbox**, not a vocabulary: approved or not
+  yet (owner, 2026-09-11). Every toggle is an append-only row carrying the
+  metadata the owner named — **timestamp, name, email** — plus `channel`
+  (`web` · `chat` · `api`).
 - **Units** (18): pcs · buah · kg · gr · meter · m2 · m3 · cm · sak · box ·
   roll · set · pack · ltr · lembar · batang · unit · lusin.
 - **Id formats** (§7.2): `trx-YY-MM-DD_NNN` · `pr-YY-MM-DD_NN` ·

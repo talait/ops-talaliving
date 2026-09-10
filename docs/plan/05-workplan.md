@@ -149,18 +149,23 @@ One gate: the CEO decides goods. No IT step (D20), no urgency (D21).
 
 - `/procurement/persetujuan` — a **standing queue**: every requested line that
   is neither approved, rejected, nor withdrawn. A `HOLD` keeps it in the list
-- per line: APPROVED · HOLD · REJECTED; an editable approved amount that
-  **cannot exceed requested**; a mandatory reason on HOLD and REJECTED
+- per line: **a checkbox** — approved, or not yet (D28). No hold, no reject,
+  no reason field
+- an approved amount that starts at requested and may only be **reduced**
+- removal lives on the PR drawer, not here, and is refused once money has
+  reached the line (D29)
 - `<ApprovalTrail>` — who, when, through which door, append-only
 - `<RefusalToast>` — a user without `approve_goods` does not see the control,
   and is refused readably if they call the API anyway
 
-> Read `docs/plan/README.md`. Do M5: the standing approval queue and the
-> approval trail. Only the `approve_goods` authority may decide a line. The
-> demo API must actually refuse — 422 above requested, 403 without the
-> authority, 409 on a repeat. A HOLD keeps the line in the queue. Approval and
-> payment never share a card. Append to `findings.md`. Update the board and
-> commit.
+> Read `docs/plan/README.md` and the approval screen in `04-frontend.md`. Do
+> M5: the standing approval queue and the approval trail. The decision is a
+> checkbox; the approved amount may only be reduced. Only `approve_goods` may
+> toggle it. Every toggle writes an append-only row with time, name, email and
+> channel. The demo API must actually refuse — 422 above requested, 403
+> without the authority, 409 removing a line that money has reached. Approval
+> and payment never share a card. Append to `findings.md`. Update the board
+> and commit.
 
 ## D6 — Tue 15 Sep · M6 payment rounds
 

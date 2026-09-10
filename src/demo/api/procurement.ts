@@ -216,6 +216,41 @@ export async function createPr(
   return ok(SERVICE, view);
 }
 
+/** One item, asked for and submitted in a single act.
+ *
+ *  For the meeting itself: somebody says "we also need thinner", and the item
+ *  has to be on the list before the conversation moves on. Going through the
+ *  full create-then-submit form loses the room.
+ *
+ *  It is a real purchase request, not a lighter kind — same document, same
+ *  numbering, same queue. The only thing skipped is the draft stage, which
+ *  exists for the case where somebody is still assembling a list (D73).
+ */
+export async function quickAddLine(
+  input: NewLineInput & { project_id?: string | null },
+  idempotencyKey?: string,
+): Promise<Result<PrLineView>> {
+  const endpoint = "quickAddLine";
+  const cached = replayed<PrLineView>(SERVICE, endpoint, idempotencyKey);
+  if (cached) return cached;
+
+  if (!input.description.trim()) {
+    return invalid(SERVICE, "description_required", "An item needs a name before anyone can decide it.", { field: "description" });
+  }
+
+  const { project_id, ...line } = input;
+  const created = await createPr({ project_id, lines: [line] });
+  if (created.error) return created as unknown as Result<PrLineView>;
+  const submitted = await submitPr(created.data.doc_no);
+  if (submitted.error) return submitted as unknown as Result<PrLineView>;
+
+  const state = getState();
+  const row = state.pr_lines.find((l) => l.line_no_full === `${created.data.doc_no}-L01`)!;
+  const view = prLineView(state, row);
+  remember(SERVICE, endpoint, idempotencyKey, view);
+  return ok(SERVICE, view);
+}
+
 export async function submitPr(docNo: string, idempotencyKey?: string): Promise<Result<PrDocumentView>> {
   await latency();
   const cached = replayed<PrDocumentView>(SERVICE, `submitPr:${docNo}`, idempotencyKey);

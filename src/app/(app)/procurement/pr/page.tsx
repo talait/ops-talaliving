@@ -4,14 +4,12 @@ import { useState } from "react";
 import Link from "next/link";
 import {
   ClipboardList, Plus, CheckCircle2, Clock, AlertTriangle, Circle, FileText,
-  Scale, MessageSquareQuote, Send,
+  Scale, MessageSquareQuote, Users,
 } from "lucide-react";
 import { Button, Card, CardHeader, PageHeader } from "@/components/ui/primitives";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { Loaded, SourceBadge, useLoad } from "@/components/ui/loaded";
 import { StatusPill } from "@/components/ui/status-pill";
-import { MoneyInput } from "@/components/ui/money-input";
-import { NumberInput } from "@/components/ui/number-input";
 import { formatIDR, formatNumber } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { procurement } from "@/demo/api";
@@ -22,7 +20,6 @@ import {
 import { useToast } from "@/store/toast";
 import { useSession } from "@/store/session";
 import { LineDrawer } from "./LineDrawer";
-import { FundingBar } from "./FundingBar";
 
 /** The requests board — and the approval queue, which is the same board.
  *
@@ -31,11 +28,12 @@ import { FundingBar } from "./FundingBar";
  *  line stays here until it is settled or no longer needed, so "it comes back
  *  at the next leadership meeting" needs no machinery.
  *
- *  Approving used to be a second screen. It is not a second subject: the CEO
- *  reads the same list everyone else reads and ticks the ones he agrees with
- *  (D67). Two screens meant two lists that could disagree about what is
- *  outstanding, and a CEO who approved something the board had already moved
- *  on from.
+ *  **This board is the working surface**: asking for something, correcting it,
+ *  attaching the receipt, recording the payment. Deciding happens in a room
+ *  once a week and has its own screen — `/procurement/meeting` — reading the
+ *  same lines through the questions a meeting asks (D74). One list, two
+ *  readings; the approval controls do not belong in the middle of somebody's
+ *  working day.
  */
 
 const STATE_META: Record<MeetingState, { icon: typeof Circle; tone: string; chip: string }> = {
@@ -47,42 +45,15 @@ const STATE_META: Record<MeetingState, { icon: typeof Circle; tone: string; chip
 
 const STATE_ORDER: MeetingState[] = ["neither", "approved_unpaid", "paid_unapproved", "settled"];
 
-/** Three piles, in the order the money moves through them.
- *
- *  "Not approved" and "approved" are different kinds of work — one needs a
- *  decision, the other needs cash — and the two totals worth stating are
- *  exactly the ones a single mixed table cannot show: what is still to decide,
- *  and what the decisions already taken will cost to pay (D71).
- */
-type GroupKey = "waiting" | "to_pay" | "done";
-
-const GROUPS: { key: GroupKey; title: string; icon: typeof Circle }[] = [
-  { key: "waiting", title: "Waiting for approval", icon: Circle },
-  { key: "to_pay", title: "Approved — waiting for payment", icon: Clock },
-  { key: "done", title: "Finished", icon: CheckCircle2 },
-];
-
-function groupOf(l: PrLineView): GroupKey {
-  /* Paid without a yes belongs with the undecided, not with the finished: the
-     money is gone but the decision is still owed (A6). */
-  if (!l.approval?.approved) return "waiting";
-  return l.coverage.settled ? "done" : "to_pay";
-}
 
 export default function RequestsBoardPage() {
-  const { can, hasAuthority } = useSession();
+  const { can } = useSession();
   const { toast } = useToast();
   const [q, setQ] = useState("");
   const [stateFilter, setStateFilter] = useState<MeetingState | "">("");
   const [showSettled, setShowSettled] = useState(false);
   const [varianceOnly, setVarianceOnly] = useState(false);
   const [selected, setSelected] = useState<PrLineView | null>(null);
-  /* The decision in progress, per line: how much of it, and for how much. */
-  const [qtyDraft, setQtyDraft] = useState<Record<string, number>>({});
-  const [amountDraft, setAmountDraft] = useState<Record<string, number>>({});
-  const [ticked, setTicked] = useState<Record<string, boolean>>({});
-  const [busy, setBusy] = useState<string | null>(null);
-  const [sending, setSending] = useState(false);
 
   const [lines, reload] = useLoad(
     () => (showSettled ? procurement.listAllLines() : procurement.listOpenLines()),
@@ -93,7 +64,6 @@ export default function RequestsBoardPage() {
      part of the answer to "does this keep happening". */
   const [variances, reloadVariances] = useLoad(() => procurement.listVariances(), []);
   const mayEdit = can("procurement.create");
-  const mayDecide = hasAuthority("approve_goods");
 
   function refresh() {
     reload();
@@ -120,72 +90,13 @@ export default function RequestsBoardPage() {
     refresh();
   }
 
-  const qtyOf = (l: PrLineView) => qtyDraft[l.id] ?? l.qty ?? 0;
-  const amountOf = (l: PrLineView) => amountDraft[l.id] ?? l.item_total;
-
-  /** Quantity and money move together: approving 40 of 60 litres approves
-   *  two-thirds of the price, and making a person do that in their head is
-   *  how an approval ends up disagreeing with itself. */
-  function setQty(l: PrLineView, v: number) {
-    setQtyDraft((d) => ({ ...d, [l.id]: v }));
-    if (l.unit_price != null) {
-      setAmountDraft((d) => ({ ...d, [l.id]: Math.round(v * l.unit_price!) }));
-    }
-  }
-
-  async function approve(l: PrLineView) {
-    setBusy(l.id);
-    setTicked((t) => ({ ...t, [l.id]: true }));
-    const res = await procurement.approveLine({
-      line_no: l.line_no_full,
-      approved: true,
-      approved_qty: l.qty != null ? qtyOf(l) : null,
-      approved_amount: amountOf(l),
-    });
-    setBusy(null);
-    if (res.error) {
-      /* Refusals are shown, never swallowed: 422 above what was asked, 403
-         without the authority, 409 on a line already decided or removed. */
-      toast(res.error.status === 403 ? "critical" : "warning", "Not approved", res.error.message);
-      setTicked((t) => ({ ...t, [l.id]: false }));
-      return;
-    }
-    toast("success", `Approved ${formatIDR(amountOf(l))}`, l.description);
-    refresh();
-  }
-
-  /** Send the undecided lines to the approver's chat.
-   *
-   *  The meeting runs on one laptop and the approver is rarely the person
-   *  holding it. Ticking here would record the wrong name; asking in chat
-   *  records the right one, because the answer is authenticated by Google
-   *  rather than by this session (D69).
-   */
-  async function askForApproval(rows: PrLineView[]) {
-    const pending = rows.filter((l) => !l.approval?.approved && !l.removed_at && !l.pending_request);
-    if (pending.length === 0) {
-      toast("warning", "Nothing to send", "Everything here is either decided already or already waiting for an answer.");
-      return;
-    }
-    setSending(true);
-    const res = await procurement.requestApproval({ line_nos: pending.map((l) => l.line_no_full) });
-    setSending(false);
-    if (res.error) { toast("warning", "Not sent", res.error.message); return; }
-    toast(
-      "success",
-      `Sent ${res.data.items.length} item(s) as ${res.data.batch_no}`,
-      `${formatIDR(res.data.requested_total)} for ${res.data.sent_to_email} to decide`,
-    );
-    refresh();
-  }
-
   const columns: Column<PrLineView>[] = [
     {
       key: "item",
       header: "Item",
       className: "whitespace-normal",
       render: (l) => {
-        const meta = [l.line_no_full, l.requested_by_name, l.project_code, l.vendor_name]
+        const meta = [l.line_no_full, l.requested_by_name, l.project_code]
           .filter(Boolean).join(" · ");
         return (
         /* The wrap constraint lives here, not on the <td>: Tailwind emits
@@ -219,6 +130,16 @@ export default function RequestsBoardPage() {
           </div>
         );
       },
+    },
+    {
+      key: "vendor",
+      header: "Vendor",
+      className: "whitespace-normal",
+      render: (l) => (
+        <div className="max-w-[150px] whitespace-normal break-words text-[12px] text-slate-600">
+          {l.vendor_name ?? <span className="text-slate-300">not decided</span>}
+        </div>
+      ),
     },
     {
       key: "qty",
@@ -258,82 +179,27 @@ export default function RequestsBoardPage() {
       ),
     },
     {
-      key: "decision",
-      header: "Decision",
+      key: "status",
+      header: "Status",
       className: "whitespace-normal",
-      render: (l) => {
-        const undecided = !l.approval?.approved && !l.removed_at;
-
-        if (!(mayDecide && undecided)) {
-          return (
-            <div className="space-y-0.5">
-              <StatusPill kind="line" status={l.status} />
-              {l.coverage.covered > 0 && !l.coverage.settled && (
-                <p className="text-[11px] text-slate-500">{formatIDR(l.coverage.remaining)} still owed</p>
-              )}
-              {l.variance.material && !l.variance.explanation && (
-                <p className="text-[11px] font-medium text-rose-600">needs an explanation</p>
-              )}
-              {/* The question has left the room and is waiting on a person,
-                  which is a different kind of waiting from "nobody has looked
-                  at it" — so the board says which. */}
-              {l.pending_request && !l.approval?.approved && (
-                <p className="text-[11px] text-slate-500">
-                  asked {l.pending_request.sent_to_email.split("@")[0]} on chat ·{" "}
-                  {new Date(l.pending_request.sent_at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
-                </p>
-              )}
-            </div>
-          );
-        }
-
-        return (
-          /* Stops the click from opening the drawer: the row is a link, and
-             these controls are not. */
-          <div className="w-[188px] space-y-1.5" onClick={(e) => e.stopPropagation()}>
-            {l.qty != null && (
-              <div className="flex items-center gap-1.5">
-                <NumberInput
-                  id={`aq-${l.id}`}
-                  size="sm"
-                  value={qtyOf(l)}
-                  onChange={(v) => setQty(l, v)}
-                  min={0}
-                  max={l.qty ?? undefined}
-                  className="w-20 text-right"
-                />
-                <span className="text-[11px] text-slate-400">of {formatNumber(l.qty)} {l.uom ?? ""}</span>
-              </div>
-            )}
-            <MoneyInput
-              id={`aa-${l.id}`}
-              size="sm"
-              value={amountOf(l)}
-              ceiling={l.item_total}
-              onChange={(v) => setAmountDraft((d) => ({ ...d, [l.id]: v }))}
-            />
-            <label className="flex items-center gap-2 text-[13px] text-slate-700">
-              <input
-                id={`ok-${l.id}`}
-                type="checkbox"
-                checked={ticked[l.id] ?? false}
-                disabled={busy === l.id}
-                onChange={() => approve(l)}
-                className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-400"
-              />
-              {busy === l.id ? "Recording…" : "Approve"}
-            </label>
-            {l.coverage.covered > 0 && (
-              <p className="text-[11px] text-rose-600">already paid, never approved</p>
-            )}
-            {l.pending_request && (
-              <p className="text-[11px] text-slate-500">
-                asked on chat · {new Date(l.pending_request.sent_at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
-              </p>
-            )}
-          </div>
-        );
-      },
+      render: (l) => (
+        <div className="space-y-0.5">
+          <StatusPill kind="line" status={l.status} />
+          {l.coverage.covered > 0 && !l.coverage.settled && (
+            <p className="text-[11px] text-slate-500">{formatIDR(l.coverage.remaining)} still owed</p>
+          )}
+          {l.variance.material && !l.variance.explanation && (
+            <p className="text-[11px] font-medium text-rose-600">needs an explanation</p>
+          )}
+          {/* Waiting on a named person is a different kind of waiting from
+              "nobody has looked at it yet", so the row says which. */}
+          {l.pending_request && !l.approval?.approved && (
+            <p className="text-[11px] text-slate-500">
+              asked {l.pending_request.sent_to_email.split("@")[0]} on chat
+            </p>
+          )}
+        </div>
+      ),
     },
   ];
 
@@ -342,9 +208,12 @@ export default function RequestsBoardPage() {
       <PageHeader
         breadcrumb="Procurement"
         title="Requests"
-        description="Everything anyone has asked to buy that is not finished yet, and the decision on each one. An item stays here until it is settled or no longer needed."
+        description="Everything anyone has asked to buy that is not finished yet — asked for, corrected, documented and paid from here. An item stays on this board until it is settled or no longer needed."
         actions={
           <>
+            <Link href="/procurement/meeting">
+              <Button variant="outline" icon={Users}>Meeting board</Button>
+            </Link>
             <Link href="/procurement/pr/documents">
               <Button variant="outline" icon={FileText}>Submissions</Button>
             </Link>
@@ -369,8 +238,6 @@ export default function RequestsBoardPage() {
 
           return (
             <>
-              <FundingBar lines={all} />
-
               {/* The four questions a leadership meeting asks, as filters
                   rather than as four large cards — the board itself is what
                   people came to read. */}
@@ -417,14 +284,13 @@ export default function RequestsBoardPage() {
                   <span>
                     <strong>Money moved before anyone approved it</strong> on {paidUnapproved} item(s).
                     They are still in the list below, still waiting for a yes — paying something
-                    is not deciding it.
+                    is not deciding it. The decision itself is taken on the{" "}
+                    <Link href="/procurement/meeting" className="font-medium underline">meeting board</Link>.
                   </span>
                 </p>
               )}
 
-              {/* The toolbar sits above the groups, not inside one of them:
-                  the search and the "include finished" switch apply to all
-                  three. */}
+              {/* Search and the "include finished" switch, above the table. */}
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 <SourceBadge state={lines} />
                 <label className="flex items-center gap-1.5 text-xs text-slate-500">
@@ -446,59 +312,24 @@ export default function RequestsBoardPage() {
                 />
               </div>
 
-              {/* Not approved and approved are different piles of work, and
-                  keeping them in one table hid the only two totals anybody
-                  asks for: what is still to decide, and what that decision
-                  will cost (D71). */}
-              {GROUPS.map((g) => {
-                const groupRows = rows.filter((l) => groupOf(l) === g.key);
-                if (groupRows.length === 0 && g.key === "done") return null;
-
-                const asked = groupRows.reduce((s, l) => s + l.item_total, 0);
-                const approvedTotal = groupRows.reduce(
-                  (s, l) => s + (l.approval?.approved ? l.approval.approved_amount ?? l.item_total : 0), 0);
-                const toPay = groupRows.reduce((s, l) => s + (l.approval?.approved ? l.coverage.remaining : 0), 0);
-                const askable = groupRows.filter((l) => !l.approval?.approved && !l.removed_at && !l.pending_request);
-
-                return (
-                  <Card key={g.key} className="mb-5">
-                    <CardHeader
-                      title={g.title}
-                      subtitle={
-                        g.key === "waiting"
-                          ? `${groupRows.length} item(s) · ${formatIDR(asked)} asked for. Nothing moves until these are decided.`
-                          : g.key === "to_pay"
-                            ? `${groupRows.length} item(s) · ${formatIDR(approvedTotal)} approved · ${formatIDR(toPay)} still to pay — this is the money that has to be in the account.`
-                            : `${groupRows.length} item(s) · ${formatIDR(approvedTotal)} approved and settled.`
-                      }
-                      icon={g.icon}
-                      action={
-                        g.key === "waiting" && mayEdit && askable.length > 0 ? (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            icon={Send}
-                            disabled={sending}
-                            onClick={() => askForApproval(askable)}
-                          >
-                            {sending ? "Sending…" : `Ask on Chat · ${askable.length}`}
-                          </Button>
-                        ) : undefined
-                      }
-                    />
-                    <DataTable
-                      dense
-                      columns={columns}
-                      rows={groupRows}
-                      rowKey={(l) => l.id}
-                      onRowClick={setSelected}
-                      empty={q || stateFilter || varianceOnly
-                        ? "Nothing here matches those filters."
-                        : g.key === "waiting" ? "Everything has been decided." : "Nothing waiting to be paid."}
-                    />
-                  </Card>
-                );
-              })}
+              <Card>
+                <CardHeader
+                  title={
+                    varianceOnly ? "Paid ≠ approved"
+                      : stateFilter ? MEETING_STATE_LABEL[stateFilter] : "All open items"
+                  }
+                  subtitle="One row per item, not per document — across every submission and every supplier. Open one to edit it, attach a document, or record the payment."
+                  icon={ClipboardList}
+                />
+                <DataTable
+                  dense
+                  columns={columns}
+                  rows={rows}
+                  rowKey={(l) => l.id}
+                  onRowClick={setSelected}
+                  empty={q || stateFilter || varianceOnly ? "Nothing matches those filters." : "Nothing outstanding."}
+                />
+              </Card>
             </>
           );
         }}

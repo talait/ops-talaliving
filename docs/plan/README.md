@@ -57,15 +57,16 @@ Update the row, the date, and the note **in the same commit** as the work.
 | M3 | Reference data: vendors, items, projects | D3 | DONE | 2026-09-11 | curation, merge, two-price model; verified in a browser |
 | M4 | Requests board: line-first, four meeting states, evidence | D4 | DONE | 2026-09-11 | redefined per owner — line is the unit (D48) |
 | M4b | Approved-against-paid: variance, explanation, pay-from-line | D4 | DONE | 2026-09-11 | D53–D57. Posting a payment from a line writes the ledger row (D32 delivered early) |
-| M5 | PR: approval on the board itself, approval trail | D5 | DONE | 2026-09-11 | merged into `/procurement/pr` (D67). Checkbox + reducible qty and amount + instructions/remark + trail + un-approve |
+| M5 | PR: approval — decided on the meeting board, trail on the line | D5 | DONE | 2026-09-11 | D74. Checkbox + reducible qty and amount + instructions/remark + trail + un-approve |
 | M5b | Approval asked for and answered in Google Chat | D5 | DONE | 2026-09-11 | D69–D72. Sent as a batch with its totals; the identity on the record is the approver's, not the meeting laptop's. `/demo/chat` stands in for the signed webhook |
+| M5c | Meeting board: decide, fund, add on the spot | D5 | DONE | 2026-09-11 | `/procurement/meeting` (D73, D74). The transfer into BCA 271 is the number it exists for |
 | M6 | Payment rounds: sync, approve, transfer, close | D6 | TODO | — | |
 | M7 | **Checkpoint: walk Flow B on a phone, with the team** | D7 | TODO | — | week-1 review |
 | M8 | Ledger: list, drawer, attach from a row, void, complete | D8 | TODO | — | |
 | M9 | Evidence attached from the record — the main road | D9 | TODO | — | ADR-010 |
 | M10 | The exception inbox: bought first, approved later | D10 | TODO | — | should stay small |
 | M11 | PO: two axes, exposure; receiving with photo | D11 | TODO | — | |
-| M12 | Cashflow + **liquidation report** + dashboard on demo data | D12 | TODO | — | meeting board landed early, in M4. Liquidation: money in vs where it went (owner, 2026-09-11) |
+| M12 | Cashflow + **liquidation report** + dashboard on demo data | D12 | TODO | — | the meeting board landed early and now has its own screen (D74). Liquidation: money in vs where it went (owner, 2026-09-11) |
 | M13 | Polish: phone, empty states, refusals, demo reset | D13 | TODO | — | |
 | M14 | **Walkthrough + findings → the schema we actually need** | D14 | TODO | — | the payoff |
 

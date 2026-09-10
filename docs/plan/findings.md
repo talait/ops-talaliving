@@ -756,3 +756,39 @@ it" stop being the same click. The board answers the same question from the
 other side: what is still to decide, and what the decisions already taken will
 cost.
 
+## F18 — the same list, read twice, is not the same screen
+
+F15 recorded that the approval queue was a column, not a screen, and the two
+boards became one. This is the correction to that correction, and both are
+right — which is the finding.
+
+**What was wrong with two screens** was that each held its own list of what is
+outstanding, and two lists can disagree. That has not changed and is not
+coming back.
+
+**What was wrong with one screen** is subtler: a board carrying approval
+controls asks everybody to read leadership's questions all day. The person
+attaching a receipt does not care what is waiting for a decision; the person
+in the meeting does not care which invoice is missing a photo. The controls
+were not in the wrong place because approving is a different subject — it is
+not — but because it is a different **moment**.
+
+So the split is by question, not by data:
+
+- **`/procurement/pr` — the working surface.** Asked for, corrected,
+  documented, paid. One row per item, one table, and the whole story in the
+  drawer.
+- **`/procurement/meeting` — the room.** What is waiting for a decision and
+  what it would cost; what is already approved and unpaid; the BCA 271
+  balance; **the transfer needed before any of it can go out** — and what that
+  transfer becomes if everything still waiting is approved today.
+
+Both read `listOpenLines()`. Neither holds state the other cannot see.
+
+**And a demo lesson repeated.** The transfer figure read "nothing needed",
+because BCA 271 was seeded with more than the board could spend — the same
+mistake as the "paid, not approved" tile that always read zero (F14). The
+account is now seeded lean, as it really is: funded per payment round rather
+than held full. The number the screen exists for is a number the screen
+actually shows.
+

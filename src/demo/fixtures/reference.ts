@@ -90,10 +90,15 @@ export const USERS: DemoUser[] = [
 
 /** The five accounts, spelled exactly. Three are held by accounting and pay
  *  vendors; two are held by leadership and never pay a vendor directly. */
+/* BCA 271 is kept lean on purpose: it is funded per payment round, not held
+ * full. That is also what makes the meeting board's most important number
+ * — how much has to be transferred in before what is approved can be paid —
+ * a real number in the demo rather than a permanent "nothing needed". A
+ * screen whose key figure is always zero teaches that it cannot happen. */
 export const ACCOUNTS: Account[] = [
   { id: "acc_petty", code: "PETTY CASH", name: "Workshop petty cash", custody: "accounting", is_paying: true, currency: "IDR", opening_balance: 5_000_000, opened_on: "2026-01-01", is_active: true },
   { id: "acc_bni325", code: "BNI 325", name: "BNI 325 — Operations", custody: "accounting", is_paying: true, currency: "IDR", opening_balance: 42_000_000, opened_on: "2026-01-01", is_active: true },
-  { id: "acc_bca271", code: "BCA 271", name: "BCA 271 — Accounting custody", custody: "accounting", is_paying: true, currency: "IDR", opening_balance: 118_000_000, opened_on: "2026-01-01", is_active: true },
+  { id: "acc_bca271", code: "BCA 271", name: "BCA 271 — Accounting custody", custody: "accounting", is_paying: true, currency: "IDR", opening_balance: 60_000_000, opened_on: "2026-01-01", is_active: true },
   { id: "acc_bca064", code: "BCA 064", name: "BCA 064 — Leadership account", custody: "leadership", is_paying: false, currency: "IDR", opening_balance: 610_000_000, opened_on: "2026-01-01", is_active: true },
   { id: "acc_bcausd", code: "BCA USD 081", name: "BCA USD 081 — Leadership account", custody: "leadership", is_paying: false, currency: "USD", opening_balance: 0, opened_on: "2026-01-01", is_active: true },
 ];

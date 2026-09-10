@@ -176,3 +176,53 @@ deliberately if that is what "no other status" was meant to imply.
 rather than extend it. The system being replaced accumulated states because
 several surfaces each needed their own; with one surface, most of them turn
 out to be the same two facts wearing different names.
+
+## F4 · 2026-09-11 · M1 — what building the demo layer taught us
+
+**What the screen could not answer.** Nothing yet; M1 has no product screens.
+But writing `derive.ts` forced five rules to become precise that had been
+prose, and precision found problems.
+
+**1. A PR line that funds a PO deposit can never be COMPLETED on its own.**
+It reaches PAID and stops. Delivery arrives against the purchase order, whose
+two axes carry it — and folding that back into the PR line would be exactly
+the collapse A1 forbids. The fixture originally pointed such a line at a
+`po_line_id`, which made it complete as soon as that one PO row was delivered:
+wrong, and only visible once the status was computed rather than described.
+
+**2. Coverage has to exclude voided transactions, or a voided payment leaves
+its line looking paid.** "A stamp pointing at nothing is not paid" turns out
+to be a join condition, not a slogan.
+
+**3. The coverage fallback is load-bearing.** An unapproved line has no
+approved amount, so it must be measured against what was *asked* — otherwise
+its approved total is zero, zero is covered, and the line reads as settled.
+The old system has the same fallback and the same comment about it.
+
+**4. PARTIAL sits above PAID in the ladder, deliberately.** A line that is
+fully paid but only half received reads PARTIAL. Money is the less interesting
+fact once goods are in question, and the reader needs the goods answer first.
+
+**5. The fixtures caught a modelling truth by being wrong.** BNI 325 went
+negative, because payroll leaves that account and nothing ever funded it. The
+fix was not a bigger opening balance but the missing transfers — money has to
+reach an account before it can leave. The recap treats a negative balance as a
+row in the wrong place; here it was a row that did not exist.
+
+**What surprised us.** The refusals were the easiest part to get right and the
+most valuable to have. Six of them are now exercised on page load — approving
+above what was requested, approving without the authority, removing a line
+money has reached, over-allocating a transaction, replaying an idempotency
+key, allocating to a PR line that does not exist — and each one is a rule from
+`00-context.md` proved rather than asserted. Building them first means no
+screen can be written optimistic.
+
+**One concept with no Phase 2 equivalent:** `identity.actAs()`. It exists only
+so permissions can be demonstrated, and it is a clean marker of exactly what
+gets deleted when the demo layer goes.
+
+**Still open.** Q20 — whether the CEO may still approve part of a line — is
+implemented as "yes, the amount may be reduced before checking", because that
+is the default we recorded. If the answer is no, `approveLine` loses its
+`approved_amount` argument and the change is small; it gets larger once the
+approval screen is built on D5.

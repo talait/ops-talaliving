@@ -1,0 +1,240 @@
+import type {
+  Vendor, Uom, UomConversion, ItemCategory, Item, Project,
+} from "@/services/procurement/contracts";
+import type { Account, TransactionType } from "@/services/accounting/contracts";
+import type { DemoUser } from "../state";
+
+/* Demo people. Real shapes, invented names — except the mailbox conventions,
+ * which match how the running system addresses people.
+ *
+ * Note what these demonstrate together: a user holds SEVERAL module grants
+ * (D23), and authorities are granted separately from them (D24). Andi can
+ * raise a purchase request but cannot approve one; Geryle can approve the
+ * money but never sees a ledger row; only Evin can approve goods. */
+export const USERS: DemoUser[] = [
+  {
+    id: "usr_evin", email: "evin@talaliving.com", full_name: "Evin Jonathan", is_active: true,
+    modules: [
+      { module: "procurement", level: "write" },
+      { module: "accounting", level: "read" },
+      { module: "production", level: "read" },
+      { module: "inventory", level: "read" },
+    ],
+    authorities: ["approve_goods"],
+  },
+  {
+    id: "usr_putri", email: "putri@talaliving.com", full_name: "Putri Handayani", is_active: true,
+    modules: [
+      { module: "accounting", level: "write" },
+      { module: "procurement", level: "write" },
+    ],
+    authorities: ["approve_funds", "post_ledger", "resolve_inbox"],
+  },
+  {
+    id: "usr_anggun", email: "anggun@talaliving.com", full_name: "Anggun Lestari", is_active: true,
+    modules: [{ module: "accounting", level: "write" }],
+    authorities: ["post_ledger", "resolve_inbox"],
+  },
+  {
+    id: "usr_geryle", email: "geryle@talaliving.com", full_name: "Geryle Tanoto", is_active: true,
+    modules: [{ module: "procurement", level: "read" }],
+    authorities: ["approve_funds"],
+  },
+  {
+    id: "usr_andi", email: "andi@talaliving.com", full_name: "Andi Prasetyo", is_active: true,
+    modules: [
+      { module: "procurement", level: "write" },
+      { module: "inventory", level: "read" },
+    ],
+    authorities: [],
+  },
+  {
+    id: "usr_made", email: "made@talaliving.com", full_name: "Made Suparta", is_active: true,
+    modules: [
+      { module: "inventory", level: "write" },
+      { module: "procurement", level: "read" },
+    ],
+    authorities: [],
+  },
+  {
+    id: "usr_shared", email: "it@talaliving.com", full_name: "IT / Shared", is_active: true,
+    modules: [
+      { module: "procurement", level: "admin" },
+      { module: "accounting", level: "admin" },
+      { module: "hrd", level: "admin" },
+      { module: "inventory", level: "admin" },
+      { module: "production", level: "admin" },
+      { module: "it", level: "admin" },
+    ],
+    authorities: ["approve_goods", "approve_funds", "post_ledger", "resolve_inbox"],
+  },
+];
+
+/** The five accounts, spelled exactly. Three are held by accounting and pay
+ *  vendors; two are held by leadership and never pay a vendor directly. */
+export const ACCOUNTS: Account[] = [
+  { id: "acc_petty", code: "PETTY CASH", name: "Kas Kecil Workshop", custody: "accounting", is_paying: true, currency: "IDR", opening_balance: 5_000_000, opened_on: "2026-01-01", is_active: true },
+  { id: "acc_bni325", code: "BNI 325", name: "BNI 325 — Operasional", custody: "accounting", is_paying: true, currency: "IDR", opening_balance: 42_000_000, opened_on: "2026-01-01", is_active: true },
+  { id: "acc_bca271", code: "BCA 271", name: "BCA 271 — Kustodi Akunting", custody: "accounting", is_paying: true, currency: "IDR", opening_balance: 118_000_000, opened_on: "2026-01-01", is_active: true },
+  { id: "acc_bca064", code: "BCA 064", name: "BCA 064 — Rekening Pimpinan", custody: "leadership", is_paying: false, currency: "IDR", opening_balance: 610_000_000, opened_on: "2026-01-01", is_active: true },
+  { id: "acc_bcausd", code: "BCA USD 081", name: "BCA USD 081 — Rekening Pimpinan", custody: "leadership", is_paying: false, currency: "USD", opening_balance: 0, opened_on: "2026-01-01", is_active: true },
+];
+
+/** Thirteen types. `is_purchase` vetoes auto-complete — goods that were bought
+ *  can still be delivered. `auto_complete` ships false everywhere (D26). */
+export const TRANSACTION_TYPES: TransactionType[] = [
+  { code: "RECCURING - UTILITIES", is_purchase: false, auto_complete: false, creates_catalog_item: false },
+  { code: "CREDIT CARD", is_purchase: false, auto_complete: false, creates_catalog_item: false },
+  { code: "PREPAID VENDOR", is_purchase: true, auto_complete: false, creates_catalog_item: true },
+  { code: "SUPPLIERS", is_purchase: true, auto_complete: false, creates_catalog_item: true },
+  { code: "BANK CHARGES", is_purchase: false, auto_complete: false, creates_catalog_item: false },
+  { code: "ONLINE", is_purchase: true, auto_complete: false, creates_catalog_item: true },
+  { code: "CHINA", is_purchase: true, auto_complete: false, creates_catalog_item: true },
+  { code: "RECCURING - PAYROLL", is_purchase: false, auto_complete: false, creates_catalog_item: false },
+  { code: "CASHFLOW", is_purchase: false, auto_complete: false, creates_catalog_item: false },
+  { code: "OTHERS", is_purchase: false, auto_complete: false, creates_catalog_item: false },
+  { code: "PRODUCTION", is_purchase: true, auto_complete: false, creates_catalog_item: true },
+  { code: "OFFICE", is_purchase: true, auto_complete: false, creates_catalog_item: true },
+  { code: "WAREHOUSE", is_purchase: true, auto_complete: false, creates_catalog_item: true },
+];
+
+export const UOM: Uom[] = [
+  { code: "pcs", name: "Pieces", dimension: "count" },
+  { code: "buah", name: "Buah", dimension: "count" },
+  { code: "kg", name: "Kilogram", dimension: "mass" },
+  { code: "gr", name: "Gram", dimension: "mass" },
+  { code: "meter", name: "Meter", dimension: "length" },
+  { code: "m2", name: "Meter persegi", dimension: "area" },
+  { code: "m3", name: "Meter kubik", dimension: "volume" },
+  { code: "cm", name: "Sentimeter", dimension: "length" },
+  { code: "sak", name: "Sak", dimension: "count" },
+  { code: "box", name: "Box", dimension: "count" },
+  { code: "roll", name: "Roll", dimension: "count" },
+  { code: "set", name: "Set", dimension: "count" },
+  { code: "pack", name: "Pack", dimension: "count" },
+  { code: "ltr", name: "Liter", dimension: "volume" },
+  { code: "lembar", name: "Lembar", dimension: "count" },
+  { code: "batang", name: "Batang", dimension: "count" },
+  { code: "unit", name: "Unit", dimension: "count" },
+  { code: "lusin", name: "Lusin", dimension: "count" },
+];
+
+/** Packaging conversions only, in Phase 1. `yield_ratio` is the hook the wood
+ *  chain needs later: a log does not become boards one-for-one. */
+export const UOM_CONVERSIONS: UomConversion[] = [
+  { id: "uc_01", from_uom: "lusin", to_uom: "pcs", factor: 12, yield_ratio: null, note: null },
+  { id: "uc_02", from_uom: "kg", to_uom: "gr", factor: 1000, yield_ratio: null, note: null },
+  { id: "uc_03", from_uom: "box", to_uom: "pcs", factor: 100, yield_ratio: null, note: "sekrup, per box pabrik" },
+  { id: "uc_04", from_uom: "m3", to_uom: "lembar", factor: 55, yield_ratio: 0.52, note: "log jati -> papan 3cm, rendemen 45-60%" },
+];
+
+export const ITEM_CATEGORIES: ItemCategory[] = [
+  { code: "production", parent_code: null, name: "Produksi" },
+  { code: "raw-wood", parent_code: "production", name: "Kayu & panel" },
+  { code: "hardware", parent_code: "production", name: "Hardware" },
+  { code: "sanding", parent_code: null, name: "Sanding" },
+  { code: "finishing", parent_code: null, name: "Finishing" },
+  { code: "packing", parent_code: null, name: "Packing" },
+  { code: "machining", parent_code: null, name: "Machining" },
+  { code: "office", parent_code: null, name: "Kantor" },
+  { code: "service", parent_code: null, name: "Jasa" },
+  { code: "uncurated", parent_code: null, name: "Belum dikurasi" },
+];
+
+export const PROJECTS: Project[] = [
+  { id: "prj_25004", code: "25004", name: "STANDARD", is_active: true },
+  { id: "prj_25007", code: "25007", name: "BABY ISLAND", is_active: true },
+  { id: "prj_25009", code: "25009", name: "VILLA SEMINYAK", is_active: true },
+  { id: "prj_25011", code: "25011", name: "HOTEL UBUD", is_active: true },
+  { id: "prj_25012", code: "25012", name: "OFFICE FITOUT", is_active: false },
+];
+
+/** Twelve vendors. Three are uncurated: recorded, shown, marked, and absent
+ *  from dropdowns until a human promotes them. A name somebody types is always
+ *  accepted — that was the owner's call and it stands. */
+export const VENDORS: Vendor[] = [
+  { id: "vnd_01", code: "V-0001", name: "CV SUMBER KAYU JATI", aka: ["SUMBER KAYU"], is_curated: true, phone: "0361-812445", address: "Jl. Raya Gianyar No. 88, Gianyar", bank_account: "BCA 145-0882-771", npwp: "01.234.567.8-905.000" },
+  { id: "vnd_02", code: "V-0002", name: "UD ALRIZKY JAYA", aka: ["ALRIZKY", "AL RIZKY"], is_curated: true, phone: "0361-425190", address: "Jl. Cokroaminoto 210, Denpasar", bank_account: "BNI 088-771-2210", npwp: null },
+  { id: "vnd_03", code: "V-0003", name: "TOKO BANGUNAN MAKMUR SENTOSA", aka: ["MAKMUR SENTOSA"], is_curated: true, phone: "0361-733012", address: "Jl. Mahendradatta 45, Denpasar", bank_account: "BCA 771-0034-112", npwp: null },
+  { id: "vnd_04", code: "V-0004", name: "PT PROPAN RAYA ICC", aka: ["PROPAN"], is_curated: true, phone: "021-5901888", address: "Kawasan Industri Jatake, Tangerang", bank_account: "Mandiri 128-00-0912334-5", npwp: "01.311.402.7-054.000" },
+  { id: "vnd_05", code: "V-0005", name: "CV MITRA TEKNIK MANDIRI", aka: [], is_curated: true, phone: "0361-462017", address: "Jl. By Pass Ngurah Rai 122, Sanur", bank_account: "BCA 145-0771-330", npwp: null },
+  { id: "vnd_06", code: "V-0006", name: "UD KARYA LOGAM ABADI", aka: ["KARYA LOGAM"], is_curated: true, phone: "0361-298776", address: "Jl. Gatot Subroto Barat 190, Denpasar", bank_account: null, npwp: null },
+  { id: "vnd_07", code: "V-0007", name: "TOKO AMPLAS SEJAHTERA", aka: [], is_curated: true, phone: "0361-234881", address: "Jl. Imam Bonjol 77, Denpasar", bank_account: "BNI 771-002-8891", npwp: null },
+  { id: "vnd_08", code: "V-0008", name: "PT INDO VENEER UTAMA", aka: ["INDOVENEER"], is_curated: true, phone: "031-7885120", address: "Jl. Rungkut Industri III/44, Surabaya", bank_account: "BCA 188-3300-771", npwp: "02.115.889.4-604.000" },
+  { id: "vnd_09", code: "V-0009", name: "CV BALI PACKING PRIMA", aka: [], is_curated: true, phone: "0361-901223", address: "Jl. Kargo Permai 12, Denpasar", bank_account: "BCA 145-8812-004", npwp: null },
+  { id: "vnd_10", code: "V-0010", name: "UD SINAR ABADI", aka: [], is_curated: false, phone: null, address: null, bank_account: null, npwp: null },
+  { id: "vnd_11", code: "V-0011", name: "TOKO LISTRIK JAYA MANDIRI", aka: [], is_curated: false, phone: null, address: null, bank_account: null, npwp: null },
+  { id: "vnd_12", code: "V-0012", name: "CV KAYU MANIS SELATAN", aka: [], is_curated: false, phone: null, address: null, bank_account: null, npwp: null },
+];
+
+type ItemSeed = [string, string, string, Item["base_uom"], number | null, number | null, string | null, boolean, Item["kind"]];
+
+/* code, name, category, uom, standard_price, last_price, last_vendor, curated, kind */
+const ITEM_SEEDS: ItemSeed[] = [
+  ["ITM-0001", "KAYU JATI SORTIMEN A", "raw-wood", "m3", 18_500_000, 18_900_000, "vnd_01", true, "goods"],
+  ["ITM-0002", "KAYU JATI SORTIMEN B", "raw-wood", "m3", 14_200_000, 14_200_000, "vnd_01", true, "goods"],
+  ["ITM-0003", "KAYU MAHONI LOG", "raw-wood", "m3", 6_800_000, 6_950_000, "vnd_01", true, "goods"],
+  ["ITM-0004", "KAYU SUNGKAI PAPAN 2CM", "raw-wood", "lembar", 185_000, 188_000, "vnd_12", true, "goods"],
+  ["ITM-0005", "KAYU MINDI LOG", "raw-wood", "m3", 4_900_000, null, null, true, "goods"],
+  ["ITM-0006", "PAPAN JATI KERING 3CM", "raw-wood", "lembar", 620_000, 640_000, "vnd_01", true, "goods"],
+  ["ITM-0007", "PLYWOOD 18MM 122X244", "raw-wood", "lembar", 285_000, 292_000, "vnd_03", true, "goods"],
+  ["ITM-0008", "PLYWOOD 12MM 122X244", "raw-wood", "lembar", 198_000, 205_000, "vnd_03", true, "goods"],
+  ["ITM-0009", "MDF 15MM 122X244", "raw-wood", "lembar", 165_000, null, null, true, "goods"],
+  ["ITM-0010", "HPL TACO TH 133 GLOSSY", "raw-wood", "lembar", 245_000, 248_000, "vnd_08", true, "goods"],
+  ["ITM-0011", "VENEER JATI 0.6MM", "raw-wood", "lembar", 87_000, 89_500, "vnd_08", true, "goods"],
+  ["ITM-0012", "AMPLAS 80 GRIT", "sanding", "lembar", 7_500, 7_500, "vnd_07", true, "goods"],
+  ["ITM-0013", "AMPLAS 120 GRIT", "sanding", "lembar", 7_500, 7_650, "vnd_07", true, "goods"],
+  ["ITM-0014", "AMPLAS 240 GRIT", "sanding", "lembar", 8_000, 8_000, "vnd_07", true, "goods"],
+  ["ITM-0015", "AMPLAS ROLL 180 GRIT", "sanding", "roll", 385_000, 392_000, "vnd_07", true, "goods"],
+  ["ITM-0016", "SANDING SEALER PROPAN", "finishing", "ltr", 78_000, 79_500, "vnd_04", true, "goods"],
+  ["ITM-0017", "CAT DUCO PUTIH", "finishing", "ltr", 165_000, 168_000, "vnd_04", true, "goods"],
+  ["ITM-0018", "THINNER ND SUPER", "finishing", "ltr", 32_000, 33_500, "vnd_04", true, "goods"],
+  ["ITM-0019", "MELAMINE CLEAR DOFF", "finishing", "ltr", 142_000, 145_000, "vnd_04", true, "goods"],
+  ["ITM-0020", "WOOD STAIN WALNUT", "finishing", "ltr", 118_000, null, null, true, "goods"],
+  ["ITM-0021", "DEMPUL KAYU", "finishing", "kg", 45_000, 46_500, "vnd_03", true, "goods"],
+  ["ITM-0022", "LEM PUTIH FOX 5 KG", "finishing", "pack", 230_000, 230_000, "vnd_03", true, "goods"],
+  ["ITM-0023", "LEM KUNING AIBON", "finishing", "kg", 68_000, 69_000, "vnd_03", true, "goods"],
+  ["ITM-0024", "ENGSEL SENDOK HUBEN", "hardware", "pcs", 18_500, 18_500, "vnd_02", true, "goods"],
+  ["ITM-0025", "REL LACI FULL EXTENSION 45CM", "hardware", "set", 95_000, 97_500, "vnd_02", true, "goods"],
+  ["ITM-0026", "HANDLE TARIK ALUMUNIUM 128MM", "hardware", "pcs", 32_000, 32_000, "vnd_02", true, "goods"],
+  ["ITM-0027", "SEKRUP GYPSUM 1 INCH", "hardware", "box", 42_000, 43_000, "vnd_02", true, "goods"],
+  ["ITM-0028", "PAKU 5CM", "hardware", "kg", 22_000, 22_500, "vnd_03", true, "goods"],
+  ["ITM-0029", "MATA BOR SET HSS", "machining", "set", 285_000, null, null, true, "goods"],
+  ["ITM-0030", "PISAU PLANER 300MM", "machining", "set", 420_000, 435_000, "vnd_05", true, "goods"],
+  ["ITM-0031", "BATU GERINDA 4 INCH", "machining", "pcs", 12_000, 12_500, "vnd_05", true, "goods"],
+  ["ITM-0032", "KARDUS DOUBLE WALL 60X40X40", "packing", "pcs", 28_000, 28_500, "vnd_09", true, "goods"],
+  ["ITM-0033", "BUBBLE WRAP 125CM", "packing", "roll", 420_000, 428_000, "vnd_09", true, "goods"],
+  ["ITM-0034", "STRETCH FILM 500MM", "packing", "roll", 95_000, 96_000, "vnd_09", true, "goods"],
+  ["ITM-0035", "STYROFOAM SHEET 2CM", "packing", "lembar", 35_000, null, null, true, "goods"],
+  ["ITM-0036", "LAKBAN COKLAT 2 INCH", "packing", "pcs", 12_500, 12_500, "vnd_09", true, "goods"],
+  ["ITM-0037", "KERTAS HVS A4 80GR", "office", "pack", 58_000, 59_000, "vnd_03", true, "goods"],
+  ["ITM-0038", "TINTA PRINTER EPSON 003", "office", "pcs", 95_000, null, null, true, "goods"],
+  ["ITM-0039", "JASA POTONG RUMPUT HALAMAN", "service", "unit", 350_000, 350_000, "vnd_10", true, "service"],
+  ["ITM-0040", "JASA SERVIS MESIN PLANER", "service", "unit", null, 1_250_000, "vnd_05", true, "service"],
+  ["ITM-0041", "LISTRIK WORKSHOP BULANAN", "service", "unit", null, 4_180_000, null, true, "service"],
+  ["ITM-0042", "BAUT L 8MM", "uncurated", "pcs", null, 3_500, "vnd_10", false, "goods"],
+  ["ITM-0043", "OLI KOMPRESOR", "uncurated", "ltr", null, 78_000, "vnd_11", false, "goods"],
+];
+
+export const ITEMS: Item[] = ITEM_SEEDS.map(
+  ([code, name, category_code, base_uom, standard_price, last_price, last_vendor_id, is_curated, kind], i) => ({
+    id: `itm_${String(i + 1).padStart(3, "0")}`,
+    code,
+    name,
+    aka: [],
+    category_code,
+    base_uom,
+    kind,
+    is_curated,
+    standard_price,
+    last_price,
+    last_vendor_id,
+    last_purchased_at: last_price ? "2026-08-24" : null,
+  }),
+);
+
+export function itemIdByCode(code: string): string {
+  const found = ITEMS.find((i) => i.code === code);
+  if (!found) throw new Error(`fixture item ${code} not found`);
+  return found.id;
+}

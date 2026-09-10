@@ -52,8 +52,8 @@ Update the row, the date, and the note **in the same commit** as the work.
 | # | Milestone | Day | Status | Updated | Note |
 |---|---|---|---|---|---|
 | M0 | Plan and design documents | D1 | DONE | 2026-09-10 | this document set |
-| M1 | Demo data layer + contracts + **live on Vercel** | D1 | TODO | — | a URL on day one |
-| M2 | Demo session: multi-module grants + four authorities | D2 | TODO | — | D22–D24 |
+| M1 | Demo data layer + contracts | D1 | DONE | 2026-09-11 | built, typechecked, lint-clean, verified in a browser. **Vercel not connected yet** — see below |
+| M2 | Demo session: multi-module grants + four authorities | D2 | TODO | — | D22–D24; needs the grant picker |
 | M3 | Reference data: vendors, items, projects | D3 | TODO | — | |
 | M4 | PR: list, multi-line create, detail drawer | D4 | TODO | — | |
 | M5 | PR: the standing approval queue (CEO), approval trail | D5 | TODO | — | D19–D21 |
@@ -66,6 +66,14 @@ Update the row, the date, and the note **in the same commit** as the work.
 | M12 | Meeting board, cashflow, dashboard on demo data | D12 | TODO | — | |
 | M13 | Polish: phone, empty states, refusals, demo reset | D13 | TODO | — | |
 | M14 | **Walkthrough + findings → the schema we actually need** | D14 | TODO | — | the payoff |
+
+**M1 is code-complete but not deployed.** This environment has no Vercel
+credentials, so the build was verified locally instead: `npm run build` clean,
+`next lint` clean, `tsc --noEmit` clean, and the page rendered in headless
+Chromium with all six refusal probes passing and all eight line statuses
+present. Connecting the repo to Vercel is a one-time step for the owner —
+import `talait/ops-talaliving`, framework preset Next.js, no environment
+variables — after which every push deploys and every PR gets a preview link.
 
 ### Phase 2 — the backend (not scheduled yet)
 

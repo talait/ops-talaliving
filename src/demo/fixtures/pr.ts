@@ -1,0 +1,162 @@
+import type {
+  PrDocument, PrLine, PrApproval, PaymentRound, PaymentRoundLine, Receipt,
+  PurchaseOrder, PoLine, PoScheduleTerm, PrCategory, UomCode,
+} from "@/services/procurement/contracts";
+import { itemIdByCode } from "./reference";
+
+/* Six documents, chosen so that every one of the eight statuses in the ladder
+ * is reachable on the deployed demo without anybody having to create data
+ * first. Read them in order and the whole chain is visible:
+ *
+ *   pr-26-09-10_02  DRAFT                -> DRAFT
+ *   pr-26-09-10_01  submitted, untouched -> WAITING FOR APPROVAL
+ *   pr-26-09-08_01  partly decided       -> APPROVED · WAITING FOR APPROVAL · REMOVED
+ *   pr-26-09-04_01  in an approved round -> WAITING FOR PAYMENT
+ *   pr-26-08-27_01  paid                 -> PAID · COMPLETED (a service line)
+ *   pr-26-08-18_01  paid and received    -> COMPLETED · PARTIAL · PAID (a PO DP)
+ */
+
+export const PR_DOCUMENTS: PrDocument[] = [
+  { id: "doc_06", doc_no: "pr-26-09-10_02", doc_type: "PR", status: "DRAFT", requested_by: "usr_andi", project_id: "prj_25004", purpose: "Consumable sanding & lem mingguan", created_at: "2026-09-10T02:15:00+08:00", submitted_at: null },
+  { id: "doc_05", doc_no: "pr-26-09-10_01", doc_type: "PR", status: "SUBMITTED", requested_by: "usr_andi", project_id: "prj_25007", purpose: "Packing batch BABY ISLAND", created_at: "2026-09-10T01:05:00+08:00", submitted_at: "2026-09-10T01:40:00+08:00" },
+  { id: "doc_04", doc_no: "pr-26-09-08_01", doc_type: "PR", status: "SUBMITTED", requested_by: "usr_made", project_id: "prj_25009", purpose: "Kayu & tooling VILLA SEMINYAK", created_at: "2026-09-08T09:20:00+08:00", submitted_at: "2026-09-08T10:02:00+08:00" },
+  { id: "doc_03", doc_no: "pr-26-09-04_01", doc_type: "PR", status: "SUBMITTED", requested_by: "usr_andi", project_id: "prj_25011", purpose: "Finishing HOTEL UBUD tahap 1", created_at: "2026-09-04T08:30:00+08:00", submitted_at: "2026-09-04T09:00:00+08:00" },
+  { id: "doc_02", doc_no: "pr-26-08-27_01", doc_type: "PR", status: "SUBMITTED", requested_by: "usr_andi", project_id: "prj_25004", purpose: "Panel & perawatan halaman", created_at: "2026-08-27T08:10:00+08:00", submitted_at: "2026-08-27T08:45:00+08:00" },
+  { id: "doc_01", doc_no: "pr-26-08-18_01", doc_type: "PR", status: "CLOSED", requested_by: "usr_made", project_id: "prj_25007", purpose: "Consumable + DP veneer BABY ISLAND", created_at: "2026-08-18T08:00:00+08:00", submitted_at: "2026-08-18T08:35:00+08:00" },
+];
+
+type LineSeed = [
+  string, string, number, string | null, string, number | null, UomCode | null,
+  number | null, string | null, PrCategory | null, string | null,
+];
+
+/* doc_id, id, line_no, item_code, description, qty, uom, unit_price, vendor, category, need_by */
+const LINE_SEEDS: LineSeed[] = [
+  ["doc_06", "prl_0601", 1, "ITM-0014", "AMPLAS 240 GRIT", 200, "lembar", 8_000, "vnd_07", "SANDING", "2026-09-18"],
+  ["doc_06", "prl_0602", 2, "ITM-0022", "LEM PUTIH FOX 5 KG", 6, "pack", 230_000, "vnd_03", "FINISHING", "2026-09-18"],
+
+  ["doc_05", "prl_0501", 1, "ITM-0033", "BUBBLE WRAP 125CM", 4, "roll", 428_000, "vnd_09", "PACKING", "2026-09-20"],
+  ["doc_05", "prl_0502", 2, "ITM-0032", "KARDUS DOUBLE WALL 60X40X40", 150, "pcs", 28_500, "vnd_09", "PACKING", "2026-09-20"],
+  ["doc_05", "prl_0503", 3, "ITM-0034", "STRETCH FILM 500MM", 10, "roll", 96_000, "vnd_09", "PACKING", "2026-09-20"],
+
+  ["doc_04", "prl_0401", 1, "ITM-0001", "KAYU JATI SORTIMEN A", 1.2, "m3", 18_900_000, "vnd_01", "RAW MATERIAL", "2026-09-22"],
+  ["doc_04", "prl_0402", 2, "ITM-0006", "PAPAN JATI KERING 3CM", 30, "lembar", 640_000, "vnd_01", "RAW MATERIAL", "2026-09-22"],
+  ["doc_04", "prl_0403", 3, "ITM-0030", "PISAU PLANER 300MM", 2, "set", 435_000, "vnd_05", "MACHINING", "2026-09-30"],
+  ["doc_04", "prl_0404", 4, "ITM-0029", "MATA BOR SET HSS", 1, "set", 285_000, "vnd_05", "MACHINING", null],
+
+  ["doc_03", "prl_0301", 1, "ITM-0017", "CAT DUCO PUTIH", 60, "ltr", 168_000, "vnd_04", "FINISHING", "2026-09-16"],
+  ["doc_03", "prl_0302", 2, "ITM-0018", "THINNER ND SUPER", 100, "ltr", 33_500, "vnd_04", "FINISHING", "2026-09-16"],
+
+  ["doc_02", "prl_0201", 1, "ITM-0007", "PLYWOOD 18MM 122X244", 40, "lembar", 292_000, "vnd_03", "RAW MATERIAL", "2026-09-02"],
+  ["doc_02", "prl_0202", 2, "ITM-0039", "JASA POTONG RUMPUT HALAMAN", null, null, null, "vnd_10", "OTHER", null],
+
+  ["doc_01", "prl_0101", 1, "ITM-0013", "AMPLAS 120 GRIT", 500, "lembar", 7_650, "vnd_07", "SANDING", "2026-08-25"],
+  ["doc_01", "prl_0102", 2, "ITM-0024", "ENGSEL SENDOK HUBEN", 300, "pcs", 18_500, "vnd_02", "MACHINING", "2026-08-25"],
+  ["doc_01", "prl_0103", 3, null, "DP 30% PO veneer & HPL — po-26-08-14_01", null, null, null, "vnd_08", "RAW MATERIAL", null],
+];
+
+const DOC_NO: Record<string, string> = Object.fromEntries(
+  PR_DOCUMENTS.map((d) => [d.id, d.doc_no]),
+);
+
+/** Fixed totals where a line has no qty × price (a service, a PO deposit). */
+const FIXED_TOTAL: Record<string, number> = {
+  prl_0202: 350_000,
+  prl_0103: 19_668_000,
+};
+
+export const PR_LINES: PrLine[] = LINE_SEEDS.map(
+  ([doc_id, id, line_no, item_code, description, qty, uom, unit_price, vendor_id, category, need_by]) => ({
+    id,
+    doc_id,
+    line_no,
+    line_no_full: `${DOC_NO[doc_id]}-L${String(line_no).padStart(2, "0")}`,
+    item_id: item_code ? itemIdByCode(item_code) : null,
+    description,
+    qty,
+    uom,
+    unit_price,
+    item_total: FIXED_TOTAL[id] ?? Math.round((qty ?? 0) * (unit_price ?? 0)),
+    vendor_id,
+    /* A line that funds a PO deposit carries the PO on its allocation, not a
+     * po_line_id: the deposit funds the obligation, not one row of it. It
+     * reaches PAID and stops — delivery is the PO's two axes to carry, and
+     * collapsing that back into the PR line is exactly what A1 forbids. */
+    po_line_id: null,
+    category,
+    need_by,
+    /* Removed because it is no longer needed — no deadline, nothing ages out.
+     * Soft, and it can never be paid (D29). */
+    removed_at: id === "prl_0404" ? "2026-09-09T11:20:00+08:00" : null,
+    removed_by: id === "prl_0404" ? "usr_made" : null,
+  }),
+);
+
+/* A checkbox, not a vocabulary (D28). Every toggle is a row, so the trail
+ * carries the nuance the old three-value column used to carry badly. Note
+ * prl_0402: approved at a lower amount than requested — money can only shrink
+ * on its way through approval (A8). */
+export const PR_APPROVALS: PrApproval[] = [
+  { id: "apr_01", line_id: "prl_0401", step: "GOODS", approved: true, approved_qty: 1.2, approved_amount: 22_680_000, recorded_by: "usr_evin", recorded_by_email: "evin@talaliving.com", recorded_at: "2026-09-09T10:14:00+08:00", channel: "web" },
+  { id: "apr_02", line_id: "prl_0402", step: "GOODS", approved: true, approved_qty: 20, approved_amount: 12_800_000, recorded_by: "usr_evin", recorded_by_email: "evin@talaliving.com", recorded_at: "2026-09-09T10:16:00+08:00", channel: "web" },
+  { id: "apr_03", line_id: "prl_0301", step: "GOODS", approved: true, approved_qty: 60, approved_amount: 10_080_000, recorded_by: "usr_evin", recorded_by_email: "evin@talaliving.com", recorded_at: "2026-09-05T09:02:00+08:00", channel: "web" },
+  { id: "apr_04", line_id: "prl_0302", step: "GOODS", approved: true, approved_qty: 100, approved_amount: 3_350_000, recorded_by: "usr_evin", recorded_by_email: "evin@talaliving.com", recorded_at: "2026-09-05T09:02:00+08:00", channel: "web" },
+  { id: "apr_05", line_id: "prl_0201", step: "GOODS", approved: true, approved_qty: 40, approved_amount: 11_680_000, recorded_by: "usr_evin", recorded_by_email: "evin@talaliving.com", recorded_at: "2026-08-28T08:40:00+08:00", channel: "chat" },
+  { id: "apr_06", line_id: "prl_0202", step: "GOODS", approved: true, approved_qty: null, approved_amount: 350_000, recorded_by: "usr_evin", recorded_by_email: "evin@talaliving.com", recorded_at: "2026-08-28T08:41:00+08:00", channel: "chat" },
+  { id: "apr_07", line_id: "prl_0101", step: "GOODS", approved: true, approved_qty: 500, approved_amount: 3_825_000, recorded_by: "usr_evin", recorded_by_email: "evin@talaliving.com", recorded_at: "2026-08-19T09:10:00+08:00", channel: "web" },
+  { id: "apr_08", line_id: "prl_0102", step: "GOODS", approved: true, approved_qty: 300, approved_amount: 5_550_000, recorded_by: "usr_evin", recorded_by_email: "evin@talaliving.com", recorded_at: "2026-08-19T09:11:00+08:00", channel: "web" },
+  { id: "apr_09", line_id: "prl_0103", step: "GOODS", approved: true, approved_qty: null, approved_amount: 19_668_000, recorded_by: "usr_evin", recorded_by_email: "evin@talaliving.com", recorded_at: "2026-08-19T09:12:00+08:00", channel: "web" },
+  /* A line the CEO ticked and then un-ticked. The old model could not express
+   * this at all; the trail carries it plainly. */
+  { id: "apr_10", line_id: "prl_0403", step: "GOODS", approved: true, approved_qty: 2, approved_amount: 870_000, recorded_by: "usr_evin", recorded_by_email: "evin@talaliving.com", recorded_at: "2026-09-09T10:18:00+08:00", channel: "web" },
+  { id: "apr_11", line_id: "prl_0403", step: "GOODS", approved: false, approved_qty: null, approved_amount: null, recorded_by: "usr_evin", recorded_by_email: "evin@talaliving.com", recorded_at: "2026-09-09T14:07:00+08:00", channel: "web" },
+];
+
+export const PAYMENT_ROUNDS: PaymentRound[] = [
+  { id: "rnd_04", round_no: "pay-26-09-09_01", status: "OPEN", opened_at: "2026-09-09T07:00:00+08:00", approved_by: null, approved_at: null, transferred_amount: null, transferred_trx_no: null, closed_by: null, closed_at: null },
+  { id: "rnd_03", round_no: "pay-26-09-07_01", status: "APPROVED", opened_at: "2026-09-02T07:00:00+08:00", approved_by: "usr_geryle", approved_at: "2026-09-07T14:30:00+08:00", transferred_amount: null, transferred_trx_no: null, closed_by: null, closed_at: null },
+  { id: "rnd_02", round_no: "pay-26-08-31_01", status: "CLOSED", opened_at: "2026-08-26T07:00:00+08:00", approved_by: "usr_geryle", approved_at: "2026-08-28T15:00:00+08:00", transferred_amount: 12_100_000, transferred_trx_no: "trx-26-08-29_001", closed_by: "usr_geryle", closed_at: "2026-09-01T09:20:00+08:00" },
+  { id: "rnd_01", round_no: "pay-26-08-22_01", status: "CLOSED", opened_at: "2026-08-18T07:00:00+08:00", approved_by: "usr_geryle", approved_at: "2026-08-19T16:10:00+08:00", transferred_amount: 29_100_000, transferred_trx_no: "trx-26-08-20_001", closed_by: "usr_geryle", closed_at: "2026-08-24T10:00:00+08:00" },
+];
+
+export const PAYMENT_ROUND_LINES: PaymentRoundLine[] = [
+  { id: "rl_01", round_id: "rnd_04", line_id: "prl_0401", requested_amount: 22_680_000 },
+  { id: "rl_02", round_id: "rnd_04", line_id: "prl_0402", requested_amount: 12_800_000 },
+  { id: "rl_03", round_id: "rnd_03", line_id: "prl_0301", requested_amount: 10_080_000 },
+  { id: "rl_04", round_id: "rnd_03", line_id: "prl_0302", requested_amount: 3_350_000 },
+  { id: "rl_05", round_id: "rnd_02", line_id: "prl_0201", requested_amount: 11_680_000 },
+  { id: "rl_06", round_id: "rnd_02", line_id: "prl_0202", requested_amount: 350_000 },
+  { id: "rl_07", round_id: "rnd_01", line_id: "prl_0101", requested_amount: 3_825_000 },
+  { id: "rl_08", round_id: "rnd_01", line_id: "prl_0102", requested_amount: 5_550_000 },
+  { id: "rl_09", round_id: "rnd_01", line_id: "prl_0103", requested_amount: 19_668_000 },
+];
+
+/* Cumulative and append-only. 180 of 300 hinges arrived, so the line stays
+ * open at PARTIAL — nothing quietly closes it (A18). */
+export const RECEIPTS: Receipt[] = [
+  { id: "rcp_01", receipt_no: "rcv-26-08-25_01", line_id: "prl_0101", po_line_id: null, qty_received: 500, condition: "GOOD", received_by: "usr_made", received_at: "2026-08-25T13:30:00+08:00", qc_by: "usr_made", note: null },
+  { id: "rcp_02", receipt_no: "rcv-26-08-26_01", line_id: "prl_0102", po_line_id: null, qty_received: 180, condition: "GOOD", received_by: "usr_made", received_at: "2026-08-26T10:05:00+08:00", qc_by: "usr_made", note: "Sisa 120 pcs menyusul, vendor kehabisan stok." },
+  { id: "rcp_03", receipt_no: "rcv-26-09-02_01", line_id: null, po_line_id: "pol_0101", qty_received: 120, condition: "GOOD", received_by: "usr_made", received_at: "2026-09-02T09:40:00+08:00", qc_by: "usr_made", note: null },
+  { id: "rcp_04", receipt_no: "rcv-26-09-06_01", line_id: null, po_line_id: "pol_0102", qty_received: 150, condition: "GOOD", received_by: "usr_made", received_at: "2026-09-06T11:15:00+08:00", qc_by: "usr_made", note: "Pengiriman tahap 1 dari 400 lembar." },
+];
+
+/* Two POs: one still DRAFT because no approved PR line points at it yet, and
+ * one ISSUED whose two axes disagree on purpose — money and goods are never
+ * collapsed into one bar (A1). */
+export const PURCHASE_ORDERS: PurchaseOrder[] = [
+  { id: "po_02", po_no: "po-26-09-09_01", vendor_id: "vnd_01", status: "DRAFT", created_at: "2026-09-09T15:00:00+08:00", issued_at: null, issued_by: null, note: "Kontrak kayu jati kuartal 4 — menunggu PR DP." },
+  { id: "po_01", po_no: "po-26-08-14_01", vendor_id: "vnd_08", status: "ISSUED", created_at: "2026-08-14T10:00:00+08:00", issued_at: "2026-08-19T09:12:00+08:00", issued_by: "usr_evin", note: "HPL & veneer BABY ISLAND, termin 30/70." },
+];
+
+export const PO_LINES: PoLine[] = [
+  { id: "pol_0101", po_id: "po_01", line_no: 1, item_id: itemIdByCode("ITM-0010"), description: "HPL TACO TH 133 GLOSSY", qty: 120, uom: "lembar", unit_price: 248_000, line_total: 29_760_000, superseded_by: null },
+  { id: "pol_0102", po_id: "po_01", line_no: 2, item_id: itemIdByCode("ITM-0011"), description: "VENEER JATI 0.6MM", qty: 400, uom: "lembar", unit_price: 89_500, line_total: 35_800_000, superseded_by: null },
+  { id: "pol_0201", po_id: "po_02", line_no: 1, item_id: itemIdByCode("ITM-0001"), description: "KAYU JATI SORTIMEN A", qty: 6, uom: "m3", unit_price: 18_500_000, line_total: 111_000_000, superseded_by: null },
+];
+
+export const PO_SCHEDULE: PoScheduleTerm[] = [
+  { id: "pos_01", po_id: "po_01", term_no: "po-26-08-14_01-M01", kind: "DP", basis: "percent", basis_value: 30, due_rule: "on_issue", due_date: null },
+  { id: "pos_02", po_id: "po_01", term_no: "po-26-08-14_01-M02", kind: "FINAL", basis: "percent", basis_value: 70, due_rule: "on_delivery", due_date: null },
+  { id: "pos_03", po_id: "po_02", term_no: "po-26-09-09_01-M01", kind: "DP", basis: "percent", basis_value: 30, due_rule: "on_issue", due_date: null },
+  { id: "pos_04", po_id: "po_02", term_no: "po-26-09-09_01-M02", kind: "FINAL", basis: "percent", basis_value: 70, due_rule: "date", due_date: "2026-11-30" },
+];

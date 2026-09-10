@@ -6,7 +6,7 @@ import {
   FolderKanban, Hammer, Truck, Wrench, Stamp,
   PencilRuler, ListTree, CalendarClock,
   Cpu, ScrollText, Activity, UserCog, KeyRound,
-  Settings, type LucideIcon,
+  Settings, FlaskConical, type LucideIcon,
 } from "lucide-react";
 
 /** Menu sebagai DATA, bukan JSX.
@@ -119,6 +119,14 @@ export const NAV: NavSection[] = [
       { label: "Activity Log", href: "/it/aktivitas", icon: Activity, permission: "it.read" },
       { label: "Pengguna", href: "/it/pengguna", icon: UserCog, permission: "it.manage_users" },
       { label: "Peran & Izin", href: "/it/peran", icon: KeyRound, permission: "it.manage_roles" },
+    ],
+  },
+  {
+    /* M1 only. Goes when the screens it stands in for exist. */
+    title: "Demo",
+    icon: FlaskConical,
+    items: [
+      { label: "Diagnostik", href: "/demo", icon: FlaskConical, permission: "dashboard.read", badge: "new" },
     ],
   },
   {

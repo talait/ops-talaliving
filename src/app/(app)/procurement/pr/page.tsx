@@ -337,6 +337,7 @@ export default function RequestsBoardPage() {
 
       <LineDrawer
         line={selected}
+        others={lines.status === "ready" ? lines.data : undefined}
         onClose={() => setSelected(null)}
         onChanged={(l) => { setSelected(l); refresh(); }}
         onRemove={removeLine}

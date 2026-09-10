@@ -81,6 +81,7 @@ export const NAV: NavSection[] = [
       { label: "Ledger", href: "/accounting/ledger", icon: BookOpen, permission: "accounting.read", badge: "core" },
       { label: "Cash Flow", href: "/accounting/cashflow", icon: TrendingUp, permission: "accounting.read" },
       { label: "Budget", href: "/accounting/budget", icon: PiggyBank, permission: "accounting.read" },
+      { label: "Documents", href: "/accounting/documents", icon: FileBadge, permission: "accounting.read" },
       { label: "Purchase Verification", href: "/accounting/verifikasi", icon: Receipt, permission: "accounting.read", badge: "core" },
       { label: "Payslips", href: "/accounting/payslip", icon: HandCoins, permission: "payroll.read" },
     ],

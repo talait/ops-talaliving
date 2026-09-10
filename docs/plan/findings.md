@@ -1014,3 +1014,40 @@ class of bug is a cached response, a service worker, or a stale local
 database — and the same answer applies: store what shape the data was, and
 throw it away when the shape moves.
 
+## F25 — the same road, built twice, had already drifted
+
+M9's brief was "one component used twice, because it is the same road". By the
+time it was written, both copies existed — one in the request line drawer, one
+in the ledger drawer — and they had already diverged: the ledger's had the
+duplicate-bytes warning, the line's had the payment-proof handoff into the
+posting form. Neither difference was a decision. That is what copies do while
+nobody is looking.
+
+One `<EvidenceStrip>` now serves both, and building it forced two things that
+neither copy had:
+
+**One document, several records.** A single invoice covers three deliveries; a
+transfer receipt pays two lines. The strip offers the plausible targets — the
+sibling lines of the same submission, the lines a payment settled — and
+attaches the *same file* to each, with every link recording who said so.
+Uploading the photograph three times would leave three files that nobody can
+tell apart in a year, which is what the old shared drive is full of.
+
+**The money-to-document path, read from the other end.** A ledger row now
+shows the documents that live on the request lines it paid for: the photo
+taken at the workshop door is visible from the bank row that funded it,
+without either record holding a copy. It is displayed as *through
+pr-26-08-18_01-L01* and cannot be edited from that end — the document belongs
+to the line, and the ledger row is only looking along the link.
+
+**And the browse screen found its real job.** `/accounting/documents` was
+specced as "browse by entity, month, type", which is a filing cabinet nobody
+opens. The number that earns the screen is the other one: **six files attached
+to nothing**. Those are the chat uploads that arrived and were never claimed —
+already visible, already counted, and now findable in one place.
+
+Camera capture is one attribute (`capture="environment"`) and its own button,
+because on a phone the difference between "open the camera" and "browse a file
+tree" is the difference between the photograph being taken and the paperwork
+following later, which is where the unexplained rows come from.
+

@@ -14,9 +14,9 @@ import {
   MEETING_STATE_LABEL, UNITS, PR_CATEGORIES,
   type PrLineView, type UomCode, type PrCategory,
 } from "@/services/procurement/contracts";
-import { DOC_KINDS, type DocKind, type AttachmentView } from "@/services/documents/contracts";
 import { useToast } from "@/store/toast";
 import { useSession } from "@/store/session";
+import { EvidenceStrip } from "@/components/ui/evidence-strip";
 import { VariancePanel } from "./VariancePanel";
 import { DecisionPanel } from "./DecisionPanel";
 import { PayFromLine } from "./PayFromLine";
@@ -29,24 +29,24 @@ import { PayFromLine } from "./PayFromLine";
  *  document this is.
  */
 export function LineDrawer({
-  line, onClose, onChanged, onRemove,
+  line, onClose, onChanged, onRemove, others,
 }: {
   line: PrLineView | null;
   onClose: () => void;
   onChanged: (l: PrLineView) => void;
   onRemove: (l: PrLineView) => void;
+  /** The rest of the board, so a document can be pointed at the sibling lines
+   *  of the same submission without a second lookup. */
+  others?: PrLineView[];
 }) {
   const { can } = useSession();
   const { toast } = useToast();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Partial<PrLineView>>({});
   const [saving, setSaving] = useState(false);
-  const [kind, setKind] = useState<DocKind>("Payment Proof");
-  const [evidence, setEvidence] = useState<AttachmentView[]>([]);
   /* A payment proof just attached here, held so the ledger form can reuse the
      same file instead of asking for it a second time. */
   const [proof, setProof] = useState<{ id: string; filename: string } | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
   const mayEdit = can("procurement.update");
 
   /* Editable until somebody approves it, not merely while it is a draft
@@ -56,11 +56,7 @@ export function LineDrawer({
   useEffect(() => {
     setEditing(false);
     setProof(null);
-    if (!line) { setEvidence([]); return; }
-    void documents.byEntity("pr_line", line.line_no_full).then((r) => {
-      if (r.data) setEvidence(r.data);
-    });
-  }, [line?.id, line?.evidence_count]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [line?.id]);
 
   if (!line) return null;
 
@@ -95,24 +91,15 @@ export function LineDrawer({
     onChanged(res.data);
   }
 
-  async function attach(file: File) {
-    const up = await documents.upload({ filename: file.name, mime: file.type || "application/octet-stream", bytes: file.size });
-    if (up.error) { toast("critical", "Upload failed", up.error.message); return; }
-    const link = await documents.link({
-      attachment_id: up.data.id, entity: "pr_line", entity_no: line!.line_no_full, kind,
-    });
-    if (link.error) { toast("warning", "Not attached", link.error.message); return; }
-    if (kind === "Payment Proof") setProof({ id: up.data.id, filename: file.name });
-    if (up.data.duplicate_suspect) {
-      /* Advisory, never a block: the same receipt really can be photographed
-         twice, and refusing the second one hides the first (A6). */
-      toast("warning", "Attached — identical bytes seen before", "Worth a look in case this is a duplicate.");
-    } else {
-      toast("success", "Attached", `${file.name} → ${kind}`);
-    }
-    const refreshed = await documents.byEntity("pr_line", line!.line_no_full);
-    if (refreshed.data) setEvidence(refreshed.data);
-    const relist = await procurement.listOpenLines();
+  /* The other items in the same submission: one invoice often covers several
+     of them, and pointing at them is a first-class action rather than three
+     uploads of the same photograph. */
+  const siblings = (others ?? [])
+    .filter((l) => l.doc_no === line.doc_no && l.id !== line.id)
+    .map((l) => ({ entity: "pr_line" as const, entity_no: l.line_no_full, label: `${l.description} · ${l.line_no_full}` }));
+
+  async function refreshLine() {
+    const relist = await procurement.listAllLines();
     const updated = relist.data?.find((l) => l.id === line!.id);
     if (updated) onChanged(updated);
   }
@@ -315,79 +302,32 @@ export function LineDrawer({
                 proof={proof}
                 onPosted={async () => {
                   setProof(null);
-                  const relist = await procurement.listAllLines();
-                  const updated = relist.data?.find((l) => l.id === line!.id);
-                  if (updated) onChanged(updated);
-                  const refreshed = await documents.byEntity("pr_line", line!.line_no_full);
-                  if (refreshed.data) setEvidence(refreshed.data);
+                  await refreshLine();
                 }}
               />
             )}
 
-            {/* Evidence, attached from the line itself. */}
-            <section>
-              <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                <Paperclip className="h-3.5 w-3.5" /> Documents
-              </p>
+            {/* Evidence, attached from the line itself (ADR-010). The same
+                component serves the ledger row: it is the same road. */}
+            <EvidenceStrip
+              entity="pr_line"
+              entityNo={line.line_no_full}
+              canEdit={mayEdit}
+              defaultKind="Payment Proof"
+              alsoCovers={siblings}
+              onChanged={async () => {
+                await refreshLine();
+                /* Whatever was just filed as a payment proof is offered to the
+                   ledger form below, so the same file is never uploaded twice. */
+                const docs = await documents.byEntity("pr_line", line!.line_no_full);
+                const latest = docs.data
+                  ?.filter((a) => a.links.some((l) => l.kind === "Payment Proof"))
+                  .slice(-1)[0];
+                if (latest) setProof({ id: latest.id, filename: latest.filename });
+              }}
+              note="Attached here, to this item — the system already knows which line, which vendor and which amount, so it only asks what kind of document this is."
+            />
 
-              {evidence.length > 0 ? (
-                <ul className="mb-3 divide-y divide-slate-100 rounded-lg border border-slate-200">
-                  {evidence.map((a) => (
-                    <li key={a.id} className="flex items-center gap-3 px-3 py-2">
-                      <FileText className="h-4 w-4 shrink-0 text-slate-400" />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[13px] text-slate-700">{a.filename}</span>
-                        <span className="block text-[11px] text-slate-400">
-                          {[...new Set(a.links.map((l) => l.kind))].join(", ")} · {(a.bytes / 1024).toFixed(0)} KB
-                        </span>
-                      </span>
-                      {a.covers_count > 1 && <Badge tone="slate">covers {a.covers_count}</Badge>}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="mb-3 text-[13px] text-slate-500">Nothing attached yet.</p>
-              )}
-
-              {mayEdit && (
-                <div className="rounded-lg border border-dashed border-slate-300 px-3 py-3">
-                  <label htmlFor="ev-kind" className="block text-xs text-slate-500">Document type</label>
-                  <select
-                    id="ev-kind"
-                    value={kind}
-                    onChange={(e) => setKind(e.target.value as DocKind)}
-                    className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm focus:border-brand-400 focus:outline-none"
-                  >
-                    {DOC_KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
-                  </select>
-                  <input
-                    ref={fileRef}
-                    id="ev-file"
-                    type="file"
-                    className="hidden"
-                    onChange={(e) => {
-                      const f = e.target.files?.[0];
-                      if (f) void attach(f);
-                      e.target.value = "";
-                    }}
-                  />
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    icon={Upload}
-                    className="mt-2 w-full"
-                    onClick={() => fileRef.current?.click()}
-                  >
-                    Attach a file
-                  </Button>
-                  <p className="mt-2 text-[11px] text-slate-500">
-                    Attached here, to this item — the system already knows which line,
-                    which vendor and which amount, so it only asks what kind of
-                    document this is.
-                  </p>
-                </div>
-              )}
-            </section>
           </>
         )}
       </div>

@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
-  Paperclip, FileText, Upload, Ban, CheckCircle2, Link2, ArrowUpRight, History,
+  Ban, CheckCircle2, Link2, ArrowUpRight, History,
 } from "lucide-react";
 import { Badge, Button } from "@/components/ui/primitives";
 import { Drawer } from "@/components/ui/drawer";
@@ -13,7 +13,8 @@ import { cn } from "@/lib/cn";
 import { accounting, documents } from "@/demo/api";
 import type { TransactionDetail } from "@/services/accounting/contracts";
 import type { AuditRow } from "@/demo/state";
-import { DOC_KINDS, type DocKind, type AttachmentView } from "@/services/documents/contracts";
+import type { AttachmentView } from "@/services/documents/contracts";
+import { EvidenceStrip, type CoverTarget } from "@/components/ui/evidence-strip";
 import { useToast } from "@/store/toast";
 import { useSession } from "@/store/session";
 
@@ -38,60 +39,54 @@ export function TrxDrawer({
   const { hasAuthority } = useSession();
   const { toast } = useToast();
   const [trx, setTrx] = useState<TransactionDetail | null>(null);
-  const [evidence, setEvidence] = useState<AttachmentView[]>([]);
   const [history, setHistory] = useState<AuditRow[]>([]);
-  const [kind, setKind] = useState<DocKind>("Receipt / Invoice / Nota");
+  /* Documents that live on the request lines this money paid for. The receipt
+     photographed at the workshop door is visible from the bank row that
+     funded it, without either of them being copied (ADR-010). */
+  const [reached, setReached] = useState<{ label: string; attachments: AttachmentView[] }[]>([]);
+  const [alsoCovers, setAlsoCovers] = useState<CoverTarget[]>([]);
   const [voidOpen, setVoidOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [allocLine, setAllocLine] = useState("");
   const [allocAmount, setAllocAmount] = useState(0);
   const [busy, setBusy] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
   const mayPost = hasAuthority("post_ledger");
 
   useEffect(() => {
     setVoidOpen(false);
     setReason("");
-    if (!trxNo) { setTrx(null); setEvidence([]); return; }
+    if (!trxNo) { setTrx(null); setReached([]); return; }
     void load(trxNo);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trxNo]);
 
   async function load(no: string) {
-    const [detail, docs, trail] = await Promise.all([
+    const [detail, trail] = await Promise.all([
       accounting.getTransaction(no),
-      documents.byEntity("transaction", no),
       accounting.historyFor(no),
     ]);
     if (trail.data) setHistory(trail.data);
-    if (detail.data) {
-      setTrx(detail.data);
-      setAllocAmount(detail.data.unallocated);
-    }
-    if (docs.data) setEvidence(docs.data);
+    if (!detail.data) return;
+    setTrx(detail.data);
+    setAllocAmount(detail.data.unallocated);
+
+    /* Both directions of the money-to-document path: what the lines this row
+       paid for already carry, and what else this row's own document could
+       plausibly cover. */
+    const lineNos = detail.data.allocations
+      .map((a) => a.pr_line_no)
+      .filter((x): x is string => !!x);
+    const groups = await Promise.all(lineNos.map(async (lineNo) => ({
+      label: lineNo,
+      attachments: (await documents.byEntity("pr_line", lineNo)).data ?? [],
+    })));
+    setReached(groups);
+    setAlsoCovers(lineNos.map((lineNo) => ({
+      entity: "pr_line" as const, entity_no: lineNo, label: `The request line ${lineNo}`,
+    })));
   }
 
   if (!trxNo || !trx) return null;
-
-  async function attach(file: File) {
-    const up = await documents.upload({
-      filename: file.name, mime: file.type || "application/octet-stream", bytes: file.size,
-    });
-    if (up.error) { toast("critical", "Upload failed", up.error.message); return; }
-    const link = await documents.link({
-      attachment_id: up.data.id, entity: "transaction", entity_no: trx!.trx_no, kind,
-    });
-    if (link.error) { toast("warning", "Not attached", link.error.message); return; }
-    if (up.data.duplicate_suspect) {
-      /* Advisory, never a block: the same receipt really can be photographed
-         twice, and refusing the second one hides the first (A6). */
-      toast("warning", "Attached — identical bytes seen before", "Worth a look in case this is a duplicate.");
-    } else {
-      toast("success", "Attached", `${file.name} → ${kind}`);
-    }
-    await load(trx!.trx_no);
-    onChanged();
-  }
 
   async function allocate() {
     setBusy(true);
@@ -315,59 +310,18 @@ export function TrxDrawer({
           )}
         </section>
 
-        {/* Evidence, attached from the row itself (ADR-010). */}
-        <section>
-          <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-            <Paperclip className="h-3.5 w-3.5" /> Documents
-          </p>
-          {evidence.length > 0 ? (
-            <ul className="mb-3 divide-y divide-slate-100 rounded-lg border border-slate-200">
-              {evidence.map((a) => (
-                <li key={a.id} className="flex items-center gap-3 px-3 py-2">
-                  <FileText className="h-4 w-4 shrink-0 text-slate-400" />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[13px] text-slate-700">{a.filename}</span>
-                    <span className="block text-[11px] text-slate-400">
-                      {[...new Set(a.links.map((l) => l.kind))].join(", ")} · {(a.bytes / 1024).toFixed(0)} KB
-                    </span>
-                  </span>
-                  {a.covers_count > 1 && <Badge tone="slate">covers {a.covers_count}</Badge>}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="mb-3 text-[13px] text-slate-500">Nothing attached yet.</p>
-          )}
-
-          {mayPost && trx.status !== "VOID" && (
-            <div className="rounded-lg border border-dashed border-slate-300 px-3 py-3">
-              <label htmlFor="trx-kind" className="block text-xs text-slate-500">Document type</label>
-              <select
-                id="trx-kind"
-                value={kind}
-                onChange={(e) => setKind(e.target.value as DocKind)}
-                className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm focus:border-brand-400 focus:outline-none"
-              >
-                {DOC_KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
-              </select>
-              <input
-                ref={fileRef} id="trx-file" type="file" className="hidden"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) void attach(f);
-                  e.target.value = "";
-                }}
-              />
-              <Button variant="outline" size="sm" icon={Upload} className="mt-2 w-full" onClick={() => fileRef.current?.click()}>
-                Attach a file
-              </Button>
-              <p className="mt-2 text-[11px] text-slate-500">
-                Attached here, to this row — the system already knows the date, the
-                account and the amount, so it only asks what kind of document this is.
-              </p>
-            </div>
-          )}
-        </section>
+        {/* Evidence, attached from the row itself (ADR-010) — the same
+            component the request line uses, because it is the same road. */}
+        <EvidenceStrip
+          entity="transaction"
+          entityNo={trx.trx_no}
+          canEdit={mayPost && trx.status !== "VOID"}
+          defaultKind="Receipt / Invoice / Nota"
+          alsoCovers={alsoCovers}
+          reachedFrom={reached}
+          onChanged={() => { void load(trx!.trx_no); onChanged(); }}
+          note="Attached here, to this row — the system already knows the date, the account and the amount, so it only asks what kind of document this is."
+        />
 
         {/* What has happened to this row. Fraud and anomaly questions are
             never "who touched the ledger this month" — they are "what happened

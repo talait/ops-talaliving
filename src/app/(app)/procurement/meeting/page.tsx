@@ -409,6 +409,7 @@ export default function MeetingBoardPage() {
 
       <LineDrawer
         line={selected}
+        others={lines.status === "ready" ? lines.data : undefined}
         onClose={() => setSelected(null)}
         onChanged={(l) => { setSelected(l); reload(); }}
         onRemove={async (l) => {

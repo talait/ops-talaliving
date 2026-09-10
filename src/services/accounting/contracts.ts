@@ -364,26 +364,44 @@ export interface FundingDetail extends FundingView {
 /* Payment calendar — twelve months, planned against actual            */
 /* ------------------------------------------------------------------ */
 
-/** One thing that repeats: payroll, the electricity bill, a monthly instalment
- *  — or, on the way in, the operating transfer leadership plans to make.
+/** How often a line happens. Three shapes, because the business has three.
  *
- *  It carries the **day it is due**, which is what makes this a reminder as
- *  well as a budget (owner: *kita punya daftar tagihan berulang bulanan
- *  beserta tanggal pembayarannya*). One figure stands for every month, and a
- *  month that differs is an override rather than a re-typing (D109).
+ *  `monthly` is the electricity bill: same day every month. `weekly` is
+ *  payroll: four runs in most months and five in some, which is a real
+ *  difference in what a month costs and used to be hidden inside one figure.
+ *  `once` is a bill that is certain but not repeating — settling a vendor in
+ *  October, paying a credit card off rather than carrying it (D113).
+ */
+export type CashFrequency = "weekly" | "monthly" | "once";
+
+/** One thing on the calendar: payroll, the electricity bill, a vendor
+ *  settlement — or, on the way in, the operating transfer leadership plans.
+ *
+ *  It carries **when it is due**, which is what makes this a reminder as well
+ *  as a budget (owner: *kita punya daftar tagihan berulang bulanan beserta
+ *  tanggal pembayarannya*). `amount` is **per occurrence**, not per month: a
+ *  weekly line costs more in a five-payday month, and pretending otherwise is
+ *  how a month gets underestimated by a whole run (D113).
  *
  *  `type_code` (with `vendor_id` when it narrows it further) is how the plan
- *  finds what actually happened. Two components may not claim the same
- *  category, because then no row could say which one it belongs to (D110).
+ *  finds what actually happened. Claims are resolved most-specific-first, and
+ *  one ledger row is only ever claimed once (D110).
  */
 export interface CashComponent {
   id: string;
   name: string;
   direction: Direction;
+  /** Per occurrence. A weekly line of 30 juta is 120 or 150 in a month. */
   amount: number;
-  /** 1–31. Clamped to the length of each month, so 31 in February is the 28th
-   *  rather than a date that does not exist. */
+  frequency: CashFrequency;
+  /** `monthly`: 1–31, clamped to the length of each month, so 31 in February
+   *  is the 28th rather than a date that does not exist. */
   due_day: number;
+  /** `weekly`: 0 Sunday … 6 Saturday. */
+  due_weekday: number | null;
+  /** `once`: the actual date, `YYYY-MM-DD`. It exists in that month and no
+   *  other. */
+  due_date: string | null;
   type_code: TransactionTypeCode | null;
   vendor_id: string | null;
   account_id: string | null;
@@ -397,7 +415,11 @@ export interface CashComponent {
 }
 
 /** One month of one component, changed. `amount: null` means *not this month*
- *  — a bill that skips a month is a fact, not a deletion. */
+ *  — a bill that skips a month is a fact, not a deletion.
+ *
+ *  For a weekly line the amount is **the month's total**, and the difference
+ *  lands on the last run of the month: December's payroll carries the THR,
+ *  and the THR is paid with one run rather than spread across four (D114). */
 export interface CashOverride {
   id: string;
   component_id: string;
@@ -429,6 +451,28 @@ export type CashCellState =
   | "PLANNED"     // still ahead
   | "SKIPPED";    // an override said not this month
 
+/** One dated movement: this line, on this day. A monthly line has one a
+ *  month, a weekly line four or five, a one-off exactly one ever. */
+export interface CashEvent {
+  component_id: string;
+  name: string;
+  direction: Direction;
+  frequency: CashFrequency;
+  month: string;
+  date: string;
+  planned: number;
+  actual: number;
+  matched_by: "linked" | "category" | null;
+  trx_nos: string[];
+  state: CashCellState;
+  vendor_name: string | null;
+  account_code: AccountCode | null;
+  /** Set on the run that carries a month override — December's THR lands on
+   *  one payday, not spread across four (D114). */
+  carries_override: boolean;
+  reason: string | null;
+}
+
 export interface CashCell {
   month: string;
   due_date: string;
@@ -441,6 +485,9 @@ export interface CashCell {
   state: CashCellState;
   overridden: boolean;
   reason: string | null;
+  /** Every dated movement behind this cell. One for a monthly line, four or
+   *  five for a weekly one, none in a month a one-off does not fall in. */
+  events: CashEvent[];
 }
 
 export interface CashRow {
@@ -493,17 +540,40 @@ export interface CashPlan {
   verdict: string;
 }
 
-/** One bill about to fall due — the reminder half of the calendar. */
-export interface CashDue {
-  component_id: string;
-  name: string;
-  direction: Direction;
-  month: string;
-  due_date: string;
-  planned: number;
-  actual: number;
-  state: CashCellState;
-  days_away: number;
-  vendor_name: string | null;
-  account_code: AccountCode | null;
+/** One month opened up: every movement in date order, with the balance
+ *  running down beside it.
+ *
+ *  The figure the month view cannot show is the **trough** — a month can end
+ *  at Rp 50 juta and still be unable to pay on the 15th, because the monthly
+ *  view silently assumes money in arrives before money out (D115).
+ */
+export interface CashDayRow extends CashEvent {
+  /** Cash after this movement. Only movements still ahead move it: what
+   *  already happened is inside the opening figure. */
+  balance: number;
+  /** Already happened, in the month we are standing in. */
+  is_past: boolean;
 }
+
+export interface CashMonthDetail {
+  month: string;
+  label: string;
+  opening: number;
+  closing: number;
+  rows: CashDayRow[];
+  /** The lowest the balance gets, and the day it happens. */
+  low_point: number;
+  low_date: string | null;
+  /** The **first** day the balance goes under, which is not the same day and
+   *  is the more useful one: it is the first payment that cannot be made, and
+   *  everything after it is a consequence of that one. */
+  first_negative_date: string | null;
+  /** Real obligations that carry no date, so no day here can hold them
+   *  (F30). Shown inside the expansion, never spread evenly to make the
+   *  running balance look tidy. */
+  undated_obligations: number;
+}
+
+/** One bill about to fall due — the reminder half of the calendar. Built from
+ *  the same events as the month expansion, so the two cannot drift (D116). */
+export type CashDue = CashEvent & { days_away: number };

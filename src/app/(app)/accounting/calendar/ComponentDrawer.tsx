@@ -9,7 +9,7 @@ import { NumberInput } from "@/components/ui/number-input";
 import { useLoad } from "@/components/ui/loaded";
 import { formatIDR } from "@/lib/format";
 import { accounting } from "@/demo/api";
-import type { CashComponent, Direction, TransactionTypeCode } from "@/services/accounting/contracts";
+import type { CashComponent, CashFrequency, Direction, TransactionTypeCode } from "@/services/accounting/contracts";
 import { useToast } from "@/store/toast";
 
 /** One line on the calendar: what it is, how much, and the day it is due.
@@ -19,6 +19,8 @@ import { useToast } from "@/store/toast";
  *  lines may not claim the same category (D110); the refusal names the one
  *  that already has it.
  */
+const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
 export function ComponentDrawer({
   component, onClose, onSaved,
 }: {
@@ -32,7 +34,10 @@ export function ComponentDrawer({
   const [name, setName] = useState(component?.name ?? "");
   const [direction, setDirection] = useState<Direction>(component?.direction ?? "OUT");
   const [amount, setAmount] = useState(component?.amount ?? 0);
+  const [frequency, setFrequency] = useState<CashFrequency>(component?.frequency ?? "monthly");
   const [dueDay, setDueDay] = useState(component?.due_day ?? 25);
+  const [weekday, setWeekday] = useState(component?.due_weekday ?? 5);
+  const [onceDate, setOnceDate] = useState(component?.due_date ?? "");
   const [typeCode, setTypeCode] = useState<string>(component?.type_code ?? "");
   const [accountId, setAccountId] = useState<string>(component?.account_id ?? "");
   const [note, setNote] = useState(component?.note ?? "");
@@ -45,7 +50,10 @@ export function ComponentDrawer({
         name, amount, due_day: dueDay, note: note || null,
       })
       : await accounting.addComponent({
-        name, direction, amount, due_day: dueDay,
+        name, direction, amount, frequency,
+        due_day: dueDay,
+        due_weekday: frequency === "weekly" ? weekday : null,
+        due_date: frequency === "once" ? onceDate : null,
         type_code: (typeCode || null) as TransactionTypeCode | null,
         account_id: accountId || null,
         note: note || null,
@@ -56,7 +64,9 @@ export function ComponentDrawer({
       return;
     }
     toast("success", component ? "Updated" : "Added to the calendar",
-      `${name} · ${formatIDR(amount)} on day ${dueDay} of each month`);
+      `${name} · ${formatIDR(amount)} ${frequency === "weekly"
+        ? `every ${WEEKDAYS[weekday]}`
+        : frequency === "once" ? `on ${onceDate}` : `on day ${dueDay} of each month`}`);
     onSaved();
   }
 
@@ -86,7 +96,11 @@ export function ComponentDrawer({
           )}
           <div className="ml-auto flex items-center gap-2">
             <Button variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
-            <Button icon={Save} onClick={save} disabled={busy || !name.trim() || amount <= 0}>
+            <Button
+              icon={Save}
+              onClick={save}
+              disabled={busy || !name.trim() || amount <= 0 || (frequency === "once" && !onceDate)}
+            >
               {busy ? "Saving…" : component ? "Save" : "Add it"}
             </Button>
           </div>
@@ -121,21 +135,82 @@ export function ComponentDrawer({
           </div>
         )}
 
+        {!component && (
+          <div>
+            <span className="block text-xs text-slate-500">How often</span>
+            <div className="mt-1 flex flex-wrap gap-2">
+              {([
+                ["monthly", "Every month"],
+                ["weekly", "Every week"],
+                ["once", "Once only"],
+              ] as [CashFrequency, string][]).map(([f, label]) => (
+                <Button
+                  key={f}
+                  size="sm"
+                  variant={frequency === f ? "primary" : "outline"}
+                  onClick={() => setFrequency(f)}
+                >
+                  {label}
+                </Button>
+              ))}
+            </div>
+            <p className="mt-1 text-[11px] text-slate-500">
+              {frequency === "weekly"
+                ? "Four runs in most months, five in some — the plan counts them rather than assuming four."
+                : frequency === "once"
+                  ? "Certain, but only that once: settling a vendor, paying the card off rather than carrying it. It appears in that month and no other."
+                  : "The same day every month."}
+            </p>
+          </div>
+        )}
+
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
-            <label htmlFor="cc-amount" className="block text-xs text-slate-500">Estimate, every month</label>
+            <label htmlFor="cc-amount" className="block text-xs text-slate-500">
+              {frequency === "weekly" ? "Estimate, each run" : frequency === "once" ? "Amount" : "Estimate, every month"}
+            </label>
             <MoneyInput id="cc-amount" value={amount} onChange={setAmount} className="mt-1" />
             <p className="mt-1 text-[11px] text-slate-500">
-              Roughly is fine. Actual is shown beside it, so next month&apos;s estimate is better.
+              {frequency === "weekly"
+                ? `Per run — about ${formatIDR(amount * 4)} in a four-week month, ${formatIDR(amount * 5)} in a five-week one.`
+                : "Roughly is fine. Actual is shown beside it, so next month's estimate is better."}
             </p>
           </div>
-          <div>
-            <label htmlFor="cc-day" className="block text-xs text-slate-500">Day of the month it is due</label>
-            <NumberInput id="cc-day" value={dueDay} min={1} max={31} onChange={setDueDay} className="mt-1" />
-            <p className="mt-1 text-[11px] text-slate-500">
-              31 in a 30-day month becomes the 30th — a reminder needs a date that exists.
-            </p>
-          </div>
+
+          {frequency === "monthly" && (
+            <div>
+              <label htmlFor="cc-day" className="block text-xs text-slate-500">Day of the month it is due</label>
+              <NumberInput id="cc-day" value={dueDay} min={1} max={31} onChange={setDueDay} className="mt-1" />
+              <p className="mt-1 text-[11px] text-slate-500">
+                31 in a 30-day month becomes the 30th — a reminder needs a date that exists.
+              </p>
+            </div>
+          )}
+
+          {frequency === "weekly" && (
+            <div>
+              <label htmlFor="cc-weekday" className="block text-xs text-slate-500">Which day of the week</label>
+              <select
+                id="cc-weekday" value={weekday} onChange={(e) => setWeekday(Number(e.target.value))}
+                className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm focus:border-brand-400 focus:outline-none"
+              >
+                {WEEKDAYS.map((d, i) => <option key={d} value={i}>{d}</option>)}
+              </select>
+            </div>
+          )}
+
+          {frequency === "once" && (
+            <div>
+              <label htmlFor="cc-date" className="block text-xs text-slate-500">The date</label>
+              <input
+                id="cc-date" type="date" value={onceDate} onChange={(e) => setOnceDate(e.target.value)}
+                className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-2 text-sm focus:border-brand-400 focus:outline-none"
+              />
+              <p className="mt-1 text-[11px] text-slate-500">
+                It lands in that month only — no other month is planned for it.
+              </p>
+            </div>
+          )}
         </div>
 
         {!component && (
@@ -154,6 +229,7 @@ export function ComponentDrawer({
               <p className="mt-1 text-[11px] text-slate-500">
                 How the plan finds what actually happened. Without one, this line
                 can never be compared to the ledger.
+                {frequency === "once" && " A one-off may share a category with a standing line — being dated, it claims its own payment first."}
               </p>
             </div>
             <div>

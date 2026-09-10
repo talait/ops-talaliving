@@ -758,8 +758,18 @@ create table acct.cash_component (
   id            uuid primary key default gen_random_uuid(),
   name          text not null,
   direction     acct.direction not null,
+  -- per occurrence, not per month: a weekly line costs more in a five-payday
+  -- month, and one monthly figure could not say that (D113)
   amount_idr    bigint not null check (amount_idr > 0),
-  due_day       smallint not null check (due_day between 1 and 31),
+  frequency     acct.cash_frequency not null default 'monthly',  -- weekly|monthly|once
+  due_day       smallint check (due_day between 1 and 31),
+  due_weekday   smallint check (due_weekday between 0 and 6),
+  due_date      date,                      -- 'once' only: it exists in that month and no other
+  constraint cash_component_when check (
+    (frequency = 'monthly' and due_day is not null)
+    or (frequency = 'weekly' and due_weekday is not null)
+    or (frequency = 'once' and due_date is not null)
+  ),
   -- how the plan finds what actually happened; unique so no ledger row is
   -- claimed twice (D110)
   type_code     text references acct.transaction_type(code),
@@ -772,9 +782,12 @@ create table acct.cash_component (
   created_by    uuid not null references core.app_user(id),
   created_at    timestamptz not null default now()
 );
+-- only *standing* lines are exclusive on a category. A one-off may share one:
+-- being dated, it claims its own payment first, which is exactly what
+-- "pelunasan kartu kredit, bukan cicilan" is (D113)
 create unique index cash_component_category_uq
   on acct.cash_component (type_code, coalesce(vendor_id, '00000000-0000-0000-0000-000000000000'::uuid))
-  where active and type_code is not null;
+  where active and type_code is not null and frequency <> 'once';
 
 create table acct.cash_override (          -- one month that differs (D109)
   id            uuid primary key default gen_random_uuid(),
@@ -800,7 +813,12 @@ create table acct.cash_settlement (        -- "that row was this bill"
 
 `due_day` is a day, not a date, because the thing being described repeats. The
 view clamps it: the 31st of a 30-day month is the 30th, since a reminder needs
-a date that exists.
+a date that exists. A weekly line has no day at all — it has a weekday, and the
+view generates four or five occurrences depending on the month.
+
+An override on a weekly line is **the month's total**, and the view puts the
+difference on the last run: the THR is paid with one payday, not spread across
+four (D114).
 
 What is **not** here: a `cash_plan` table. The plan is `v_cash_plan`, computed
 from these three plus the ledger, because a stored projection is a number that

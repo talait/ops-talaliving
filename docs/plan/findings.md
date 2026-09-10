@@ -1226,3 +1226,44 @@ wrong often enough to be dangerous. So a matched figure shows as `≈ Rp 8,5 M`,
 a linked one shows plainly, and one ledger row can only ever be claimed by one
 line (D110). Two lines on `RECCURING - PAYROLL` would have shown the same Rp
 61 juta twice, in a number somebody was about to make a decision on.
+
+## F31 — counting the paydays moved the year's failure forward a month
+
+The calendar was built on one figure per line per month. Payroll went in as
+Rp 120 juta on the 25th, and at month level that is harmless — the total is
+the total.
+
+It was not harmless. **Payroll goes out every Friday**, so a month with five
+Fridays costs Rp 150 juta, not Rp 120 juta. Four of the next twelve months
+have five. Adding that, plus two bills that happen once and were previously
+impossible to write down at all, moved the month the money runs out from
+**December to November** — and November is close enough that the answer
+changes from *plan for it* to *do something now*.
+
+The general shape: **a simplification that is correct at one altitude can be
+wrong at another, and the way you find out is by trying to draw the lower
+one.** Nothing was wrong with "one component per month" as a budget. It only
+became a lie when somebody asked to see a month day by day.
+
+So a line now has three shapes (D113), and `amount` is **per occurrence**
+rather than per month:
+
+- **weekly** — payroll. Four or five runs, counted rather than assumed.
+- **monthly** — the electricity bill, the same day every month.
+- **once** — certain, but only then: settling a vendor in October, paying the
+  card off in November instead of carrying it. Written as a monthly line these
+  would have been planned for in twelve months instead of one.
+
+The one-off shape forced a rule to bend, correctly. D110 said two lines may
+not claim one ledger category. But *pelunasan kartu kredit* shares `CREDIT
+CARD` with the monthly card bill by its nature. So the rule is now about
+**standing** lines only: claims resolve most-specific-first — a dated one-off,
+then a line naming a vendor, then a plain category — and a ledger row is still
+only ever claimed once.
+
+And what the day view was built for showed up immediately. December's month
+figure says it ends Rp 89,7 juta down. The day view says it **breaks on the
+18th**, five days before that number, on a payroll run. Same month, two
+different problems: one is *the month is too expensive*, the other is *the
+money is in the wrong order*. Only the second one is fixed by moving a
+transfer.

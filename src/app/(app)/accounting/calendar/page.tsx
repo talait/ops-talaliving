@@ -11,6 +11,7 @@ import type { CashCell, CashPlan, CashRow } from "@/services/accounting/contract
 import { useSession } from "@/store/session";
 import { ComponentDrawer } from "./ComponentDrawer";
 import { MonthOverride } from "./MonthOverride";
+import { MonthDrawer } from "./MonthDrawer";
 import { DuePanel } from "./DuePanel";
 
 /** Will the money last, and what is due next.
@@ -30,6 +31,7 @@ export default function CalendarPage() {
   const [editing, setEditing] = useState<CashRow["component"] | null>(null);
   const [adding, setAdding] = useState(false);
   const [cell, setCell] = useState<{ row: CashRow; cell: CashCell } | null>(null);
+  const [openMonth, setOpenMonth] = useState<string | null>(null);
   const mayEdit = can("accounting.create");
 
   return (
@@ -51,7 +53,7 @@ export default function CalendarPage() {
             <Card className="mb-4">
               <CardHeader
                 title="Twelve months"
-                subtitle="Planned on top, what actually happened underneath. Click a line to change the estimate or the date."
+                subtitle="Planned on top, what actually happened underneath. Click a month to open it day by day, a line to change the estimate, a cell to change one month."
                 icon={CalendarDays}
                 action={<SourceBadge state={plan} />}
               />
@@ -59,6 +61,7 @@ export default function CalendarPage() {
                 plan={p}
                 onPick={(c) => mayEdit && setEditing(c)}
                 onPickCell={(row, cell) => mayEdit && setCell({ row, cell })}
+                onOpenMonth={setOpenMonth}
               />
             </Card>
           </>
@@ -73,6 +76,8 @@ export default function CalendarPage() {
           onSaved={() => { setCell(null); reload(); }}
         />
       )}
+
+      {openMonth && <MonthDrawer month={openMonth} onClose={() => setOpenMonth(null)} />}
 
       {(adding || editing) && (
         <ComponentDrawer
@@ -137,6 +142,8 @@ function Verdict({ plan }: { plan: CashPlan }) {
   );
 }
 
+const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
 const CELL_TONE: Record<CashCell["state"], string> = {
   PAID: "text-emerald-700",
   PARTIAL: "text-amber-700",
@@ -147,11 +154,12 @@ const CELL_TONE: Record<CashCell["state"], string> = {
 };
 
 function Grid({
-  plan, onPick, onPickCell,
+  plan, onPick, onPickCell, onOpenMonth,
 }: {
   plan: CashPlan;
   onPick: (c: CashRow["component"]) => void;
   onPickCell: (row: CashRow, cell: CashCell) => void;
+  onOpenMonth: (month: string) => void;
 }) {
   const money = plan.rows.filter((r) => r.component.direction === "IN");
   const bills = plan.rows.filter((r) => r.component.direction === "OUT");
@@ -162,11 +170,17 @@ function Grid({
         Line
       </th>
       {plan.months.map((m) => (
-        <th key={m.month} className={cn(
-          "whitespace-nowrap px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wide",
-          m.is_current ? "text-brand-700" : "text-slate-500",
-        )}>
-          {m.label}
+        <th key={m.month} className="whitespace-nowrap px-3 py-2.5 text-right">
+          <button
+            onClick={() => onOpenMonth(m.month)}
+            className={cn(
+              "text-[11px] font-semibold uppercase tracking-wide underline decoration-dotted underline-offset-4 hover:text-brand-700",
+              m.is_current ? "text-brand-700" : "text-slate-500",
+            )}
+            title="Open this month day by day"
+          >
+            {m.label}
+          </button>
         </th>
       ))}
     </tr>
@@ -181,7 +195,11 @@ function Grid({
       >
         <span className="block text-[13px] font-medium text-slate-800">{r.component.name}</span>
         <span className="block text-[11px] text-slate-500">
-          day {r.component.due_day}
+          {r.component.frequency === "weekly"
+            ? `every ${WEEKDAYS[r.component.due_weekday ?? 5]}`
+            : r.component.frequency === "once"
+              ? `once · ${r.component.due_date}`
+              : `day ${r.component.due_day}`}
           {r.account_code && <> · {r.account_code}</>}
         </span>
       </th>
@@ -198,6 +216,9 @@ function Grid({
             <>
               <span className={cn("block text-[13px] tabular-nums", CELL_TONE[c.state])}>
                 {formatIDRCompact(c.planned)}
+                {c.events.length > 1 && (
+                  <span className="ml-1 text-[10px] text-slate-400">{c.events.length}×</span>
+                )}
               </span>
               {c.actual > 0 && (
                 <span
@@ -284,10 +305,15 @@ function Grid({
               Cash at month end
             </th>
             {plan.months.map((m) => (
-              <td key={m.month} className={cn(
-                "px-3 py-2 text-right text-[13px] font-semibold tabular-nums",
-                m.closing < 0 ? "text-rose-700" : "text-slate-800",
-              )}>
+              <td
+                key={m.month}
+                className={cn(
+                  "cursor-pointer px-3 py-2 text-right text-[13px] font-semibold tabular-nums hover:bg-brand-50/60",
+                  m.closing < 0 ? "text-rose-700" : "text-slate-800",
+                )}
+                title="Open this month day by day"
+                onClick={() => onOpenMonth(m.month)}
+              >
                 {m.closing < 0 ? `− ${formatIDRCompact(Math.abs(m.closing))}` : formatIDRCompact(m.closing)}
               </td>
             ))}

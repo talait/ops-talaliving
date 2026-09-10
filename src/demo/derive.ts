@@ -22,7 +22,7 @@ import type {
   Transaction, AccountBalance, TransactionView, InboxHealth,
   FundingView, FundingDetail, FundingSpendGroup, FundingSpendRow,
   CashPlan, CashRow, CashCell, CashCellState, CashMonth, CashUnplanned, CashDue,
-  CashComponent, Transaction as TrxRow,
+  CashComponent, CashEvent, CashMonthDetail, CashDayRow, Transaction as TrxRow,
 } from "@/services/accounting/contracts";
 import type { DocKind } from "@/services/documents/contracts";
 import { LOCALE } from "@/lib/format";
@@ -1002,12 +1002,38 @@ function planMonths(from: Date, count = 12): string[] {
 
 const inMonth = (t: TrxRow, month: string) => t.trx_date.startsWith(month);
 
-/** Does this ledger row look like this component's category?
+function activeIn(c: CashComponent, month: string): boolean {
+  if (!c.active) return false;
+  if (c.frequency === "once") return c.due_date !== null && c.due_date.startsWith(month);
+  if (month < c.starts_on) return false;
+  if (c.ends_on !== null && month > c.ends_on) return false;
+  return true;
+}
+
+/** Every day this line falls due inside one month.
  *
- *  A guess, and the screen labels it as one. A component with a vendor is the
- *  narrower claim and wins; a category with no component behind it lands in
- *  "not in the plan" rather than being quietly absorbed.
- */
+ *  A weekly line has four of them in most months and five in some, and that
+ *  difference is real money — the old model, one figure per month, could not
+ *  say it (D113). */
+function occurrenceDates(c: CashComponent, month: string): string[] {
+  if (!activeIn(c, month)) return [];
+  if (c.frequency === "once") return c.due_date ? [c.due_date] : [];
+  if (c.frequency === "monthly") return [dueDateOf(month, c.due_day)];
+
+  const [y, m] = month.split("-").map(Number);
+  const want = c.due_weekday ?? 5;
+  const out: string[] = [];
+  for (let day = 1; day <= daysInMonth(month); day += 1) {
+    if (new Date(y, m - 1, day).getDay() === want) {
+      out.push(`${month}-${String(day).padStart(2, "0")}`);
+    }
+  }
+  return out;
+}
+
+/** Does this ledger row look like this line's category?
+ *
+ *  A guess, and the screen labels it as one. */
 function matchesComponent(c: CashComponent, t: TrxRow): boolean {
   if (t.status === "VOID") return false;
   if (t.direction !== c.direction) return false;
@@ -1016,12 +1042,20 @@ function matchesComponent(c: CashComponent, t: TrxRow): boolean {
   return true;
 }
 
-function activeIn(c: CashComponent, month: string): boolean {
-  if (!c.active) return false;
-  if (month < c.starts_on) return false;
-  if (c.ends_on !== null && month > c.ends_on) return false;
-  return true;
+/** Most specific claim first, so a one-off settlement takes its own payment
+ *  before the standing line for that category sweeps it up (D110).
+ *
+ *  A dated one-off is the narrowest claim there is; then a line naming a
+ *  vendor; then a plain category. Without this order, *pelunasan kartu kredit*
+ *  in November would be swallowed by the monthly card bill and the plan would
+ *  show the routine amount twice. */
+function claimOrder(c: CashComponent): number {
+  if (c.frequency === "once") return 0;
+  if (c.vendor_id !== null) return 1;
+  return 2;
 }
+
+const absDayGap = (a: string, b: string) => Math.abs(daysBetween(a, b));
 
 /** The accounts the business actually pays out of. Leadership's account is
  *  not one of them: money sitting there has not been given to operations yet,
@@ -1045,67 +1079,138 @@ export function cashPlan(state: DemoState, now = new Date()): CashPlan {
     .filter((a) => paying.has(a.account_id))
     .reduce((s, a) => s + a.balance, 0);
 
-  /* Rows a component has claimed, so "not in the plan" cannot count them twice. */
+  /* Rows a line has claimed, so nothing is counted twice and "not in the
+     plan" cannot count them at all. */
   const claimed = new Set<string>();
 
-  const rows: CashRow[] = state.cash_components
+  const ordered = [...state.cash_components]
     .filter((c) => c.active)
-    .map((c) => {
-      const cells: CashCell[] = months.map((month) => {
-        const override = state.cash_overrides.find(
-          (o) => o.component_id === c.id && o.month === month,
-        );
-        const live = activeIn(c, month);
-        const skipped = !live || (override !== undefined && override.amount === null);
-        const planned = skipped ? 0 : override?.amount ?? c.amount;
-        const due_date = dueDateOf(month, override?.due_day ?? c.due_day);
+    .sort((a, b) => claimOrder(a) - claimOrder(b));
 
-        const linked = state.cash_settlements.filter(
-          (st) => st.component_id === c.id && st.month === month,
-        );
+  const rowsByComponent = new Map<string, CashRow>();
+
+  ordered.forEach((c) => {
+    const cells: CashCell[] = months.map((month) => {
+      const override = state.cash_overrides.find(
+        (o) => o.component_id === c.id && o.month === month,
+      );
+      const dates = occurrenceDates(c, month);
+      const skipped = dates.length === 0 || (override !== undefined && override.amount === null);
+
+      /* An override on a weekly line is the month's total, and the difference
+         lands on the last run — the THR is paid with one payday (D114). */
+      const perOccurrence = dates.map((_, i) => {
+        if (skipped) return 0;
+        if (override?.amount == null) return c.amount;
+        if (c.frequency !== "weekly") return override.amount;
+        const base = c.amount;
+        const rest = override.amount - base * (dates.length - 1);
+        return i === dates.length - 1 ? rest : base;
+      });
+
+      const linked = state.cash_settlements.filter(
+        (st) => st.component_id === c.id && st.month === month,
+      );
+
+      const events: CashEvent[] = dates.map((date, i) => {
+        const planned = perOccurrence[i];
+
+        /* Somebody's link always wins over a guess. With several runs in one
+           month, a linked row belongs to the occurrence it is nearest to. */
         const linkedRows = linked
           .map((st) => ledger.find((t) => t.trx_no === st.trx_no))
-          .filter((t): t is TrxRow => !!t);
+          .filter((t): t is TrxRow => !!t)
+          .filter((t) => dates.length === 1
+            || dates.every((d) => absDayGap(t.trx_date, date) <= absDayGap(t.trx_date, d)));
 
-        const guessed = linkedRows.length > 0
-          ? []
-          : ledger.filter((t) => inMonth(t, month) && matchesComponent(c, t) && !claimed.has(t.trx_no));
-
-        const hits = linkedRows.length > 0 ? linkedRows : guessed;
+        let hits: TrxRow[] = linkedRows;
+        if (hits.length === 0) {
+          const window = c.frequency === "weekly" ? 3 : c.frequency === "once" ? 10 : 31;
+          const candidates = ledger
+            .filter((t) => matchesComponent(c, t) && !claimed.has(t.trx_no))
+            .filter((t) => c.frequency === "monthly"
+              ? inMonth(t, month)
+              : absDayGap(t.trx_date, date) <= window);
+          if (c.frequency === "monthly") {
+            hits = candidates;
+          } else {
+            /* One payment per occurrence: the nearest row, and where two are
+               equally near, the one closest to what was expected. */
+            const best = candidates.sort((a, b) =>
+              absDayGap(a.trx_date, date) - absDayGap(b.trx_date, date)
+              || Math.abs(a.amount_idr - planned) - Math.abs(b.amount_idr - planned))[0];
+            hits = best ? [best] : [];
+          }
+        }
         hits.forEach((t) => claimed.add(t.trx_no));
         const actual = hits.reduce((s, t) => s + t.amount_idr, 0);
 
-        const future = month > current || (month === current && due_date > today);
-        let cellState: CashCellState;
-        if (skipped) cellState = "SKIPPED";
-        else if (actual >= planned - PAYMENT_TOLERANCE_IDR && actual > 0) cellState = "PAID";
-        else if (actual > 0) cellState = "PARTIAL";
-        else if (due_date < today) cellState = "OVERDUE";
-        else if (!future) cellState = "DUE";
-        else cellState = daysBetween(today, due_date) <= 7 ? "DUE" : "PLANNED";
+        let evState: CashCellState;
+        if (skipped) evState = "SKIPPED";
+        else if (actual > 0 && actual >= planned - PAYMENT_TOLERANCE_IDR) evState = "PAID";
+        else if (actual > 0) evState = "PARTIAL";
+        else if (date < today) evState = "OVERDUE";
+        else evState = daysBetween(today, date) <= 7 ? "DUE" : "PLANNED";
 
         return {
+          component_id: c.id,
+          name: c.name,
+          direction: c.direction,
+          frequency: c.frequency,
           month,
-          due_date,
+          date,
           planned,
           actual,
           matched_by: hits.length === 0 ? null : linkedRows.length > 0 ? "linked" : "category",
           trx_nos: hits.map((t) => t.trx_no),
-          state: cellState,
-          overridden: override !== undefined,
+          state: evState,
+          vendor_name: state.vendors.find((v) => v.id === c.vendor_id)?.name ?? null,
+          account_code: state.accounts.find((a) => a.id === c.account_id)?.code ?? null,
+          carries_override: override !== undefined && c.frequency === "weekly" && i === dates.length - 1,
           reason: override?.reason ?? null,
         };
       });
 
+      const planned = events.reduce((s, e) => s + e.planned, 0);
+      const actual = events.reduce((s, e) => s + e.actual, 0);
+      const trx_nos = events.flatMap((e) => e.trx_nos);
+      const worst: CashCellState = skipped ? "SKIPPED"
+        : events.some((e) => e.state === "OVERDUE") ? "OVERDUE"
+          : events.some((e) => e.state === "DUE") ? "DUE"
+            : actual > 0 && actual >= planned - PAYMENT_TOLERANCE_IDR ? "PAID"
+              : actual > 0 ? "PARTIAL" : "PLANNED";
+
       return {
-        component: c,
-        vendor_name: state.vendors.find((v) => v.id === c.vendor_id)?.name ?? null,
-        account_code: state.accounts.find((a) => a.id === c.account_id)?.code ?? null,
-        cells,
-        planned_total: cells.reduce((s, x) => s + x.planned, 0),
-        actual_total: cells.reduce((s, x) => s + x.actual, 0),
+        month,
+        due_date: dates[0] ?? dueDateOf(month, c.due_day),
+        planned,
+        actual,
+        matched_by: trx_nos.length === 0
+          ? null
+          : events.some((e) => e.matched_by === "linked") ? "linked" : "category",
+        trx_nos,
+        state: worst,
+        overridden: override !== undefined,
+        reason: override?.reason ?? null,
+        events,
       };
     });
+
+    rowsByComponent.set(c.id, {
+      component: c,
+      vendor_name: state.vendors.find((v) => v.id === c.vendor_id)?.name ?? null,
+      account_code: state.accounts.find((a) => a.id === c.account_id)?.code ?? null,
+      cells,
+      planned_total: cells.reduce((s, x) => s + x.planned, 0),
+      actual_total: cells.reduce((s, x) => s + x.actual, 0),
+    });
+  });
+
+  /* Back into the order somebody typed them in, now that claiming is done. */
+  const rows: CashRow[] = state.cash_components
+    .filter((c) => c.active)
+    .map((c) => rowsByComponent.get(c.id))
+    .filter((r): r is CashRow => !!r);
 
   /* Everything that actually left in a month with nothing in the plan claiming
      it. A plan that does not reconcile to the ledger is fiction (D111). */
@@ -1127,14 +1232,12 @@ export function cashPlan(state: DemoState, now = new Date()): CashPlan {
   });
 
   /* Running cash. The month we are in counts only what is still ahead of
-     today — what already happened is in the opening balance. */
+     today — what already happened is inside the opening balance. */
   let running = opening_cash;
   const monthViews: CashMonth[] = months.map((month, i) => {
     const cells = rows.map((r) => ({ row: r, cell: r.cells[i] }));
-    /* The month we are in counts only what is *still to happen*: what already
-       left is in the opening balance. A part-paid bill keeps its remainder —
-       dropping the whole line because half of it went out would forecast a
-       month that cannot happen. */
+    /* A part-paid bill keeps its remainder: dropping a whole line because half
+       of it went out would forecast a month that cannot happen. */
     const stillToCome = (c: CashCell) =>
       month === current ? Math.max(c.planned - c.actual, 0) : c.planned;
 
@@ -1183,31 +1286,67 @@ export function cashPlan(state: DemoState, now = new Date()): CashPlan {
   };
 }
 
-/** The reminder half: what falls due next, and what is already late. */
+/** One month opened up, in date order, with the balance running down.
+ *
+ *  What the monthly view cannot say: a month can end at Rp 50 juta and still
+ *  be unable to pay on the 15th, because reading it by month assumes the money
+ *  in arrives before the money out. This is where that assumption is tested
+ *  (D115). */
+export function cashMonthDetail(state: DemoState, month: string, now = new Date()): CashMonthDetail | null {
+  const plan = cashPlan(state, now);
+  const index = plan.months.findIndex((m) => m.month === month);
+  if (index === -1) return null;
+  const today = plan.generated_for;
+  const view = plan.months[index];
+
+  const opening = index === 0
+    ? plan.opening_cash
+    : plan.months[index - 1].closing;
+
+  const events = plan.rows
+    .flatMap((r) => r.cells[index].events)
+    .filter((e) => e.state !== "SKIPPED")
+    .sort((a, b) => a.date.localeCompare(b.date) || (b.direction === "IN" ? 1 : -1));
+
+  let balance = opening;
+  let low = opening;
+  let low_date: string | null = null;
+  let first_negative_date: string | null = null;
+
+  const rows: CashDayRow[] = events.map((e) => {
+    const is_past = view.is_current && (e.date < today || e.state === "PAID");
+    /* What already happened is inside the opening figure; only what is still
+       ahead moves the balance, and a part-paid run moves it by the rest. */
+    const moves = is_past ? 0 : Math.max(e.planned - e.actual, 0);
+    balance += e.direction === "IN" ? moves : -moves;
+    if (balance < low) { low = balance; low_date = e.date; }
+    if (balance < 0 && first_negative_date === null) first_negative_date = e.date;
+    return { ...e, balance, is_past };
+  });
+
+  return {
+    month,
+    label: view.label,
+    opening,
+    closing: view.closing,
+    rows,
+    low_point: low,
+    low_date,
+    first_negative_date,
+    undated_obligations: plan.undated_obligations,
+  };
+}
+
+/** The reminder half: what falls due next, and what is already late. Built
+ *  from the very same events as the month expansion, so the two cannot say
+ *  different things (D116). */
 export function cashDue(state: DemoState, now = new Date(), withinDays = 21): CashDue[] {
   const plan = cashPlan(state, now);
   const today = plan.generated_for;
-  const out: CashDue[] = [];
-  plan.rows.forEach((r) => {
-    r.cells.forEach((c) => {
-      if (c.state === "SKIPPED" || c.state === "PAID") return;
-      const days = daysBetween(today, c.due_date);
-      if (days > withinDays) return;
-      if (days < -90) return;
-      out.push({
-        component_id: r.component.id,
-        name: r.component.name,
-        direction: r.component.direction,
-        month: c.month,
-        due_date: c.due_date,
-        planned: c.planned,
-        actual: c.actual,
-        state: c.state,
-        days_away: days,
-        vendor_name: r.vendor_name,
-        account_code: r.account_code,
-      });
-    });
-  });
-  return out.sort((a, b) => a.due_date.localeCompare(b.due_date));
+  return plan.rows
+    .flatMap((r) => r.cells.flatMap((c) => c.events))
+    .filter((e) => e.state !== "SKIPPED" && e.state !== "PAID")
+    .map((e) => ({ ...e, days_away: daysBetween(today, e.date) }))
+    .filter((e) => e.days_away <= withinDays && e.days_away >= -90)
+    .sort((a, b) => a.date.localeCompare(b.date));
 }

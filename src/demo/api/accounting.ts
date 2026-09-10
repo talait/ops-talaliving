@@ -5,6 +5,7 @@ import type {
   IncomingMoney, TransactionDetail, AllocationView, TransactionLine, TransactionType,
   VendorPayment, FundingView, FundingDetail,
   CashPlan, CashDue, CashComponent, CashOverride, CashSettlement,
+  CashFrequency, CashMonthDetail,
   Direction, PaymentAllocation, EvidenceInboxRow, InboxHealth, AllocMethod,
 } from "@/services/accounting/contracts";
 import { LOCALE } from "@/lib/format";
@@ -12,7 +13,7 @@ import { getState, apply, newId, nextDocNumber, writeAudit, writeOutbox } from "
 import type { AuditRow } from "../state";
 import {
   accountBalances, transactionView, allocatedTotal, inboxHealth, lineCoverage,
-  lineStatus, fundings, fundingView, cashPlan, cashDue,
+  lineStatus, fundings, fundingView, cashPlan, cashDue, cashMonthDetail,
 } from "../derive";
 import { latency, actingUser, requireAuthority, requireModule, conflict, replayed, remember, paged } from "./_kit";
 import { PRIMARY_DOC_KINDS, type DocKind } from "@/services/documents/contracts";
@@ -858,7 +859,10 @@ export async function addComponent(
     name: string;
     direction: Direction;
     amount: number;
-    due_day: number;
+    frequency?: CashFrequency;
+    due_day?: number;
+    due_weekday?: number | null;
+    due_date?: string | null;
     type_code?: TransactionTypeCode | null;
     vendor_id?: string | null;
     account_id?: string | null;
@@ -875,60 +879,94 @@ export async function addComponent(
   const denied = requireModule(SERVICE, "accounting");
   if (denied) return denied;
 
+  const frequency: CashFrequency = input.frequency ?? "monthly";
+
   if (!input.name.trim()) {
     return invalid(SERVICE, "name_required", "A line on the calendar needs a name somebody will recognise.", { field: "name" });
   }
   if (!input.amount || input.amount <= 0) {
     return invalid(SERVICE, "amount_required", "An estimate of zero plans nothing. Put the number you expect, even roughly.", { field: "amount" });
   }
-  if (input.due_day < 1 || input.due_day > 31) {
+  if (frequency === "monthly" && (!input.due_day || input.due_day < 1 || input.due_day > 31)) {
     return invalid(SERVICE, "due_day_out_of_range", "The day of the month it is due, between 1 and 31.", { field: "due_day" });
+  }
+  if (frequency === "weekly" && (input.due_weekday == null || input.due_weekday < 0 || input.due_weekday > 6)) {
+    return invalid(SERVICE, "weekday_required", "Which day of the week it goes out.", { field: "due_weekday" });
+  }
+  if (frequency === "once" && !/^\d{4}-\d{2}-\d{2}$/.test(input.due_date ?? "")) {
+    return invalid(
+      SERVICE, "date_required",
+      "A one-off has a date — that is the whole difference between it and a bill that repeats.",
+      { field: "due_date" },
+    );
   }
 
   const state = getState();
-  const clash = state.cash_components.find(
+  /* Two *standing* lines may not claim one category: no ledger row could say
+     which of them it paid (D110). A one-off may share a category with a
+     standing line, because it is dated and claims first — which is exactly
+     what "pelunasan kartu kredit, bukan cicilan" is (D113). */
+  const clash = frequency === "once" ? undefined : state.cash_components.find(
     (c) => c.active
+      && c.frequency !== "once"
+      && c.type_code !== null
       && c.type_code === (input.type_code ?? null)
-      && (c.vendor_id ?? null) === (input.vendor_id ?? null)
-      && c.type_code !== null,
+      && (c.vendor_id ?? null) === (input.vendor_id ?? null),
   );
   if (clash) {
     return conflict(
       SERVICE, "category_already_tracked",
-      `"${clash.name}" already tracks ${clash.type_code}${clash.vendor_id ? " for that vendor" : ""}. Two lines on one category means no ledger row can say which one it paid — change this one's category, or edit that line instead.`,
+      `"${clash.name}" already tracks ${clash.type_code}${clash.vendor_id ? " for that vendor" : ""}. Two standing lines on one category means no ledger row can say which one it paid — change this one's category, make it a one-off with a date, or edit that line instead.`,
       { component_id: clash.id },
     );
   }
 
   const user = actingUser();
   const now = new Date();
+  const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   let created: CashComponent | null = null;
   apply((draft) => {
-    created = {
+    const row: CashComponent = {
       id: newId("cmp"),
       name: input.name.trim(),
       direction: input.direction,
       amount: Math.round(input.amount),
-      due_day: input.due_day,
+      frequency,
+      due_day: frequency === "once"
+        ? Number((input.due_date ?? "").slice(8, 10))
+        : input.due_day ?? 1,
+      due_weekday: frequency === "weekly" ? input.due_weekday ?? null : null,
+      due_date: frequency === "once" ? input.due_date ?? null : null,
       type_code: input.type_code ?? null,
       vendor_id: input.vendor_id ?? null,
       account_id: input.account_id ?? null,
-      starts_on: input.starts_on ?? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`,
-      ends_on: input.ends_on ?? null,
+      starts_on: frequency === "once"
+        ? (input.due_date ?? thisMonth).slice(0, 7)
+        : input.starts_on ?? thisMonth,
+      ends_on: frequency === "once"
+        ? (input.due_date ?? thisMonth).slice(0, 7)
+        : input.ends_on ?? null,
       note: input.note?.trim() || null,
       active: true,
       created_by: user.id,
       created_at: now.toISOString(),
     };
-    draft.cash_components.push(created);
+    draft.cash_components.push(row);
+    created = row;
     writeAudit(draft, {
-      service: SERVICE, entity: "cash_component", entity_no: created.id,
+      service: SERVICE, entity: "cash_component", entity_no: row.id,
       action: "create", outcome: "ok", reason: null,
-      detail: { name: created.name, amount: created.amount, due_day: created.due_day, direction: created.direction },
+      detail: {
+        name: row.name, amount: row.amount, frequency: row.frequency,
+        due: row.due_date ?? (row.frequency === "weekly" ? `weekday ${row.due_weekday}` : `day ${row.due_day}`),
+        direction: row.direction,
+      },
     });
   });
-  remember(SERVICE, "addComponent", idempotencyKey, created);
-  return ok(SERVICE, created as unknown as CashComponent);
+  const view = created as CashComponent | null;
+  if (!view) return invalid(SERVICE, "not_created", "The line could not be written.", { field: "name" });
+  remember(SERVICE, "addComponent", idempotencyKey, view);
+  return ok(SERVICE, view);
 }
 
 /** Change the estimate, the day, or the name. The audit row carries what it
@@ -1078,4 +1116,15 @@ export async function linkPayment(
     });
   });
   return ok(SERVICE, saved as unknown as CashSettlement);
+}
+
+/** One month opened up: every movement in date order, the balance running
+ *  down beside it, and the day it gets lowest (D115). */
+export async function getMonthDetail(month: string): Promise<Result<CashMonthDetail>> {
+  await latency();
+  const detail = cashMonthDetail(getState(), month);
+  if (!detail) {
+    return notFound(SERVICE, "month_not_in_plan", `${month} is outside the twelve months the plan covers.`);
+  }
+  return ok(SERVICE, detail);
 }

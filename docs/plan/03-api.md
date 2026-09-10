@@ -202,8 +202,9 @@ Payment calendar:
 | Method | Path | Notes |
 |---|---|---|
 | GET | `/cash/plan` | twelve months from the current one: every recurring line, planned against actual, the *not in the plan* row, and the month the money runs out. Computed, never stored (A3) |
-| GET | `/cash/due` | the next three weeks and anything already late, by due date — the reminder half (D109) |
-| POST | `/cash/components` | `{name, direction, amount, due_day, type_code?, vendor_id?, account_id?}`. **409 when another active line already claims that category** (D110) — two lines on one category means no ledger row can say which it paid |
+| GET | `/cash/due` | the next three weeks and anything already late, by date — the same events the month expansion uses (D116) |
+| GET | `/cash/plan/{month}` | one month opened up: every dated movement in order with the balance running down, the first day it goes under, the lowest point, and the undated obligations no day can hold (D115) |
+| POST | `/cash/components` | `{name, direction, amount, frequency, due_day \| due_weekday \| due_date, type_code?, vendor_id?, account_id?}`. `frequency` is `weekly`, `monthly` or `once`, and `amount` is **per occurrence** (D113). **422** without the date a one-off needs. **409 when another *standing* line already claims that category** (D110) — a one-off may share one, because it is dated and claims first |
 | PATCH | `/cash/components/{id}` | estimate, day, name, or `active: false` to take it off the calendar. The audit row carries before and after |
 | PUT | `/cash/components/{id}/months/{month}` | one month that differs. **422 without a reason** — in three months nobody remembers why one cell is bigger |
 | POST | `/cash/settlements` | `{component_id, month, trx_no}` — naming the ledger row that paid a bill. **409 if that row is already named by another line.** The calendar never posts a transaction: money is recorded in the ledger, with its evidence, and named here afterwards (D112) |

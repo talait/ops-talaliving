@@ -26,7 +26,7 @@ export function DuePanel({ onChanged }: { onChanged: () => void }) {
       <Card className="mb-4">
         <CardHeader
           title="Due next"
-          subtitle="The next three weeks, and anything already late. Sorted by the day it falls due."
+          subtitle="The next three weeks, and anything already late — the same movements the month expansion shows, sorted by date."
           icon={Bell}
         />
         <Loaded state={due} onRetry={reload}>
@@ -35,11 +35,16 @@ export function DuePanel({ onChanged }: { onChanged: () => void }) {
           ) : (
             <ul className="divide-y divide-slate-100">
               {rows.map((d) => (
-                <li key={`${d.component_id}:${d.month}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-5 py-2.5">
-                  <span className="w-[86px] shrink-0 font-mono text-[12px] text-slate-500">{d.due_date}</span>
+                <li key={`${d.component_id}:${d.date}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-5 py-2.5">
+                  <span className="w-[86px] shrink-0 font-mono text-[12px] text-slate-500">{d.date}</span>
                   <span className="min-w-[180px] flex-1 text-[13px] font-medium text-slate-800">
                     {d.name}
                     {d.vendor_name && <span className="font-normal text-slate-500"> · {d.vendor_name}</span>}
+                    {d.frequency === "once" && (
+                      <span className="ml-1.5 rounded bg-violet-50 px-1.5 py-0.5 text-[10px] font-normal text-violet-700">
+                        one-off
+                      </span>
+                    )}
                   </span>
                   <span className={cn(
                     "w-[120px] text-right text-[13px] tabular-nums",

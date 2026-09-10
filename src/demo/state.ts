@@ -29,6 +29,11 @@ export interface AuditRow {
   action: string;
   outcome: "ok" | "refused" | "duplicate" | "noop";
   reason: string | null;
+  /** What actually changed, field by field, for the rows where that matters.
+   *  A ledger entry says who and when either way; anomaly and fraud questions
+   *  need *what* — the amount before and after, the account it moved to, the
+   *  document that arrived with it (D84). */
+  detail?: Record<string, unknown> | null;
 }
 
 /** The third-party seam (ADR-008). Written on every domain event; in Phase 1

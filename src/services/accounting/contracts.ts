@@ -9,6 +9,7 @@ export const ACCOUNT_CODES = [
   "PETTY CASH",
   "BNI 325",
   "BCA 271",
+  "JAGO",
   "BCA 064",
   "BCA USD 081",
 ] as const;
@@ -205,6 +206,7 @@ export interface AccountBalance {
   code: AccountCode;
   name: string;
   custody: AccountCustody;
+  currency: string;
   is_paying: boolean;
   opening_balance: number;
   total_in: number;

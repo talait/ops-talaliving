@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
-  Paperclip, FileText, Upload, Ban, CheckCircle2, Link2, ArrowUpRight,
+  Paperclip, FileText, Upload, Ban, CheckCircle2, Link2, ArrowUpRight, History,
 } from "lucide-react";
 import { Badge, Button } from "@/components/ui/primitives";
 import { Drawer } from "@/components/ui/drawer";
@@ -12,6 +12,7 @@ import { formatIDR } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { accounting, documents } from "@/demo/api";
 import type { TransactionDetail } from "@/services/accounting/contracts";
+import type { AuditRow } from "@/demo/state";
 import { DOC_KINDS, type DocKind, type AttachmentView } from "@/services/documents/contracts";
 import { useToast } from "@/store/toast";
 import { useSession } from "@/store/session";
@@ -38,6 +39,7 @@ export function TrxDrawer({
   const { toast } = useToast();
   const [trx, setTrx] = useState<TransactionDetail | null>(null);
   const [evidence, setEvidence] = useState<AttachmentView[]>([]);
+  const [history, setHistory] = useState<AuditRow[]>([]);
   const [kind, setKind] = useState<DocKind>("Receipt / Invoice / Nota");
   const [voidOpen, setVoidOpen] = useState(false);
   const [reason, setReason] = useState("");
@@ -56,10 +58,12 @@ export function TrxDrawer({
   }, [trxNo]);
 
   async function load(no: string) {
-    const [detail, docs] = await Promise.all([
+    const [detail, docs, trail] = await Promise.all([
       accounting.getTransaction(no),
       documents.byEntity("transaction", no),
+      accounting.historyFor(no),
     ]);
+    if (trail.data) setHistory(trail.data);
     if (detail.data) {
       setTrx(detail.data);
       setAllocAmount(detail.data.unallocated);
@@ -140,10 +144,17 @@ export function TrxDrawer({
       subtitle={`${trx.trx_no} · ${trx.trx_date} · ${trx.account_code}`}
       width="max-w-xl"
       footer={mayPost && trx.status !== "VOID" ? (
-        <div className="flex flex-wrap justify-end gap-2">
-          <Button variant="ghost" size="sm" icon={Ban} onClick={() => setVoidOpen((v) => !v)}>
-            Void
-          </Button>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {/* Voiding is for a row that should never have existed, and it is one
+              click away from a row somebody was only reading. So it sits
+              behind a deliberate step rather than beside the ordinary action
+              (D89) — the button is there, it just cannot be hit by accident. */}
+          <button
+            onClick={() => setVoidOpen((v) => !v)}
+            className="mr-auto text-[12px] text-slate-400 underline decoration-dotted underline-offset-4 hover:text-rose-700"
+          >
+            Something wrong with this row?
+          </button>
           {trx.status !== "COMPLETED" && (
             <Button variant="outline" size="sm" icon={CheckCircle2} disabled={busy} onClick={complete}>
               Mark completed
@@ -158,8 +169,11 @@ export function TrxDrawer({
           <Badge tone={trx.direction === "IN" ? "green" : "slate"}>{trx.direction}</Badge>
           <Badge tone="slate">{trx.type_code}</Badge>
           {trx.has_payment_proof && <Badge tone="violet">payment proof</Badge>}
+          {/* Not a budget figure: the money is gone. This says only that a
+              purchase names no request, which is the row worth asking about
+              (D88). */}
           {trx.unallocated > 0 && trx.status !== "VOID" && trx.expects_allocation && (
-            <Badge tone="amber">{formatIDR(trx.unallocated)} unallocated</Badge>
+            <Badge tone="amber">no request behind it</Badge>
           )}
         </div>
 
@@ -171,6 +185,14 @@ export function TrxDrawer({
 
         {voidOpen && (
           <div className="space-y-2 rounded-lg border border-rose-200 bg-rose-50/60 px-3 py-3">
+            <p className="flex items-center gap-2 text-[13px] font-semibold text-rose-900">
+              <Ban className="h-4 w-4" /> Void this entry
+            </p>
+            <p className="text-[12px] text-rose-800">
+              Only for a row that should never have existed — a double entry, a
+              wrong account. If the amount was simply wrong, void it and post the
+              right one, so both statements survive.
+            </p>
             <label htmlFor="void-reason" className="block text-xs text-rose-900">
               Why is this being voided? Required — a row with no reason cannot be asked about later.
             </label>
@@ -197,7 +219,7 @@ export function TrxDrawer({
         <dl className="space-y-2.5">
           {([
             ["Amount", formatIDR(trx.amount_idr)],
-            ["Allocated", `${formatIDR(trx.allocated_total)}${trx.unallocated > 0 ? ` · ${formatIDR(trx.unallocated)} left` : ""}`],
+            ["Type", trx.type_code],
             ["Vendor", trx.vendor_name ?? "—"],
             ["Posted", `${trx.posted_at.slice(0, 10)}`],
           ] as [string, string][]).map(([k, v]) => (
@@ -257,8 +279,9 @@ export function TrxDrawer({
             </ul>
           ) : (
             <p className="mb-3 text-[13px] text-slate-500">
-              Nothing points at this yet. Money with no line behind it is exactly
-              what the unallocated column is for — it is shown, never hidden.
+              No request behind this one yet. Money that left with nothing asking
+              for it is exactly the row worth a question, so it is shown rather
+              than left to a report nobody runs.
             </p>
           )}
 
@@ -285,7 +308,8 @@ export function TrxDrawer({
               </Button>
               <p className="text-[11px] text-slate-500">
                 The line is checked against procurement before anything is written,
-                and the total can never exceed what the transaction moved.
+                and what is pointed at a line can never exceed what actually left
+                the account.
               </p>
             </div>
           )}
@@ -342,6 +366,41 @@ export function TrxDrawer({
                 account and the amount, so it only asks what kind of document this is.
               </p>
             </div>
+          )}
+        </section>
+
+        {/* What has happened to this row. Fraud and anomaly questions are
+            never "who touched the ledger this month" — they are "what happened
+            to THIS row", asked while looking at it (D84). */}
+        <section>
+          <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            <History className="h-3.5 w-3.5" /> History
+          </p>
+          {history.length === 0 ? (
+            <p className="text-[13px] text-slate-500">Nothing recorded — this row predates the trail.</p>
+          ) : (
+            <ol className="space-y-2">
+              {history.map((h) => (
+                <li key={h.id} className="rounded-lg border border-slate-200 px-3 py-2 text-[12px]">
+                  <p className="text-slate-700">
+                    <span className="font-medium">{h.action}</span>
+                    {h.outcome !== "ok" && <span className="ml-1 text-rose-700">· {h.outcome}</span>}
+                    <span className="text-slate-400"> · {h.actor_email} · {new Date(h.at).toLocaleString()}</span>
+                  </p>
+                  {h.reason && <p className="mt-0.5 text-slate-600">{h.reason}</p>}
+                  {h.detail && (
+                    <ul className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-slate-500">
+                      {Object.entries(h.detail).map(([k, v]) => (
+                        <li key={k}>
+                          <span className="text-slate-400">{k}:</span>{" "}
+                          {typeof v === "number" ? v.toLocaleString() : String(v)}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              ))}
+            </ol>
           )}
         </section>
 

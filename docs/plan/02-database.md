@@ -451,6 +451,18 @@ into BCA 271 rather than matched to a purchase. Confirming one writes the IN
 transaction, files the same photo against it, and closes the inbox row with a
 pointer to what it produced.
 
+**Document kinds, and which of them count** (D85). Three are *primary* — a
+nota, a transfer proof, a photo of what arrived — and one of them is required
+before a ledger row can exist. Three are supporting: a delivery note, the PO,
+anything else. Supporting is worth filing and never enough on its own: it does
+not say that this money moved for this reason.
+
+**`audit_log.detail`** (D84). Who and when was never the hard part. A ledger
+entry now records what changed — the amount before and after a void, the
+account, the vendor, which documents arrived with the row — because anomaly
+and fraud questions are asked about a specific row while looking at it, not
+about a month.
+
 **`line_notes` — leadership's two optional fields** (D64). `instructions` is
 something the requester is expected to DO; `remark` is for the record. They
 are not columns on `pr_approvals` because the moment they earn their keep is

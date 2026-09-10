@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { BookOpen, Paperclip, AlertTriangle } from "lucide-react";
+import { BookOpen, Paperclip, AlertTriangle, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { Badge, Button, Card, CardHeader, PageHeader } from "@/components/ui/primitives";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { Loaded, SourceBadge, useLoad } from "@/components/ui/loaded";
@@ -11,36 +11,61 @@ import { cn } from "@/lib/cn";
 import { accounting } from "@/demo/api";
 import { TRANSACTION_TYPE_CODES, type TransactionView } from "@/services/accounting/contracts";
 import { TrxDrawer } from "./TrxDrawer";
+import { CashPosition } from "./CashPosition";
+import { NewEntry } from "./NewEntry";
+import { useSession } from "@/store/session";
 
 /** The ledger: every row of money, and what each one is attached to.
  *
- *  Two columns here are the whole argument for rebuilding this. **Unallocated**
- *  says how much of a transaction points at nothing — money that moved without
- *  a request behind it, which the sheet could only find by reading it. And
- *  **evidence** says whether there is a document at all, on the row rather
- *  than in a folder somebody has to go and check.
+ *  It is a record of money that actually moved — never a budget, never a
+ *  plan. So there is no "allocated" figure on a row (D88): the amount left the
+ *  account, and the only question left is what it was for. A purchase that
+ *  names no request line says so in one word, because that is the row worth
+ *  asking about.
+ *
+ *  **Evidence** is the other column that earns its place: whether there is a
+ *  document at all, on the row rather than in a folder somebody has to go and
+ *  check. Since D85 a row cannot be posted without one, so this column is now
+ *  mostly a record of history — the old rows that arrived before the rule.
  *
  *  Nothing is deleted from here. A wrong row is voided with a reason and stays
  *  visible (A5), because a row that is gone cannot be asked about — and the
  *  question always arrives later.
  */
+const PAGE_SIZE = 25;
+
 export default function LedgerPage() {
+  const { hasAuthority } = useSession();
   const [q, setQ] = useState("");
+  const [page, setPage] = useState(0);
+  const [creating, setCreating] = useState(false);
   const [accountId, setAccountId] = useState("");
   const [typeCode, setTypeCode] = useState("");
   const [showVoid, setShowVoid] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
 
-  const [accounts] = useLoad(() => accounting.listAccounts(), []);
+  /* Paged at the service, not sliced in the browser: the real ledger is tens
+     of thousands of rows and a screen that fetches them all to show 25 is a
+     screen that will stop working on a phone. */
   const [rows, reload] = useLoad(
     () => accounting.listTransactions({
       account_id: accountId || undefined,
       type_code: typeCode || undefined,
       q: q || undefined,
-      limit: 200,
+      include_void: showVoid,
+      limit: PAGE_SIZE,
+      offset: page * PAGE_SIZE,
     }),
-    [accountId, typeCode, q],
+    [accountId, typeCode, q, page, showVoid],
   );
+  const mayPost = hasAuthority("post_ledger");
+
+  function filter(next: () => void) {
+    /* Any change of filter is a new first page — staying on page 4 of a list
+       that no longer has four pages shows an empty table and no reason. */
+    setPage(0);
+    next();
+  }
 
   const columns: Column<TransactionView>[] = [
     {
@@ -84,9 +109,11 @@ export default function LedgerPage() {
           )}>
             {t.direction === "IN" ? "+" : "−"}{formatIDR(t.amount_idr)}
           </p>
-          {/* Money pointing at nothing, on the row rather than in a report. */}
+          {/* A purchase that names no request, on the row rather than in a
+              report nobody runs (D88). Not a budget figure — the money is
+              gone either way; the question is what it was for. */}
           {t.unallocated > 0 && t.status !== "VOID" && t.expects_allocation && (
-            <p className="text-[11px] text-amber-700">{formatIDR(t.unallocated)} unallocated</p>
+            <p className="text-[11px] text-amber-700">no request behind it</p>
           )}
         </div>
       ),
@@ -127,25 +154,19 @@ export default function LedgerPage() {
       <PageHeader
         breadcrumb="Accounting"
         title="Ledger"
-        description="Every row of money, with what it settled and what proves it. Nothing is deleted here — a wrong row is voided with a reason and stays visible."
+        description="Money that actually moved, in and out, with what it was for and what proves it. Nothing is deleted here — a wrong row is voided with a reason and stays visible."
+        actions={mayPost ? (
+          <Button icon={Plus} onClick={() => setCreating(true)}>New entry</Button>
+        ) : undefined}
       />
+
+      <CashPosition active={accountId} onPick={(id) => filter(() => setAccountId(id))} />
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <select
-          id="f-account"
-          value={accountId}
-          onChange={(e) => setAccountId(e.target.value)}
-          className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-700 focus:border-brand-400 focus:outline-none"
-        >
-          <option value="">All accounts</option>
-          {accounts.status === "ready" && accounts.data.map((a) => (
-            <option key={a.account_id} value={a.account_id}>{a.code} — {formatIDR(a.balance)}</option>
-          ))}
-        </select>
-        <select
           id="f-type"
           value={typeCode}
-          onChange={(e) => setTypeCode(e.target.value)}
+          onChange={(e) => filter(() => setTypeCode(e.target.value))}
           className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-700 focus:border-brand-400 focus:outline-none"
         >
           <option value="">All types</option>
@@ -156,7 +177,7 @@ export default function LedgerPage() {
             id="f-void"
             type="checkbox"
             checked={showVoid}
-            onChange={(e) => setShowVoid(e.target.checked)}
+            onChange={(e) => filter(() => setShowVoid(e.target.checked))}
             className="h-3.5 w-3.5 rounded border-slate-300"
           />
           Include voided
@@ -164,7 +185,7 @@ export default function LedgerPage() {
         <input
           id="f-q"
           value={q}
-          onChange={(e) => setQ(e.target.value)}
+          onChange={(e) => filter(() => setQ(e.target.value))}
           placeholder="Description or number…"
           className="ml-auto h-9 w-56 rounded-lg border border-slate-200 px-3 text-sm text-slate-700 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none"
         />
@@ -172,26 +193,24 @@ export default function LedgerPage() {
 
       <Loaded state={rows} onRetry={reload}>
         {(all) => {
-          const visible = showVoid ? all : all.filter((t) => t.status !== "VOID");
+          const visible = all;
           const out = visible.filter((t) => t.direction === "OUT").reduce((s, t) => s + t.amount_idr, 0);
           const inn = visible.filter((t) => t.direction === "IN").reduce((s, t) => s + t.amount_idr, 0);
-          /* A purchase with money pointing at nothing is the row worth
-             finding. Payroll and utilities are not that row. */
+          /* A purchase with no request behind it is the row worth finding.
+             Payroll and the electricity bill are not that row (D83). */
           const unlinked = visible.filter((t) => t.expects_allocation && t.unallocated > 0 && t.status !== "VOID");
+          const total = rows.status === "ready" ? rows.page?.total ?? visible.length : visible.length;
+          const lastPage = Math.max(Math.ceil(total / PAGE_SIZE) - 1, 0);
 
           return (
             <Card>
               <CardHeader
-                title={`${visible.length} row(s)`}
-                subtitle={`${formatIDR(inn)} in · ${formatIDR(out)} out${unlinked.length ? ` · ${unlinked.length} with money pointing at nothing` : ""}`}
+                title={`Page ${page + 1} of ${lastPage + 1}`}
+                subtitle={`${formatIDR(inn)} in · ${formatIDR(out)} out on this page${unlinked.length ? ` · ${unlinked.length} purchase(s) with no request behind them` : ""}`}
                 icon={BookOpen}
                 action={
                   <div className="flex items-center gap-2">
-                    {unlinked.length > 0 && (
-                      <Badge tone="amber">
-                        {formatIDR(unlinked.reduce((s, t) => s + t.unallocated, 0))} unallocated
-                      </Badge>
-                    )}
+                    <span className="text-xs text-slate-500">{total} row(s)</span>
                     <SourceBadge state={rows} />
                   </div>
                 }
@@ -204,10 +223,38 @@ export default function LedgerPage() {
                 onRowClick={(t) => setSelected(t.trx_no)}
                 empty={q || accountId || typeCode ? "Nothing matches those filters." : "The ledger is empty."}
               />
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 px-4 py-2.5">
+                <p className="text-[12px] text-slate-500">
+                  Showing {visible.length} of {total}
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline" size="sm" icon={ChevronLeft}
+                    disabled={page === 0}
+                    onClick={() => setPage((n) => Math.max(n - 1, 0))}
+                  >
+                    Previous
+                  </Button>
+                  <Button
+                    variant="outline" size="sm"
+                    disabled={page >= lastPage}
+                    onClick={() => setPage((n) => Math.min(n + 1, lastPage))}
+                  >
+                    Next <ChevronRight className="ml-1 h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
             </Card>
           );
         }}
       </Loaded>
+
+      {creating && (
+        <NewEntry
+          onClose={() => setCreating(false)}
+          onPosted={() => { setCreating(false); setPage(0); reload(); }}
+        />
+      )}
 
       <TrxDrawer
         trxNo={selected}

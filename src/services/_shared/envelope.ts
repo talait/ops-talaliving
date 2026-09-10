@@ -25,6 +25,9 @@ export interface Page {
   limit: number;
   cursor: string | null;
   has_more: boolean;
+  /** How many rows there are in total, so a screen can say "page 2 of 9"
+   *  rather than "next" into the dark. */
+  total: number;
 }
 
 export interface Meta {

@@ -162,8 +162,10 @@ PO and receiving:
 | Method | Path | Notes |
 |---|---|---|
 | GET | `/accounts` | with balances from `v_account_balance` |
-| GET | `/transactions` | `?account=&type=&from=&to=&vendor=&status=&q=` |
-| POST | `/transactions` | the **one write seam**. Requires `source_ref`; a repeat is `duplicate`, never a second row |
+| GET | `/transactions` | `?account=&type=&from=&to=&vendor=&status=&q=&include_void=&limit=&offset=`. Paged at the service — the meta carries `total`, so a screen can say "page 2 of 9" rather than "next" into the dark. Voided rows are excluded unless asked for, so the page count matches what the reader sees |
+| POST | `/transactions` | the **one write seam**. Requires `source_ref`; a repeat is `duplicate`, never a second row. **422 without at least one primary document** — nota, transfer proof or photo of what arrived (D85); supporting documents may ride along but cannot stand alone. **422 when a purchase type carries no lines, no quantity, no unit price or no vendor** (D86), and when the lines do not add up to the amount. The files are linked in the same act, so an undocumented row never exists |
+| GET | `/transaction-types` | the thirteen, with `is_purchase` — which decides whether a row is expected to name what it bought and who from |
+| GET | `/transactions/{trx_no}/history` | the audit trail of one row, with what changed field by field (D84) |
 | GET | `/transactions/{trx_no}` | one call: the row, its lines, its allocations (each naming the request line it settled), and the PR/PO path. A drawer that needs three calls renders in three stages |
 | POST | `/transactions/{trx_no}/void` | amount → 0, reason mandatory. Reversible |
 | POST | `/transactions/{trx_no}/complete` | mark COMPLETED. §10.1 item 15 — never built in v1, built here |

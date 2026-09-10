@@ -86,6 +86,10 @@ export function TransferForm({
       /* One source_ref per instalment, so a second transfer is a second pair
          of rows and a retry of the first is still a duplicate (A4). */
       source_ref: `round:${round.round_no}:out:${round.transfers.length + 1}`,
+      /* The same receipt proves both legs — one file, two links. A ledger row
+         cannot exist without evidence (D85), and inventing a second copy of
+         the same photo would only make the duplicate check ring. */
+      documents: [{ attachment_id: up.data.id, kind: "Payment Proof" }],
     });
     if (out.error) {
       setBusy(false);
@@ -98,17 +102,13 @@ export function TransferForm({
       type_code: "CASHFLOW",
       description: `${label} — from ${rows.find((a) => a.account_id === fromId)?.code ?? "leadership"}`,
       source_ref: `round:${round.round_no}:in:${round.transfers.length + 1}`,
+      documents: [{ attachment_id: up.data.id, kind: "Payment Proof" }],
     });
     if (inLeg.error) {
       setBusy(false);
       toast("critical", "Half recorded", `${out.data.trx_no} left the leadership account but the receiving leg failed: ${inLeg.error.message}`);
       return;
     }
-
-    await documents.link({
-      attachment_id: up.data.id, entity: "transaction",
-      entity_no: inLeg.data.trx_no, kind: "Payment Proof",
-    });
 
     await finish(amount, inLeg.data.trx_no, up.data.id);
   }

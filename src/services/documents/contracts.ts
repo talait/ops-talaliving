@@ -11,9 +11,31 @@ export const DOC_KINDS = [
   "Receipt / Invoice / Nota",
   "Payment Proof",
   "Receiving Item",
+  "Delivery Note",
+  "Purchase Order",
   "Others",
 ] as const;
 export type DocKind = (typeof DOC_KINDS)[number];
+
+/** The kinds that can stand as *the* evidence for money moving.
+ *
+ *  A ledger row needs at least one of these (D85): the nota, the transfer
+ *  proof, or the photo of what arrived. Everything else — a delivery note, the
+ *  PO, a quotation — is supporting: worth filing, but it does not by itself
+ *  say that this money moved for this reason. A row with no primary document
+ *  is a number somebody typed.
+ */
+export const PRIMARY_DOC_KINDS: DocKind[] = [
+  "Receipt / Invoice / Nota",
+  "Payment Proof",
+  "Receiving Item",
+];
+
+export const SUPPORTING_DOC_KINDS: DocKind[] = [
+  "Delivery Note",
+  "Purchase Order",
+  "Others",
+];
 
 /** `Others` never touches the ledger — it branches to notes before anything
  *  else is looked at (owner, 2026-08-27). */

@@ -65,6 +65,12 @@ export function PayFromLine({
   if (!mayPost) return null;
 
   async function post() {
+    if (!proof && !file) {
+      /* No document, no ledger row (D85). The panel says so before the service
+         has to refuse it. */
+      toast("warning", "Proof first", "A payment is recorded with its proof — the transfer receipt or the nota.");
+      return;
+    }
     setPosting(true);
     let attachmentId = proof?.id;
     if (!attachmentId && file) {
@@ -80,7 +86,7 @@ export function PayFromLine({
     }
     const res = await accounting.postFromLine({
       line_no: line.line_no_full, amount, account_id: accountId,
-      trx_date: date, type_code: type, attachment_id: attachmentId,
+      trx_date: date, type_code: type, attachment_id: attachmentId!,
     });
     setPosting(false);
     if (res.error) {
@@ -170,10 +176,17 @@ export function PayFromLine({
         </>
       )}
 
+      {!proof && !file && (
+        <p className="mt-2 text-[11px] text-amber-700">
+          Attach the payment proof first — a ledger row without a document is a
+          number somebody typed.
+        </p>
+      )}
+
       <Button
         size="sm" className="mt-3 w-full"
         onClick={post}
-        disabled={posting || !accountId || amount <= 0}
+        disabled={posting || !accountId || amount <= 0 || (!proof && !file)}
       >
         {posting ? "Posting…" : `Post ${formatIDR(amount)} to the ledger`}
       </Button>

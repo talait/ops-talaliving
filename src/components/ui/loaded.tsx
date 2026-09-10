@@ -4,7 +4,7 @@ import React from "react";
 import { AlertTriangle, RefreshCw } from "lucide-react";
 import { Button } from "./primitives";
 import { cn } from "@/lib/cn";
-import type { ApiError } from "@/services/_shared/envelope";
+import type { ApiError, Page } from "@/services/_shared/envelope";
 
 /** A load, carried as a value.
  *
@@ -16,7 +16,7 @@ import type { ApiError } from "@/services/_shared/envelope";
  */
 export type LoadState<T> =
   | { status: "loading" }
-  | { status: "ready"; data: T }
+  | { status: "ready"; data: T; page?: Page }
   | { status: "failed"; error: ApiError };
 
 export function SourceBadge({ state }: { state: LoadState<unknown> }) {
@@ -84,7 +84,7 @@ export function Loaded<T>({
 /** Turns a service call into a `LoadState`. One line per screen, so no screen
  *  invents its own loading convention. */
 export function useLoad<T>(
-  run: () => Promise<{ data?: T; error?: ApiError }>,
+  run: () => Promise<{ data?: T; error?: ApiError; meta?: { page?: Page } }>,
   deps: React.DependencyList,
 ): [LoadState<T>, () => void] {
   const [state, setState] = React.useState<LoadState<T>>({ status: "loading" });
@@ -96,7 +96,9 @@ export function useLoad<T>(
     void run().then((res) => {
       if (!alive) return;
       if (res.error) setState({ status: "failed", error: res.error });
-      else setState({ status: "ready", data: res.data as T });
+      /* The page meta rides along with the data: a screen that pages needs to
+         know how many there are, and asking twice would be two answers. */
+      else setState({ status: "ready", data: res.data as T, page: res.meta?.page });
     });
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps

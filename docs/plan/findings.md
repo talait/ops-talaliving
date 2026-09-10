@@ -939,3 +939,49 @@ the row. The screen's own contribution is what it puts side by side: what the
 money bought, what it settled, and what proves it, in one place, on the row
 where somebody is already standing.
 
+## F23 — the ledger was still letting a number exist on its own
+
+Six corrections to M8, and five of them are the same correction: a row of
+money has to carry what makes it checkable, at the moment it is written, not
+afterwards.
+
+**No document, no row** (D85). The screen could attach evidence to a row that
+already existed, which means a row could exist without evidence — and the ones
+that stay that way are exactly the ones somebody will ask about. Posting now
+takes its documents with it: uploaded first, linked in the same act, refused
+without at least one nota, transfer proof or photo. A delivery note and the PO
+are welcome and are not enough; *supporting is not proof*.
+
+**A purchase says what it bought** (D86). Quantity, unit price, vendor. An
+amount alone cannot be compared to the last time we bought the same thing,
+which is the only way a price is ever discovered to be wrong. Payroll and the
+electricity bill are exempt, because they are not purchases and nobody raises
+a request for them — the same `is_purchase` flag that fixed the flag that
+cried wolf (F22).
+
+**No "allocated"** (D88). The word came from the procurement side, where a
+payment covers a request line, and on a ledger screen it read as a budget:
+part of the money spent, part still available. It is all spent. What the row
+actually needs to say is whether a purchase names a request at all — four
+words instead of two numbers.
+
+**Void goes behind a sentence** (D89). It was a button beside "mark completed",
+one accidental click from a row somebody was reading. Hiding it entirely would
+be worse: an action nobody can find gets done in the database instead. So it
+is one deliberate step away — *Something wrong with this row?* — and the panel
+behind it says what void is for before it says how.
+
+**The trail needed to say what changed** (D84). Who and when were already
+recorded on every mutation. The owner asked for anomaly and fraud detection,
+and that question is never "who touched the ledger this month" — it is "what
+happened to *this* row", asked while looking at it. So the audit entry now
+carries the fields: amount before and after a void, the account, the vendor,
+the documents that arrived with a posting. The trail is read in the drawer,
+on the row, not in a screen nobody opens.
+
+And one that is not a correction but a fact of the business: **there are five
+accounts, not four**, and one of them is leadership's. JAGO joined the list;
+BCA 064's balance is shown only to whoever holds `approve_funds`, and marked
+*leadership only* rather than left blank — a blank where an account should be
+reads as a bug, and people file bugs about rules.
+

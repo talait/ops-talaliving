@@ -2,16 +2,18 @@
 import { ok, invalid, notFound, type Result } from "@/services/_shared/envelope";
 import type {
   Account, AccountBalance, Transaction, TransactionView, TransactionTypeCode,
-  IncomingMoney, TransactionDetail, AllocationView, TransactionLine,
+  IncomingMoney, TransactionDetail, AllocationView, TransactionLine, TransactionType,
   Direction, PaymentAllocation, EvidenceInboxRow, InboxHealth, AllocMethod,
 } from "@/services/accounting/contracts";
 import { LOCALE } from "@/lib/format";
 import { getState, apply, newId, nextDocNumber, writeAudit, writeOutbox } from "../store";
+import type { AuditRow } from "../state";
 import {
   accountBalances, transactionView, allocatedTotal, inboxHealth, lineCoverage,
   lineStatus,
 } from "../derive";
 import { latency, actingUser, requireAuthority, conflict, replayed, remember, paged } from "./_kit";
+import { PRIMARY_DOC_KINDS, type DocKind } from "@/services/documents/contracts";
 import * as procurement from "./procurement";
 
 const SERVICE = "accounting" as const;
@@ -26,12 +28,25 @@ export async function listAccountRows(): Promise<Result<Account[]>> {
   return ok(SERVICE, getState().accounts);
 }
 
+/** The thirteen types, with the flag that decides whether a row is expected
+ *  to name what it bought and who from (D83, D86). */
+export async function listTypeRows(): Promise<Result<TransactionType[]>> {
+  await latency();
+  return ok(SERVICE, getState().transaction_types);
+}
+
 export async function listTransactions(
-  opts: { account_id?: string; type_code?: string; q?: string; limit?: number; offset?: number } = {},
+  opts: {
+    account_id?: string; type_code?: string; q?: string;
+    include_void?: boolean; limit?: number; offset?: number;
+  } = {},
 ): Promise<Result<TransactionView[]>> {
   await latency();
   const state = getState();
   let rows = state.transactions;
+  /* Filtered here rather than in the browser, so "page 2 of 3" counts the
+     rows the reader will actually see. */
+  if (!opts.include_void) rows = rows.filter((t) => t.status !== "VOID");
   if (opts.account_id) rows = rows.filter((t) => t.account_id === opts.account_id);
   if (opts.type_code) rows = rows.filter((t) => t.type_code === opts.type_code);
   if (opts.q) {
@@ -85,6 +100,15 @@ export async function postTransaction(
     project_id?: string | null;
     description: string;
     source_ref: string;
+    /** What was bought, in quantity and price. Required for a purchase: an
+     *  amount with no detail behind it cannot be checked against anything
+     *  later (D86). */
+    lines?: { description: string; qty?: number | null; uom?: string | null; unit_price?: number | null; amount: number }[];
+    /** At least one of these has to be a nota, a transfer proof or a photo of
+     *  what arrived (D85). The files are uploaded first and linked here, in
+     *  the same act as the row — so a row without evidence never exists, not
+     *  even for a second. */
+    documents: { attachment_id: string; kind: DocKind }[];
   },
   idempotencyKey?: string,
 ): Promise<Result<TransactionView>> {
@@ -98,6 +122,7 @@ export async function postTransaction(
       writeAudit(draft, {
         service: SERVICE, entity: "transaction", entity_no: input.source_ref,
         action: "post", outcome: "refused", reason: "tanpa authority post_ledger",
+        detail: { attempted_amount: input.amount_idr, account_id: input.account_id },
       });
     });
     return denied;
@@ -110,7 +135,58 @@ export async function postTransaction(
     return invalid(SERVICE, "description_required", "Description is required.", { field: "description" });
   }
 
-  const existing = getState().transactions.find((t) => t.source_ref === input.source_ref);
+  /* No document, no row (D85). The old system let a number be typed and the
+   * paperwork follow "later", and later is where the unexplained rows live. */
+  const primary = input.documents.filter((d) => PRIMARY_DOC_KINDS.includes(d.kind));
+  if (primary.length === 0) {
+    return invalid(
+      SERVICE, "evidence_required",
+      "A ledger row needs at least one nota, transfer proof or photo of what arrived. Supporting documents — a delivery note, the PO — are welcome, but they cannot stand alone.",
+      { field: "documents", accepted: PRIMARY_DOC_KINDS },
+    );
+  }
+
+  const state = getState();
+  const type = state.transaction_types.find((t) => t.code === input.type_code);
+  const lines = input.lines ?? [];
+
+  if (type?.is_purchase) {
+    if (lines.length === 0) {
+      return invalid(
+        SERVICE, "detail_required",
+        `${input.type_code} is a purchase: it needs what was bought, how many and at what price. An amount on its own cannot be checked against a delivery, a quote or next month.`,
+        { field: "lines" },
+      );
+    }
+    const missing = lines.find((l) => l.qty == null || l.unit_price == null);
+    if (missing) {
+      return invalid(
+        SERVICE, "line_detail_required",
+        `"${missing.description}" has no quantity or no unit price. Both are what make a price comparable to the next one.`,
+        { field: "lines" },
+      );
+    }
+    if (!input.vendor_id) {
+      return invalid(
+        SERVICE, "vendor_required",
+        "A purchase has somebody it was bought from. Without it the question \"where do we buy this\" has no answer.",
+        { field: "vendor_id" },
+      );
+    }
+  }
+
+  if (lines.length > 0) {
+    const sum = lines.reduce((acc, l) => acc + l.amount, 0);
+    if (sum !== input.amount_idr) {
+      return invalid(
+        SERVICE, "lines_do_not_add_up",
+        `The detail adds up to ${sum.toLocaleString(LOCALE)} but the transaction is ${input.amount_idr.toLocaleString(LOCALE)}. One of the two is wrong, and the ledger will not guess which.`,
+        { field: "lines", lines_total: sum, amount: input.amount_idr },
+      );
+    }
+  }
+
+  const existing = state.transactions.find((t) => t.source_ref === input.source_ref);
   if (existing) {
     return conflict(
       SERVICE, "already_posted",
@@ -123,23 +199,53 @@ export async function postTransaction(
   let trxNo = "";
   apply((draft) => {
     trxNo = nextDocNumber(draft, "trx");
+    const trxId = newId("trx");
     draft.transactions.unshift({
-      id: newId("trx"), trx_no: trxNo, trx_date: input.trx_date,
+      id: trxId, trx_no: trxNo, trx_date: input.trx_date,
       account_id: input.account_id, direction: input.direction, amount_idr: input.amount_idr,
       type_code: input.type_code, vendor_id: input.vendor_id ?? null,
       project_id: input.project_id ?? null, description: input.description,
       remark: null, status: "POSTED", source_ref: input.source_ref,
       posted_by: user.id, posted_at: new Date().toISOString(), void_reason: null,
     });
-    writeAudit(draft, { service: SERVICE, entity: "transaction", entity_no: trxNo, action: "post", outcome: "ok", reason: null });
+    lines.forEach((l, i) => {
+      draft.transaction_lines.push({
+        id: newId("trl"), trx_id: trxId, line_no: i + 1, item_id: null,
+        description: l.description, qty: l.qty ?? null, uom: (l.uom ?? null) as never,
+        unit_price: l.unit_price ?? null, amount: l.amount,
+      });
+    });
+    for (const d of input.documents) {
+      draft.attachment_links.push({
+        id: newId("lnk"), attachment_id: d.attachment_id,
+        entity: "transaction", entity_no: trxNo, kind: d.kind,
+        linked_by: user.id, linked_at: new Date().toISOString(),
+      });
+    }
+    writeAudit(draft, {
+      service: SERVICE, entity: "transaction", entity_no: trxNo,
+      action: "post", outcome: "ok", reason: null,
+      /* Everything a later question would ask: how much, out of which
+         account, to whom, with what behind it (D84). */
+      detail: {
+        amount: input.amount_idr, direction: input.direction,
+        account: draft.accounts.find((a) => a.id === input.account_id)?.code ?? null,
+        type: input.type_code,
+        vendor: draft.vendors.find((v) => v.id === input.vendor_id)?.name ?? null,
+        lines: lines.length,
+        documents: input.documents.map((d) => d.kind),
+        source_ref: input.source_ref,
+      },
+    });
     writeOutbox(draft, { service: SERVICE, event_type: "accounting.transaction.posted", payload: { trx_no: trxNo, amount: input.amount_idr } });
   });
 
-  const state = getState();
-  const view = transactionView(state, state.transactions.find((t) => t.trx_no === trxNo)!);
+  const after = getState();
+  const view = transactionView(after, after.transactions.find((t) => t.trx_no === trxNo)!);
   remember(SERVICE, "postTransaction", idempotencyKey, view);
   return ok(SERVICE, view);
 }
+
 
 /** Amount to zero, reason kept, row stays. Never a delete (A5). Reversible,
  *  because sometimes the bank really did do the thing. */
@@ -167,7 +273,17 @@ export async function voidTransaction(
     t.status = "VOID";
     t.amount_idr = 0;
     t.void_reason = `VOID ${new Date().toISOString().slice(0, 10)} — ${reason.trim()}`;
-    writeAudit(draft, { service: SERVICE, entity: "transaction", entity_no: trxNo, action: "void", outcome: "ok", reason });
+    writeAudit(draft, {
+      service: SERVICE, entity: "transaction", entity_no: trxNo, action: "void",
+      outcome: "ok", reason,
+      /* The amount that disappeared is the whole point of the entry: a void
+         is the one action that makes money vanish from a total (D84). */
+      detail: {
+        amount_before: trx.amount_idr, amount_after: 0,
+        status_before: trx.status, status_after: "VOID",
+        account: draft.accounts.find((a) => a.id === trx.account_id)?.code ?? null,
+      },
+    });
     writeOutbox(draft, { service: SERVICE, event_type: "accounting.transaction.voided", payload: { trx_no: trxNo, reason } });
   });
 
@@ -191,7 +307,11 @@ export async function markComplete(trxNo: string): Promise<Result<TransactionVie
 
   apply((draft) => {
     draft.transactions.find((x) => x.id === trx.id)!.status = "COMPLETED";
-    writeAudit(draft, { service: SERVICE, entity: "transaction", entity_no: trxNo, action: "complete", outcome: "ok", reason: null });
+    writeAudit(draft, {
+      service: SERVICE, entity: "transaction", entity_no: trxNo, action: "complete",
+      outcome: "ok", reason: null,
+      detail: { status_before: trx.status, status_after: "COMPLETED" },
+    });
   });
   const state = getState();
   return ok(SERVICE, transactionView(state, state.transactions.find((t) => t.id === trx.id)!));
@@ -260,6 +380,20 @@ export async function allocate(
   });
   remember(SERVICE, endpoint, idempotencyKey, alloc);
   return ok(SERVICE, alloc);
+}
+
+/** Everything that has happened to one ledger row, newest first.
+ *
+ *  The audit trail read from the record it belongs to, rather than from a
+ *  screen nobody opens (D84). Anomaly and fraud questions are never "who
+ *  touched the ledger this month" — they are "what happened to *this* row",
+ *  asked while looking at it.
+ */
+export async function historyFor(trxNo: string): Promise<Result<AuditRow[]>> {
+  await latency();
+  return ok(SERVICE, getState().audit_log.filter(
+    (a) => a.entity === "transaction" && a.entity_no === trxNo,
+  ));
 }
 
 /* ------------------------------------------------------------------ */
@@ -482,7 +616,10 @@ export async function postFromLine(
     account_id: string;
     trx_date: string;
     type_code: TransactionTypeCode;
-    attachment_id?: string;
+    /** Required (D85). Paying from a line without the transfer proof is the
+     *  same empty row as any other undocumented posting. */
+    attachment_id: string;
+    document_kind?: DocKind;
   },
   idempotencyKey?: string,
 ): Promise<Result<TransactionView>> {
@@ -506,6 +643,13 @@ export async function postFromLine(
   }
   if (input.amount <= 0) {
     return invalid(SERVICE, "amount_positive", "Amount must be greater than zero.", { field: "amount" });
+  }
+  if (!input.attachment_id) {
+    return invalid(
+      SERVICE, "evidence_required",
+      "A payment needs its proof. Attach the transfer receipt or the nota before recording it.",
+      { field: "attachment_id" },
+    );
   }
 
   const sourceRef = `pr-line:${input.line_no}:${input.trx_date}:${input.amount}`;
@@ -535,16 +679,26 @@ export async function postFromLine(
       amount: input.amount, method: "transfer", superseded_by: null,
       allocated_by: user.id, allocated_at: new Date().toISOString(),
     });
-    if (input.attachment_id) {
-      draft.attachment_links.push({
-        id: newId("lnk"), attachment_id: input.attachment_id,
-        entity: "transaction", entity_no: trxNo, kind: "Payment Proof",
-        linked_by: user.id, linked_at: new Date().toISOString(),
-      });
-    }
+    /* The detail comes from the line itself: what was bought, how many, at
+       what price — so the ledger row can be read without opening the PR. */
+    draft.transaction_lines.push({
+      id: newId("trl"), trx_id: trxId, line_no: 1, item_id: null,
+      description: line.description, qty: line.qty, uom: line.uom as never,
+      unit_price: line.unit_price, amount: input.amount,
+    });
+    draft.attachment_links.push({
+      id: newId("lnk"), attachment_id: input.attachment_id,
+      entity: "transaction", entity_no: trxNo, kind: input.document_kind ?? "Payment Proof",
+      linked_by: user.id, linked_at: new Date().toISOString(),
+    });
     writeAudit(draft, {
       service: SERVICE, entity: "transaction", entity_no: trxNo,
       action: "post_from_line", outcome: "ok", reason: input.line_no,
+      detail: {
+        amount: input.amount, pr_line: input.line_no,
+        account: draft.accounts.find((a) => a.id === input.account_id)?.code ?? null,
+        type: input.type_code, document: input.document_kind ?? "Payment Proof",
+      },
     });
     writeOutbox(draft, {
       service: SERVICE, event_type: "accounting.transaction.posted",

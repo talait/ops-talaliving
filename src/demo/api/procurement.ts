@@ -1549,6 +1549,9 @@ export async function lineForPosting(lineNo: string): Promise<Result<{
   line_no: string;
   description: string;
   approved_amount: number;
+  qty: number | null;
+  uom: string | null;
+  unit_price: number | null;
   vendor_id: string | null;
   project_id: string | null;
   already_covered: number;
@@ -1564,6 +1567,11 @@ export async function lineForPosting(lineNo: string): Promise<Result<{
     line_no: lineNo,
     description: line.description,
     approved_amount: approval?.approved ? approval.approved_amount ?? line.item_total : line.item_total,
+    /* The detail travels with it: a ledger row for a purchase has to say what
+     * was bought, how many and at what price (D86). */
+    qty: approval?.approved ? approval.approved_qty ?? line.qty : line.qty,
+    uom: line.uom,
+    unit_price: line.unit_price,
     vendor_id: line.vendor_id,
     project_id: doc?.project_id ?? null,
     already_covered: cov.covered,

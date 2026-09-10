@@ -79,6 +79,7 @@ export function paged<T>(service: ServiceName, rows: T[], limit = 50, offset = 0
     limit,
     cursor: offset + limit < rows.length ? String(offset + limit) : null,
     has_more: offset + limit < rows.length,
+    total: rows.length,
   });
 }
 

@@ -364,6 +364,7 @@ export function accountBalances(state: DemoState): AccountBalance[] {
       code: acc.code,
       name: acc.name,
       custody: acc.custody,
+      currency: acc.currency,
       is_paying: acc.is_paying,
       opening_balance: acc.opening_balance,
       total_in,

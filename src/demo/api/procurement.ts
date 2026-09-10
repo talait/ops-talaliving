@@ -11,6 +11,7 @@ import { LOCALE } from "@/lib/format";
 import { getState, apply, newId, nextDocNumber, writeAudit, writeOutbox } from "../store";
 import {
   prLineView, approvalQueue, lineCoverage, roundSummary, poStatus, isApproved,
+  boughtCategories, itemsBoughtFrom, itemSources, purchaseFacts,
 } from "../derive";
 import {
   latency, actingUser, requireAuthority, conflict, replayed, remember, paged,
@@ -53,7 +54,10 @@ export async function createVendor(input: { name: string }, idempotencyKey?: str
 
   const vendor: Vendor = {
     id: newId("vnd"), code: `V-${String(getState().vendors.length + 1).padStart(4, "0")}`,
-    name, aka: [], is_curated: false, phone: null, address: null, bank_account: null, npwp: null,
+    name, aka: [], is_curated: false,
+    phone: null, address: null, pic_name: null, pic_phone: null,
+    bank_account: null, bank_account_secondary: null, npwp: null,
+    supplied_categories: [],
   };
   apply((draft) => {
     draft.vendors.push(vendor);
@@ -646,21 +650,43 @@ function vendorView(state: ReturnType<typeof getState>, v: Vendor): VendorView {
   const trx = state.transactions.filter((t) => t.vendor_id && ids.has(t.vendor_id) && t.status !== "VOID");
   return {
     ...v,
+    supplied_category_names: v.supplied_categories.map(
+      (c) => state.item_categories.find((x) => x.code === c)?.name ?? c,
+    ),
     transaction_count: trx.length,
     total_spend: trx.filter((t) => t.direction === "OUT").reduce((s, t) => s + t.amount_idr, 0),
     last_purchase: trx.map((t) => t.trx_date).sort().pop() ?? null,
     open_pr_lines: state.pr_lines.filter((l) => l.vendor_id && ids.has(l.vendor_id) && !l.removed_at).length,
     absorbed,
+    bought_categories: boughtCategories(state, v.id),
+    items_bought: itemsBoughtFrom(state, v.id),
   };
 }
 
+/** Search reaches past the vendor's own name into what they supply and what we
+ *  have actually bought from them — so typing "thinner" finds the vendor rather
+ *  than requiring someone to already know which one it is. */
 export async function listVendorViews(opts: { q?: string } = {}): Promise<Result<VendorView[]>> {
   await latency();
   const state = getState();
   let rows = state.vendors.filter((v) => !v.merged_into);
+
   if (opts.q) {
     const q = opts.q.toLowerCase();
-    rows = rows.filter((v) => v.name.toLowerCase().includes(q) || v.aka.some((a) => a.toLowerCase().includes(q)));
+    const facts = purchaseFacts(state);
+    const categoryName = (code: string) =>
+      (state.item_categories.find((c) => c.code === code)?.name ?? code).toLowerCase();
+
+    rows = rows.filter((v) => {
+      if (v.name.toLowerCase().includes(q)) return true;
+      if (v.aka.some((a) => a.toLowerCase().includes(q))) return true;
+      if (v.pic_name?.toLowerCase().includes(q)) return true;
+      if (v.supplied_categories.some((c) => c.includes(q) || categoryName(c).includes(q))) return true;
+      /* …and the items we have bought from them. */
+      return facts.some((f) => f.vendor_id === v.id && (
+        f.item_name.toLowerCase().includes(q) || categoryName(f.category_code).includes(q)
+      ));
+    });
   }
   return ok(SERVICE, rows.map((v) => vendorView(state, v)));
 }
@@ -728,6 +754,7 @@ function itemView(state: ReturnType<typeof getState>, i: Item): ItemView {
     category_name: state.item_categories.find((c) => c.code === i.category_code)?.name ?? i.category_code,
     last_vendor_name: state.vendors.find((v) => v.id === i.last_vendor_id)?.name ?? null,
     suggested_price: i.standard_price ?? i.last_price,
+    sourced_from: itemSources(state, i.id),
     purchase_count: state.transaction_lines.filter((l) => l.item_id === i.id).length
       + state.pr_lines.filter((l) => l.item_id === i.id).length,
   };
@@ -800,4 +827,37 @@ export async function curateItem(
     writeAudit(draft, { service: SERVICE, entity: "item", entity_no: i.code, action: "curate", outcome: "ok", reason: null });
   });
   return ok(SERVICE, itemView(getState(), getState().items.find((i) => i.id === id)!));
+}
+
+/** Contact and banking details. Kept apart from curation: knowing who to call
+ *  does not make a vendor canonical, and a curated vendor with no phone number
+ *  is still a gap worth seeing. */
+export async function updateVendorContact(
+  id: string,
+  input: Partial<Pick<Vendor,
+    "pic_name" | "pic_phone" | "phone" | "address" |
+    "bank_account" | "bank_account_secondary" | "npwp" | "supplied_categories">>,
+): Promise<Result<VendorView>> {
+  await latency();
+  const v = getState().vendors.find((x) => x.id === id);
+  if (!v) return notFound(SERVICE, "vendor_not_found", "Vendor not found.");
+  apply((draft) => {
+    Object.assign(draft.vendors.find((x) => x.id === id)!, input);
+    writeAudit(draft, { service: SERVICE, entity: "vendor", entity_no: v.code, action: "update_contact", outcome: "ok", reason: null });
+  });
+  return ok(SERVICE, vendorView(getState(), getState().vendors.find((x) => x.id === id)!));
+}
+
+/** "We need thinner — where do we buy it?" asked directly, without going
+ *  through a vendor record at all. */
+export async function whereToBuy(query: string): Promise<Result<ItemView[]>> {
+  await latency();
+  const state = getState();
+  const q = query.trim().toLowerCase();
+  if (!q) return ok(SERVICE, []);
+  const rows = state.items
+    .filter((i) => !i.merged_into && i.name.toLowerCase().includes(q))
+    .map((i) => itemView(state, i))
+    .filter((i) => i.sourced_from.length > 0);
+  return ok(SERVICE, rows);
 }

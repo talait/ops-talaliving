@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Boxes, Plus, Check, Tag, TrendingUp } from "lucide-react";
+import { Boxes, Plus, Check, Tag, TrendingUp, Store } from "lucide-react";
 import { Badge, Button, Card, CardHeader, PageHeader, StatCard } from "@/components/ui/primitives";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { Drawer, Modal } from "@/components/ui/drawer";
@@ -195,6 +195,57 @@ export default function CatalogPage() {
       >
         {selected && (
           <div className="space-y-5 text-sm">
+            <section>
+              <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <Store className="h-3.5 w-3.5" /> Where we buy this
+              </p>
+              {selected.sourced_from.length > 0 ? (
+                <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200">
+                  {selected.sourced_from.map((s) => (
+                    <li key={s.vendor_id} className="px-3 py-2.5">
+                      <div className="flex items-baseline justify-between gap-3">
+                        <span className="min-w-0">
+                          <span className="block truncate font-medium text-slate-800">{s.vendor_name}</span>
+                          {s.pic_name ? (
+                            <span className="block text-[11px] text-slate-500">
+                              {s.pic_name}
+                              {s.pic_phone && (
+                                <>
+                                  {" · "}
+                                  <a href={`tel:${s.pic_phone.replace(/[^0-9+]/g, "")}`} className="font-mono text-brand-700 hover:underline">
+                                    {s.pic_phone}
+                                  </a>
+                                </>
+                              )}
+                            </span>
+                          ) : (
+                            <span className="block text-[11px] text-slate-400">No contact on record</span>
+                          )}
+                        </span>
+                        <span className="shrink-0 text-right">
+                          <span className="block tabular-nums text-[13px] font-medium text-slate-800">
+                            {s.last_price != null ? formatIDR(s.last_price) : "—"}
+                          </span>
+                          <span className="block text-[11px] text-slate-400">
+                            {s.uom ? `per ${s.uom} · ` : ""}{s.last_date}
+                          </span>
+                        </span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="rounded-lg border border-dashed border-slate-300 bg-slate-50/60 px-3 py-3 text-slate-500">
+                  Never bought. Nothing on record says where this comes from.
+                </p>
+              )}
+              {selected.sourced_from.length > 1 && (
+                <p className="mt-2 text-xs text-slate-500">
+                  Bought from {selected.sourced_from.length} vendors — the most recent is first.
+                </p>
+              )}
+            </section>
+
             <div className="grid grid-cols-2 gap-3">
               <div className="rounded-lg border border-slate-200 px-3 py-3">
                 <p className="text-xs text-slate-400">Standard price</p>

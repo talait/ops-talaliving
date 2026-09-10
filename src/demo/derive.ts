@@ -14,6 +14,7 @@ import type { DemoState } from "./state";
 import type {
   PrLine, PrApproval, LineStatus, LineCoverage, PrLineView,
   PoStatusView, RoundSummary, PaymentRound,
+  PurchaseFact, CategoryCount, VendorItemSummary, ItemSource,
 } from "@/services/procurement/contracts";
 import { COUNTING_CONDITIONS, PROBLEM_CONDITIONS } from "@/services/procurement/contracts";
 import type {
@@ -382,4 +383,108 @@ export function inboxHealth(state: DemoState, now = new Date()): InboxHealth {
       web: recent.filter((r) => r.origin === "web").length,
     },
   };
+}
+
+/* ------------------------------------------------------------------ */
+/* Purchase facts — one derivation, asked from both ends               */
+/* ------------------------------------------------------------------ */
+
+/** Every "we bought this item from that vendor" we can establish, gathered from
+ *  both places it is recorded: requested lines, and itemised ledger rows.
+ *
+ *  Both directions of the sourcing question read from here, so the vendor page
+ *  and the catalogue page can never disagree about what was bought from whom.
+ *  A declared category on a vendor record is a claim; this is what happened.
+ */
+export function purchaseFacts(state: DemoState): PurchaseFact[] {
+  const facts: PurchaseFact[] = [];
+
+  const itemOf = (id: string | null) => (id ? state.items.find((i) => i.id === id) : undefined);
+  const vendorOf = (id: string | null) => (id ? state.vendors.find((v) => v.id === id) : undefined);
+  /* A merged vendor's history stays on its own row (D41), so a reader has to
+   * follow the pointer to see it under the surviving name. */
+  const canonical = (v: ReturnType<typeof vendorOf>) =>
+    v?.merged_into ? state.vendors.find((x) => x.id === v.merged_into) ?? v : v;
+
+  for (const line of state.pr_lines) {
+    if (line.removed_at) continue;
+    const item = itemOf(line.item_id);
+    const vendor = canonical(vendorOf(line.vendor_id));
+    if (!item || !vendor) continue;
+    const doc = state.pr_documents.find((d) => d.id === line.doc_id);
+    facts.push({
+      item_id: item.id, item_name: item.name, category_code: item.category_code,
+      vendor_id: vendor.id, vendor_name: vendor.name,
+      unit_price: line.unit_price, uom: line.uom,
+      date: (doc?.submitted_at ?? doc?.created_at ?? "").slice(0, 10),
+      source: "pr",
+    });
+  }
+
+  for (const tl of state.transaction_lines) {
+    const trx = state.transactions.find((t) => t.id === tl.trx_id);
+    if (!trx || trx.status === "VOID") continue;
+    const item = itemOf(tl.item_id);
+    const vendor = canonical(vendorOf(trx.vendor_id));
+    if (!vendor) continue;
+    facts.push({
+      item_id: item?.id ?? "",
+      item_name: item?.name ?? tl.description,
+      category_code: item?.category_code ?? "uncurated",
+      vendor_id: vendor.id, vendor_name: vendor.name,
+      unit_price: tl.unit_price, uom: tl.uom,
+      date: trx.trx_date, source: "ledger",
+    });
+  }
+
+  return facts.sort((a, b) => b.date.localeCompare(a.date));
+}
+
+/** What we actually buy from a vendor, by category. */
+export function boughtCategories(state: DemoState, vendorId: string): CategoryCount[] {
+  const counts = new Map<string, number>();
+  for (const f of purchaseFacts(state)) {
+    if (f.vendor_id !== vendorId) continue;
+    counts.set(f.category_code, (counts.get(f.category_code) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([code, count]) => ({
+      code,
+      name: state.item_categories.find((c) => c.code === code)?.name ?? code,
+      count,
+    }))
+    .sort((a, b) => b.count - a.count);
+}
+
+export function itemsBoughtFrom(state: DemoState, vendorId: string): VendorItemSummary[] {
+  const byItem = new Map<string, VendorItemSummary>();
+  for (const f of purchaseFacts(state)) {
+    if (f.vendor_id !== vendorId || !f.item_id) continue;
+    const found = byItem.get(f.item_id);
+    if (found) { found.times += 1; continue; }
+    byItem.set(f.item_id, {
+      item_id: f.item_id, item_name: f.item_name,
+      last_price: f.unit_price, uom: f.uom, last_date: f.date, times: 1,
+    });
+  }
+  return [...byItem.values()].sort((a, b) => b.last_date.localeCompare(a.last_date));
+}
+
+/** The reverse: who we buy this item from. Newest first, because "where did we
+ *  get it last time" is almost always the question being asked. */
+export function itemSources(state: DemoState, itemId: string): ItemSource[] {
+  const byVendor = new Map<string, ItemSource>();
+  for (const f of purchaseFacts(state)) {
+    if (f.item_id !== itemId) continue;
+    const found = byVendor.get(f.vendor_id);
+    if (found) { found.times += 1; continue; }
+    const v = state.vendors.find((x) => x.id === f.vendor_id);
+    byVendor.set(f.vendor_id, {
+      vendor_id: f.vendor_id, vendor_name: f.vendor_name,
+      is_curated: v?.is_curated ?? false,
+      pic_name: v?.pic_name ?? null, pic_phone: v?.pic_phone ?? null,
+      last_price: f.unit_price, uom: f.uom, last_date: f.date, times: 1,
+    });
+  }
+  return [...byVendor.values()].sort((a, b) => b.last_date.localeCompare(a.last_date));
 }

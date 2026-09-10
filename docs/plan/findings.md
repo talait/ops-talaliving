@@ -369,3 +369,55 @@ reported as a mystery.
 not a control: the amber panel explaining *why* something is uncurated. The
 rule was already in the code and in three documents; it had never been said to
 the person looking at the row.
+
+## F8 · 2026-09-11 · vendor contacts, and the question behind the fields
+
+**What the owner asked for.** PIC name, PIC phone, address, a second bank
+account, and a "common purchased item category" on the vendor record — stated
+with its reason: *"ini untuk menjawab kalau kita butuh thinner belinya
+dimana."*
+
+**The reason did not match the shape of the request, and that mattered.** A
+category field on the vendor answers "what does this vendor sell" — the
+question you ask once you are already looking at the vendor. "We need thinner,
+where do we buy it" starts from the *item* and has no vendor in hand. Answering
+it with vendor fields means opening twelve records and reading each one.
+
+So the fields exist, and two other things do:
+
+1. **Search reaches past the vendor's own name** into the categories it
+   supplies and the items we have actually bought from it. Typing `thinner` on
+   the supplier list returns PT PROPAN RAYA ICC. Verified.
+2. **The item drawer answers it directly** — "Where we buy this", listing each
+   vendor with the contact, the phone as a tap-to-call link, the last price and
+   the date. Thinner shows PROPAN, Bagus Nugroho, 0811-9004-2213, Rp 33,500 per
+   ltr, 2026-09-04.
+
+**A declared field and a derived one are not the same thing, so both exist.**
+`supplied_categories` is what somebody typed on the record; it can go stale the
+day a vendor stops carrying something. `bought_categories` is computed from
+purchase history and cannot. The list shows the derived one where there is
+history and falls back to the declared one where there is none — which is
+exactly where a declaration earns its keep: **a vendor we have not ordered from
+yet**. Neither alone would do.
+
+**One derivation, asked from both ends.** `purchaseFacts()` gathers every
+"we bought this from them" from requested lines and itemised ledger rows, and
+both directions read from it. The vendor page and the catalogue page cannot
+disagree about what was bought from whom, because there is nothing for them to
+disagree with.
+
+**What this implies for the schema.** `item_purchases` in the old system was
+exactly this fact table and was described as best-effort. It is not
+best-effort: it is the only thing that answers a sourcing question, and it
+should be a first-class write on every posting rather than a backfill.
+
+**A gap the screen now names instead of hiding.** Three vendors have no contact
+at all, and one of them has money against it. The empty state says so —
+"No contact on record — and we have bought from them 1 time(s)" — rather than
+printing a dash. A blank field is a fact nobody acts on; a sentence is a task.
+
+**What surprised us.** The second bank account turned out to need a sentence,
+not just a row. Two accounts on a vendor is not extra detail, it is a trap —
+so the drawer says which one to check and why. That line came from the request
+itself; nobody would have written it from the schema.

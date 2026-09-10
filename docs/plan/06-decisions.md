@@ -49,6 +49,8 @@ gets had twice.
 | 33 | 2026-09-11 | **Chat approvals cover goods and receiving, not fund decisions.** Approving a round stays on the web | owner, answering Q16 |
 | 34 | 2026-09-11 | **The interface is English by default.** Multi-language later, not now | owner. Supersedes the earlier "English structure, Indonesian labels" mix (Q11) |
 | 35 | 2026-09-11 | **Domain vocabulary that is *data* stays verbatim** — account codes, transaction types, unit codes, status strings, id formats, vendor and item names | translating a stored value does not translate it, it breaks the match |
+| 43 | 2026-09-11 | **Vendors carry a named contact**: `pic_name`, `pic_phone`, plus the office line, address, a second bank account and declared categories | owner. "Call Toko Amplas" is not an instruction anyone can follow |
+| 44 | 2026-09-11 | **Sourcing is derived, not declared.** `purchaseFacts()` answers both "what do we buy here" and "where do we buy this" from one computation; the declared category list is a fallback for vendors with no history | a maintained field goes stale the day a vendor changes what it carries. History cannot |
 | 40 | 2026-09-11 | **Brand is `OPS TALALIVING` / `PT TALAHOME`** | owner. Still one file, `src/lib/brand.ts`; the colour scale remains a placeholder |
 | 41 | 2026-09-11 | **A merged vendor's row is kept, marked `merged_into`, never deleted or repointed** | with real foreign keys (D4), repointing would rewrite what a past transaction says. Keeping the row means history does not move when somebody corrects a name later |
 | 42 | 2026-09-11 | **`<Loaded>` / `<SourceBadge>` moved from M4 to M3** | both M3 screens needed failure handling the day they were written; retrofitting two screens later is worse than building it once |

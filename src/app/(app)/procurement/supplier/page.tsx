@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Truck, Plus, Check, Merge, Search } from "lucide-react";
+import { Truck, Plus, Check, Merge, Search, UserRound, Phone, MapPin, Landmark, Boxes } from "lucide-react";
 import {
   Badge, Button, Card, CardHeader, PageHeader, StatCard,
 } from "@/components/ui/primitives";
@@ -9,6 +9,7 @@ import { DataTable, type Column } from "@/components/ui/data-table";
 import { Drawer, Modal } from "@/components/ui/drawer";
 import { Loaded, SourceBadge, useLoad } from "@/components/ui/loaded";
 import { formatIDR, formatNumber } from "@/lib/format";
+import { cn } from "@/lib/cn";
 import { procurement } from "@/demo/api";
 import type { VendorView } from "@/services/procurement/contracts";
 import { useToast } from "@/store/toast";
@@ -91,6 +92,27 @@ export default function SuppliersPage() {
           ? <Badge tone="green" dot>Curated</Badge>
           : <Badge tone="amber" dot>Not yet curated</Badge>,
     },
+    {
+      key: "supplies",
+      header: "Supplies",
+      className: "max-w-[220px] whitespace-normal",
+      render: (v) => {
+        /* What we have actually bought wins over what the record claims: the
+         * first is history, the second is a note somebody typed once. */
+        const shown = v.bought_categories.length
+          ? v.bought_categories.map((c) => c.name)
+          : v.supplied_category_names;
+        if (!shown.length) return <span className="text-slate-300">&mdash;</span>;
+        return (
+          <span className="flex flex-wrap gap-1">
+            {shown.slice(0, 3).map((c) => (
+              <span key={c} className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600">{c}</span>
+            ))}
+            {shown.length > 3 && <span className="text-[11px] text-slate-400">+{shown.length - 3}</span>}
+          </span>
+        );
+      },
+    },
     { key: "trx", header: "Transactions", align: "right", render: (v) => formatNumber(v.transaction_count) },
     { key: "spend", header: "Total spend", align: "right", render: (v) => <span className="tabular-nums">{formatIDR(v.total_spend)}</span> },
     { key: "last", header: "Last purchase", render: (v) => v.last_purchase ?? <span className="text-slate-300">—</span> },
@@ -133,7 +155,7 @@ export default function SuppliersPage() {
               <Card>
                 <CardHeader
                   title="All vendors"
-                  subtitle="Uncurated rows are shown and marked, never hidden — a vendor you cannot see is one nobody can fix."
+                  subtitle="Search reaches into what each vendor supplies — type an item like “thinner” and the vendor comes back, not the other way round."
                   icon={Truck}
                   action={
                     <div className="flex items-center gap-2">
@@ -142,7 +164,7 @@ export default function SuppliersPage() {
                         id="vendor-search"
                         value={q}
                         onChange={(e) => setQ(e.target.value)}
-                        placeholder="Search name or spelling…"
+                        placeholder="Vendor, contact, or item…"
                         className="h-9 w-44 rounded-lg border border-slate-200 px-3 text-sm text-slate-700 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none"
                       />
                     </div>
@@ -185,7 +207,7 @@ export default function SuppliersPage() {
         }
       >
         {selected && (
-          <div className="space-y-5 text-sm">
+          <div className="space-y-6 text-sm">
             {!selected.is_curated && (
               <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-800">
                 <p className="font-medium">Not yet curated</p>
@@ -198,25 +220,123 @@ export default function SuppliersPage() {
               </div>
             )}
 
-            <dl className="space-y-3">
-              {([
-                ["Transactions", formatNumber(selected.transaction_count)],
-                ["Total spend", formatIDR(selected.total_spend)],
-                ["Last purchase", selected.last_purchase ?? "—"],
-                ["Open PR lines", formatNumber(selected.open_pr_lines)],
-                ["Phone", selected.phone ?? "—"],
-                ["Bank account", selected.bank_account ?? "—"],
-                ["NPWP", selected.npwp ?? "—"],
-              ] as [string, string][]).map(([k, v]) => (
-                <div key={k} className="flex justify-between gap-4 border-b border-slate-100 pb-2.5">
-                  <dt className="text-slate-500">{k}</dt>
-                  <dd className="text-right font-medium text-slate-800">{v}</dd>
+            <section>
+              <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <UserRound className="h-3.5 w-3.5" /> Who to contact
+              </p>
+              {selected.pic_name || selected.pic_phone ? (
+                <div className="rounded-lg border border-slate-200 px-4 py-3">
+                  <p className="font-medium text-slate-800">{selected.pic_name ?? "—"}</p>
+                  {selected.pic_phone && (
+                    <a href={`tel:${selected.pic_phone.replace(/[^0-9+]/g, "")}`}
+                       className="mt-0.5 inline-flex items-center gap-1.5 font-mono text-[13px] text-brand-700 hover:underline">
+                      <Phone className="h-3.5 w-3.5" /> {selected.pic_phone}
+                    </a>
+                  )}
+                  {selected.phone && (
+                    <p className="mt-1 text-xs text-slate-500">Office: {selected.phone}</p>
+                  )}
                 </div>
-              ))}
-            </dl>
+              ) : (
+                /* An empty contact on a vendor we keep buying from is a question,
+                   not a blank. Say so rather than showing a dash. */
+                <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50/60 px-4 py-3 text-slate-500">
+                  No contact on record{selected.transaction_count > 0 && ` — and we have bought from them ${selected.transaction_count} time(s)`}.
+                </div>
+              )}
+              {selected.address && (
+                <p className="mt-2 flex items-start gap-1.5 text-[13px] text-slate-600">
+                  <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" /> {selected.address}
+                </p>
+              )}
+            </section>
+
+            <section>
+              <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <Landmark className="h-3.5 w-3.5" /> Payment details
+              </p>
+              <dl className="space-y-2.5">
+                {([
+                  ["Bank account", selected.bank_account],
+                  ["Second account", selected.bank_account_secondary],
+                  ["NPWP", selected.npwp],
+                ] as [string, string | null][]).map(([k, v]) => (
+                  <div key={k} className="flex justify-between gap-4 border-b border-slate-100 pb-2">
+                    <dt className="text-slate-500">{k}</dt>
+                    <dd className={cn("text-right font-mono text-[13px]", v ? "text-slate-800" : "text-slate-300")}>
+                      {v ?? "—"}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+              {selected.bank_account_secondary && (
+                <p className="mt-2 text-xs text-slate-500">
+                  Two accounts on record. Check the invoice for which one to use —
+                  paying into the wrong one is a week of chasing.
+                </p>
+              )}
+            </section>
+
+            <section>
+              <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <Boxes className="h-3.5 w-3.5" /> What we buy here
+              </p>
+              {selected.bought_categories.length > 0 ? (
+                <div className="mb-3 flex flex-wrap gap-1.5">
+                  {selected.bought_categories.map((c) => (
+                    <Badge key={c.code} tone="brand">{c.name} · {c.count}</Badge>
+                  ))}
+                </div>
+              ) : (
+                <p className="mb-3 text-slate-500">Nothing bought from them yet.</p>
+              )}
+
+              {selected.items_bought.length > 0 && (
+                <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200">
+                  {selected.items_bought.slice(0, 8).map((i) => (
+                    <li key={i.item_id} className="flex items-baseline justify-between gap-3 px-3 py-2">
+                      <span className="min-w-0">
+                        <span className="block truncate text-[13px] text-slate-700">{i.item_name}</span>
+                        <span className="block text-[11px] text-slate-400">{i.last_date}</span>
+                      </span>
+                      <span className="shrink-0 text-right">
+                        <span className="block tabular-nums text-[13px] text-slate-700">
+                          {i.last_price != null ? formatIDR(i.last_price) : "—"}
+                        </span>
+                        {i.uom && <span className="block text-[11px] text-slate-400">per {i.uom}</span>}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {selected.supplied_categories.length > 0 && (
+                <p className="mt-2 text-xs text-slate-500">
+                  Also listed as supplying{" "}
+                  {selected.supplied_category_names.join(", ")} — a note on the record
+                  rather than something we have bought.
+                </p>
+              )}
+            </section>
+
+            <section>
+              <dl className="space-y-2.5">
+                {([
+                  ["Transactions", formatNumber(selected.transaction_count)],
+                  ["Total spend", formatIDR(selected.total_spend)],
+                  ["Last purchase", selected.last_purchase ?? "—"],
+                  ["Open PR lines", formatNumber(selected.open_pr_lines)],
+                ] as [string, string][]).map(([k, v]) => (
+                  <div key={k} className="flex justify-between gap-4 border-b border-slate-100 pb-2">
+                    <dt className="text-slate-500">{k}</dt>
+                    <dd className="text-right font-medium text-slate-800">{v}</dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
 
             {(selected.aka.length > 0 || selected.absorbed.length > 0) && (
-              <div>
+              <section>
                 <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Other spellings
                 </p>
@@ -229,7 +349,7 @@ export default function SuppliersPage() {
                     history — nothing was rewritten.
                   </p>
                 )}
-              </div>
+              </section>
             )}
           </div>
         )}

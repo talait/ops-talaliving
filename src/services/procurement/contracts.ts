@@ -97,10 +97,22 @@ export interface Vendor {
   /** false means RECORDED BUT NOT YET CURATED — visible in lists, absent from
    *  dropdowns. A name a human types is always accepted (owner, 2026-08-05). */
   is_curated: boolean;
+  /** The company line. `pic_phone` is the person you actually call. */
   phone: string | null;
   address: string | null;
+  /** Who to contact, by name. A vendor is a person before it is a company —
+   *  "call Toko Amplas" is not an instruction anyone can follow. */
+  pic_name: string | null;
+  pic_phone: string | null;
   bank_account: string | null;
+  /** Some vendors invoice from one account and collect on another. Paying into
+   *  the wrong one is a week of chasing, so both are on record. */
+  bank_account_secondary: string | null;
   npwp: string | null;
+  /** What they say they supply. DECLARED, and therefore able to go stale — see
+   *  `bought_categories` on the view for what we have actually bought. Useful
+   *  precisely where history is silent: a vendor we have not ordered from yet. */
+  supplied_categories: string[];
 }
 
 export interface Uom {
@@ -325,18 +337,68 @@ export interface RoundSummary {
 
 /** What the approval queue and the PR list hand a screen: the line, plus
  *  everything derived from it, in one object so nothing is recomputed twice. */
+/** One purchase fact, from wherever it can be found. The single derivation
+ *  behind both directions of the question: what do we buy from this vendor,
+ *  and who do we buy this item from. */
+export interface PurchaseFact {
+  item_id: string;
+  item_name: string;
+  category_code: string;
+  vendor_id: string;
+  vendor_name: string;
+  unit_price: number | null;
+  uom: string | null;
+  date: string;
+  source: "pr" | "ledger";
+}
+
+export interface CategoryCount {
+  code: string;
+  name: string;
+  count: number;
+}
+
+export interface VendorItemSummary {
+  item_id: string;
+  item_name: string;
+  last_price: number | null;
+  uom: string | null;
+  last_date: string;
+  times: number;
+}
+
 /** A vendor with what we have actually bought from it. */
 export interface VendorView extends Vendor {
+  /** `supplied_categories` resolved to their display names. */
+  supplied_category_names: string[];
   transaction_count: number;
   total_spend: number;
   last_purchase: string | null;
   open_pr_lines: number;
   absorbed: Vendor[];
+  /** Derived from purchase history, so it cannot go stale. */
+  bought_categories: CategoryCount[];
+  items_bought: VendorItemSummary[];
+}
+
+/** Who we buy an item from, newest first. This is the answer to "we need
+ *  thinner — where do we get it?", and it is derived rather than maintained. */
+export interface ItemSource {
+  vendor_id: string;
+  vendor_name: string;
+  is_curated: boolean;
+  pic_name: string | null;
+  pic_phone: string | null;
+  last_price: number | null;
+  uom: string | null;
+  last_date: string;
+  times: number;
 }
 
 export interface ItemView extends Item {
   category_name: string;
   last_vendor_name: string | null;
+  sourced_from: ItemSource[];
   /** What a form would prefill: the curated price if there is one, otherwise
    *  the last price paid. A hint, never a price list. */
   suggested_price: number | null;

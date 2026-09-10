@@ -1155,3 +1155,38 @@ The general shape of this: when both offered options are about *where to put
 it*, the constraint being fought is usually **how much room it needs**, and a
 third option that changes the room is worth a minute before answering.
 
+
+## F29 — the demo was quietly teaching the wrong business
+
+Building the liquidation report meant asking what "money in" is, and the
+answer turned the screen around. There is no client money in this business's
+accounts at all: projects are billed elsewhere, and what reaches the operating
+accounts is the owner moving operating funds in. The demo had a row saying
+*"Client payment, HOTEL UBUD instalment 2"* — invented in an early fixture,
+never questioned, and it would have shaped a schema.
+
+Which is the finding. **A fixture is a claim about the business**, and one
+nobody has read aloud can survive for weeks. The catch was not a bug report;
+it was a sentence in passing while a report was being specified.
+
+The report that came out of it is per transfer, not per month, because that is
+the shape of the question — *sudah transfer 100 juta, kok sudah habis?* And
+the demo answers it plainly: of seven transfers, three were spent through
+before the next one arrived, one of them in a single day, and two went on
+spending Rp 2,7 juta and Rp 16,3 juta past what was sent.
+
+Two things the data cannot do, both for Phase 2:
+
+- **Nothing marks a transfer as internal.** The pair — money leaving BCA 064,
+  money arriving in BCA 271 — is two independent rows with the same amount on
+  the same day. The screen matches them to name the source, and a match is not
+  a fact. A `transfer_group_id` settles it.
+- **No lineage between money in and money out.** Which is fine, and the report
+  says so rather than inventing FIFO: it measures spending in the window
+  against the transfer, and calls the excess what it is.
+
+And one hole worth naming: an unclassified transaction type was skipping the
+*did anybody decide this?* check entirely, because the flag read
+`is_purchase ?? false`. Unknown types are normal here (Q10 keeps `EJO` as-is),
+so the default was an exemption nobody asked for — Rp 2,48 juta of PACKING sat
+outside the check. Now unknown means expected (D107).

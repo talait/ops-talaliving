@@ -21,6 +21,12 @@ type TrxSeed = [
  *     `v_unlinked_transactions` is for: shown, never hidden.
  */
 const TRX_SEEDS: TrxSeed[] = [
+  ["trx-26-06-30_001", "2026-06-30", "acc_bca271", "IN", 12_000_000, "CASHFLOW", null, null, "Operating transfer to BCA 271, from BCA 064", "COMPLETED"],
+  ["trx-26-06-30_002", "2026-06-30", "acc_bca064", "OUT", 12_000_000, "CASHFLOW", null, null, "Transfer to BCA 271 — operating funds", "COMPLETED"],
+  ["trx-26-07-22_001", "2026-07-22", "acc_bca271", "IN", 22_000_000, "CASHFLOW", null, null, "Operating transfer to BCA 271, from BCA 064", "COMPLETED"],
+  ["trx-26-07-22_002", "2026-07-22", "acc_bca064", "OUT", 22_000_000, "CASHFLOW", null, null, "Transfer to BCA 271 — operating funds", "COMPLETED"],
+  ["trx-26-08-10_002", "2026-08-10", "acc_bca271", "IN", 15_000_000, "CASHFLOW", null, null, "Operating transfer to BCA 271, from BCA 064", "COMPLETED"],
+  ["trx-26-08-10_003", "2026-08-10", "acc_bca064", "OUT", 15_000_000, "CASHFLOW", null, null, "Transfer to BCA 271 — operating funds", "COMPLETED"],
   ["trx-26-08-20_001", "2026-08-20", "acc_bca271", "IN", 29_100_000, "CASHFLOW", null, null, "Round funding pay-26-08-22_01, from BCA 064", "COMPLETED"],
   ["trx-26-08-20_002", "2026-08-20", "acc_bca064", "OUT", 29_100_000, "CASHFLOW", null, null, "Transfer to BCA 271 — weekly funding", "COMPLETED"],
   ["trx-26-08-20_003", "2026-08-20", "acc_bca271", "OUT", 4_050_000, "SUPPLIERS", "vnd_07", "prj_25007", "AMPLAS 120 GRIT, 500 lembar", "COMPLETED"],
@@ -42,7 +48,7 @@ const TRX_SEEDS: TrxSeed[] = [
   ["trx-26-08-29_003", "2026-08-29", "acc_petty", "OUT", 350_000, "OTHERS", "vnd_10", "prj_25004", "Grounds mowing, workshop", "COMPLETED"],
   ["trx-26-08-29_004", "2026-08-29", "acc_bca271", "OUT", 0, "SUPPLIERS", "vnd_03", null, "PLYWOOD 18MM — entered twice", "VOID"],
   ["trx-26-08-31_001", "2026-08-31", "acc_bni325", "OUT", 890_000, "OFFICE", "vnd_03", null, "Stationery and copier paper", "COMPLETED"],
-  ["trx-26-09-01_001", "2026-09-01", "acc_bca064", "IN", 185_000_000, "CASHFLOW", null, null, "Client payment, HOTEL UBUD instalment 2", "COMPLETED"],
+  ["trx-26-09-01_001", "2026-09-01", "acc_bca064", "IN", 185_000_000, "CASHFLOW", null, null, "Operating funds placed in BCA 064 by leadership", "COMPLETED"],
   ["trx-26-09-02_001", "2026-09-02", "acc_bca271", "OUT", 4_820_000, "SUPPLIERS", "vnd_04", "prj_25011", "Sanding sealer and wood filler", "POSTED"],
   ["trx-26-09-02_002", "2026-09-02", "acc_petty", "OUT", 275_000, "PRODUCTION", null, null, "Fuel, operations vehicle", "COMPLETED"],
   ["trx-26-09-03_001", "2026-09-03", "acc_bni325", "OUT", 1_450_000, "ONLINE", "vnd_11", null, "Compressor oil and spares — Tokopedia", "POSTED"],

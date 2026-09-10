@@ -3,7 +3,7 @@ import { ok, invalid, notFound, type Result } from "@/services/_shared/envelope"
 import type {
   Account, AccountBalance, Transaction, TransactionView, TransactionTypeCode,
   IncomingMoney, TransactionDetail, AllocationView, TransactionLine, TransactionType,
-  VendorPayment,
+  VendorPayment, FundingView, FundingDetail,
   Direction, PaymentAllocation, EvidenceInboxRow, InboxHealth, AllocMethod,
 } from "@/services/accounting/contracts";
 import { LOCALE } from "@/lib/format";
@@ -11,7 +11,7 @@ import { getState, apply, newId, nextDocNumber, writeAudit, writeOutbox } from "
 import type { AuditRow } from "../state";
 import {
   accountBalances, transactionView, allocatedTotal, inboxHealth, lineCoverage,
-  lineStatus,
+  lineStatus, fundings, fundingView,
 } from "../derive";
 import { latency, actingUser, requireAuthority, conflict, replayed, remember, paged } from "./_kit";
 import { PRIMARY_DOC_KINDS, type DocKind } from "@/services/documents/contracts";
@@ -802,4 +802,24 @@ export async function postFromLine(
   const view = transactionView(state, state.transactions.find((t) => t.trx_no === trxNo)!);
   remember(SERVICE, endpoint, idempotencyKey, view);
   return ok(SERVICE, view);
+}
+
+/* ------------------------------------------------------------------ */
+/* Liquidation                                                         */
+/* ------------------------------------------------------------------ */
+
+/** Every transfer of operating money into an account that pays people,
+ *  newest first — the list the liquidation report opens from (D106). */
+export async function listFundings(): Promise<Result<FundingView[]>> {
+  await latency();
+  return ok(SERVICE, fundings(getState()));
+}
+
+/** One transfer and where it went. */
+export async function getFunding(trxNo: string): Promise<Result<FundingDetail>> {
+  await latency();
+  const state = getState();
+  const trx = state.transactions.find((t) => t.trx_no === trxNo && t.direction === "IN");
+  if (!trx) return notFound(SERVICE, "funding_not_found", `No incoming transfer ${trxNo}.`);
+  return ok(SERVICE, fundingView(state, trx));
 }

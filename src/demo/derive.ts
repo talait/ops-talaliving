@@ -20,6 +20,7 @@ import type {
 import { COUNTING_CONDITIONS, PROBLEM_CONDITIONS } from "@/services/procurement/contracts";
 import type {
   Transaction, AccountBalance, TransactionView, InboxHealth,
+  FundingView, FundingDetail, FundingSpendGroup, FundingSpendRow,
 } from "@/services/accounting/contracts";
 import type { DocKind } from "@/services/documents/contracts";
 import { LOCALE } from "@/lib/format";
@@ -526,6 +527,19 @@ export function allocatedTotal(state: DemoState, trxId: string): number {
     .reduce((s, a) => s + a.amount, 0);
 }
 
+/** Is this kind of spending expected to name the decision behind it?
+ *
+ *  A purchase is. Payroll and the electricity bill are not (D83). And a type
+ *  nobody has classified yet **is**, deliberately: `EJO` and `PACKING` are
+ *  carried as-is rather than folded into `OTHERS` (Q10), and if an unknown
+ *  type defaulted to *not expected*, the way to make spending escape the
+ *  check would be to type a category that does not exist yet (D107).
+ */
+export function expectsDecision(state: DemoState, typeCode: string): boolean {
+  const type = state.transaction_types.find((t) => t.code === typeCode);
+  return type ? type.is_purchase : true;
+}
+
 export function transactionView(state: DemoState, trx: Transaction): TransactionView {
   const account = state.accounts.find((a) => a.id === trx.account_id);
   const vendor = state.vendors.find((v) => v.id === trx.vendor_id);
@@ -548,8 +562,7 @@ export function transactionView(state: DemoState, trx: Transaction): Transaction
     /* Only a purchase is expected to name a request line. Payroll and the
      * electricity bill are money leaving for reasons nobody raises a PR for,
      * and flagging them would drown the rows that matter (D83). */
-    expects_allocation: trx.direction === "OUT"
-      && (state.transaction_types.find((t) => t.code === trx.type_code)?.is_purchase ?? false),
+    expects_allocation: trx.direction === "OUT" && expectsDecision(state, trx.type_code),
   };
 }
 
@@ -778,4 +791,179 @@ export function itemSources(state: DemoState, itemId: string): ItemSource[] {
     });
   }
   return [...byVendor.values()].sort((a, b) => b.last_date.localeCompare(a.last_date));
+}
+
+/* ------------------------------------------------------------------ */
+/* Liquidation — one transfer in, and where it went                    */
+/* ------------------------------------------------------------------ */
+
+const dayOf = (iso: string) => iso.slice(0, 10);
+const daysBetween = (from: string, to: string) =>
+  Math.round((Date.parse(`${to}T00:00:00+08:00`) - Date.parse(`${from}T00:00:00+08:00`)) / 86_400_000);
+
+/** Ledger rows in the order a bank statement has them: by day, then by the
+ *  number that was minted that day. */
+const byLedgerOrder = (a: Transaction, b: Transaction) =>
+  a.trx_date === b.trx_date ? a.trx_no.localeCompare(b.trx_no) : a.trx_date.localeCompare(b.trx_date);
+
+/** Did this row go out against something somebody decided — an approved
+ *  request line, or a purchase order? Both are decisions; a PO payment with no
+ *  PR behind it went through the order, not around it. */
+function isDecided(state: DemoState, trx: Transaction): boolean {
+  return state.payment_allocations.some(
+    (a) => a.trx_id === trx.id && a.superseded_by === null
+      && (a.pr_line_no !== null || a.po_no !== null),
+  );
+}
+
+/** Money entering an operating account. Leadership's own account is not one:
+ *  money arriving there has not yet been given to the business, and counting
+ *  it as funding would answer the wrong question. */
+function fundingRows(state: DemoState): Transaction[] {
+  const operating = new Set(
+    state.accounts.filter((a) => a.custody === "accounting").map((a) => a.id),
+  );
+  return state.transactions
+    .filter((t) => t.direction === "IN" && t.status !== "VOID" && operating.has(t.account_id))
+    .sort(byLedgerOrder);
+}
+
+function group(
+  rows: FundingSpendRow[],
+  keyOf: (r: FundingSpendRow) => string,
+  labelOf: (r: FundingSpendRow) => string,
+  total: number,
+): FundingSpendGroup[] {
+  const map = new Map<string, FundingSpendGroup>();
+  rows.forEach((r) => {
+    const key = keyOf(r);
+    const found = map.get(key) ?? { key, label: labelOf(r), amount: 0, share: 0, count: 0 };
+    found.amount += r.amount;
+    found.count += 1;
+    map.set(key, found);
+  });
+  return [...map.values()]
+    .map((g) => ({ ...g, share: total > 0 ? g.amount / total : 0 }))
+    .sort((a, b) => b.amount - a.amount);
+}
+
+/** One transfer, and what happened to the account it landed in until the next
+ *  one arrived. See `FundingView` for why the window is drawn this way. */
+export function fundingView(state: DemoState, trx: Transaction, all?: Transaction[]): FundingDetail {
+  const fundings = all ?? fundingRows(state);
+  const idx = fundings.findIndex((f) => f.trx_no === trx.trx_no);
+  const next = fundings.slice(idx + 1).find((f) => f.account_id === trx.account_id) ?? null;
+  const account = state.accounts.find((a) => a.id === trx.account_id);
+
+  /* Everything on this account before the money landed — the balance the
+     transfer was added to, stated so nobody reads the excess as a hole. */
+  const priorRows = state.transactions.filter(
+    (t) => t.account_id === trx.account_id && t.status !== "VOID" && byLedgerOrder(t, trx) < 0,
+  );
+  const balance_before = (account?.opening_balance ?? 0)
+    + priorRows.filter((t) => t.direction === "IN").reduce((s, t) => s + t.amount_idr, 0)
+    - priorRows.filter((t) => t.direction === "OUT").reduce((s, t) => s + t.amount_idr, 0);
+
+  const inWindow = state.transactions
+    .filter((t) =>
+      t.account_id === trx.account_id
+      && t.direction === "OUT"
+      && t.status !== "VOID"
+      && byLedgerOrder(t, trx) > 0
+      && (next === null || byLedgerOrder(t, next) < 0))
+    .sort(byLedgerOrder);
+
+  let running = trx.amount_idr;
+  let consumed_on: string | null = null;
+  const rows: FundingSpendRow[] = inWindow.map((t) => {
+    running -= t.amount_idr;
+    if (consumed_on === null && running <= 0) consumed_on = t.trx_date;
+    return {
+      trx_no: t.trx_no,
+      trx_date: t.trx_date,
+      description: t.description,
+      type_code: t.type_code,
+      vendor_name: state.vendors.find((v) => v.id === t.vendor_id)?.name ?? null,
+      project_name: state.projects.find((p) => p.id === t.project_id)?.name ?? null,
+      amount: t.amount_idr,
+      left_of_transfer: running,
+      decided: isDecided(state, t),
+      expects_link: expectsDecision(state, t.type_code),
+      status: t.status,
+    };
+  });
+
+  const spent = rows.reduce((s, r) => s + r.amount, 0);
+  const decided = rows.filter((r) => r.decided).reduce((s, r) => s + r.amount, 0);
+  /* Only a purchase is expected to name one (D83). Payroll, the electricity
+     bill and the bank's own fee are not loose ends. */
+  const undecided = rows
+    .filter((r) => !r.decided && r.expects_link)
+    .reduce((s, r) => s + r.amount, 0);
+  const days_lasted = consumed_on ? daysBetween(trx.trx_date, consumed_on) : null;
+  const is_open = next === null;
+
+  /* The mirror row: the same amount leaving a leadership account on the same
+     day. Nothing in the data says "these two are one transfer" (F29), so this
+     is a match on what is there, and it is only used to name the source. */
+  const mirror = state.transactions.find(
+    (t) => t.direction === "OUT"
+      && t.status !== "VOID"
+      && t.trx_date === trx.trx_date
+      && t.amount_idr === trx.amount_idr
+      && t.account_id !== trx.account_id
+      && (state.accounts.find((a) => a.id === t.account_id)?.custody === "leadership"),
+  );
+  const proof = state.attachment_links.find(
+    (l) => l.entity === "transaction" && l.entity_no === trx.trx_no && l.kind === "Payment Proof",
+  );
+
+  const headline = consumed_on
+    ? `Spent through in ${days_lasted} day(s)${spent > trx.amount_idr ? `, and ${formatShort(spent - trx.amount_idr)} beyond it` : ""}`
+    : is_open
+      ? `${formatShort(trx.amount_idr - spent)} of it still unspent`
+      : `${formatShort(trx.amount_idr - spent)} was still unspent when the next transfer arrived`;
+
+  return {
+    trx_no: trx.trx_no,
+    trx_date: trx.trx_date,
+    account_id: trx.account_id,
+    account_code: account?.code ?? "PETTY CASH",
+    amount: trx.amount_idr,
+    description: trx.description,
+    from_account_code: mirror
+      ? state.accounts.find((a) => a.id === mirror.account_id)?.code ?? null
+      : null,
+    balance_before,
+    next_funding_no: next?.trx_no ?? null,
+    window_end: next?.trx_date ?? null,
+    spent,
+    consumed_on,
+    days_lasted,
+    remaining: Math.max(trx.amount_idr - spent, 0),
+    beyond: Math.max(spent - trx.amount_idr, 0),
+    decided,
+    undecided,
+    is_open,
+    headline,
+    proof_filename: proof
+      ? state.attachments.find((a) => a.id === proof.attachment_id)?.filename ?? null
+      : null,
+    rows,
+    by_type: group(rows, (r) => r.type_code, (r) => r.type_code, spent),
+    by_vendor: group(rows, (r) => r.vendor_name ?? "—", (r) => r.vendor_name ?? "no vendor named", spent),
+    by_project: group(rows, (r) => r.project_name ?? "—", (r) => r.project_name ?? "no project named", spent),
+  };
+}
+
+/** Every funding, newest first. */
+export function fundings(state: DemoState): FundingView[] {
+  const rows = fundingRows(state);
+  return rows
+    .map((t) => {
+      const { rows: _rows, by_type: _t, by_vendor: _v, by_project: _p, proof_filename: _f, ...view } =
+        fundingView(state, t, rows);
+      return view as FundingView;
+    })
+    .reverse();
 }

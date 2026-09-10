@@ -80,7 +80,7 @@ export const NAV: NavSection[] = [
     icon: Landmark,
     items: [
       { label: "Ledger", href: "/accounting/ledger", icon: BookOpen, permission: "accounting.read", badge: "core" },
-      { label: "Cash Flow", href: "/accounting/cashflow", icon: TrendingUp, permission: "accounting.read" },
+      { label: "Liquidation", href: "/accounting/liquidation", icon: TrendingUp, permission: "accounting.read", badge: "new" },
       { label: "Budget", href: "/accounting/budget", icon: PiggyBank, permission: "accounting.read" },
       { label: "Documents", href: "/accounting/documents", icon: FileBadge, permission: "accounting.read" },
       { label: "Purchase Verification", href: "/accounting/verifikasi", icon: Receipt, permission: "accounting.read", badge: "core" },

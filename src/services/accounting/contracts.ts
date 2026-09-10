@@ -271,3 +271,91 @@ export interface InboxHealth {
   unresolved: number;
   by_origin: Record<InboxOrigin, number>;
 }
+
+/* ------------------------------------------------------------------ */
+/* Liquidation — one funding transfer, and where it went               */
+/* ------------------------------------------------------------------ */
+
+/** No money arrives here from a client. The only inflow into an operating
+ *  account is leadership moving operating funds in, and the question that
+ *  follows every one of them is the same: *saya sudah transfer sekian, kok
+ *  sudah habis?* (D106).
+ *
+ *  So the unit is the transfer, not the month. The window runs from one
+ *  transfer to the next into the same account, and nothing here guesses which
+ *  rupiah came from which transfer: it compares what was spent in that window
+ *  against what was sent. When spending passes the transfer, the excess came
+ *  out of the balance that was already there, and the screen says so in those
+ *  words rather than inventing a lineage.
+ */
+export interface FundingView {
+  trx_no: string;
+  trx_date: string;
+  account_id: string;
+  account_code: AccountCode;
+  amount: number;
+  description: string;
+  /** Where it came from — the mirror row on the leadership account. */
+  from_account_code: AccountCode | null;
+  /** Balance on the receiving account the moment before it landed. */
+  balance_before: number;
+  /** Next transfer into the same account, or `null` while this is the current
+   *  one — an open window is stated as open, never as finished. */
+  next_funding_no: string | null;
+  window_end: string | null;
+  /** Everything that left the account inside the window, VOID excluded. */
+  spent: number;
+  /** The day cumulative spending first reached the transfer, and how many days
+   *  that took. `null` while the transfer still has room in it. */
+  consumed_on: string | null;
+  days_lasted: number | null;
+  /** Whichever applies: what is left of the transfer, or what was spent beyond
+   *  it out of the balance that was already there. */
+  remaining: number;
+  beyond: number;
+  /** Of what was spent, how much was tied to an approved line or a purchase
+   *  order. `undecided` counts only rows that were *expected* to be — payroll
+   *  and the electricity bill are money leaving for reasons nobody raises a
+   *  request for, and counting them here would drown the rows that matter
+   *  (D83). */
+  decided: number;
+  undecided: number;
+  is_open: boolean;
+  headline: string;
+}
+
+export interface FundingSpendGroup {
+  key: string;
+  label: string;
+  amount: number;
+  /** 0–1 of everything spent in the window. */
+  share: number;
+  count: number;
+}
+
+export interface FundingSpendRow {
+  trx_no: string;
+  trx_date: string;
+  description: string;
+  type_code: TransactionTypeCode;
+  vendor_name: string | null;
+  project_name: string | null;
+  amount: number;
+  /** What was left of the transfer after this row. Goes negative once
+   *  spending passes what was sent, which is the point. */
+  left_of_transfer: number;
+  /** Tied to an approved request line or to a purchase order. A PO payment is
+   *  as authorised as a PR payment — both went through a decision. */
+  decided: boolean;
+  /** Whether this kind of spending is expected to carry one at all (D83). */
+  expects_link: boolean;
+  status: TrxStatus;
+}
+
+export interface FundingDetail extends FundingView {
+  proof_filename: string | null;
+  rows: FundingSpendRow[];
+  by_type: FundingSpendGroup[];
+  by_vendor: FundingSpendGroup[];
+  by_project: FundingSpendGroup[];
+}

@@ -177,6 +177,33 @@ grant at all. The safeguard is no longer needed in that shape.
 `src/lib/roles.ts` remains the reviewable seed source (see `03-api.md`), but
 what it seeds is this: modules, levels, and four authorities.
 
+### Three trails, and only one of them is expensive to add late
+
+The IT module needs to answer three different questions, and they are not one
+table because they fail differently.
+
+| Trail | Answers | Written by | Cost of adding it later |
+|---|---|---|---|
+| **`core.audit_log`** — changes | who changed what, from what, to what, and was it refused | the same transaction as the change itself | **High.** Not the table — the *seam*. Retrofitting means finding every write path and hoping none was missed |
+| **session events** | who was in the system, when, and as whom | the identity service | Low. A handful of call sites, all in one service |
+| **`core.activity_log`** — reads | who *looked at* the ledger, HR records, a salary | the request layer, gated and sampled | Low to add, but it is the one with a real policy question attached: how long is it kept, and who may read the log of who read what |
+
+**Only the first has to be early**, and it is early for a reason that is not
+about storage: an audit row written *after* the fact is a story, and an audit
+row written in the same transaction is evidence. The rule — every mutation
+writes its business rows and its audit row together or neither — is in the
+definition of done and is enforced today across every write in the demo layer.
+
+**Sessions are recorded from M2**, because a trail that cannot say who was
+signed in cannot answer the first question anyone asks it.
+
+**Reads are not logged yet, deliberately.** It is the only trail that grows
+without bound, the only one that costs something on every request, and the only
+one where retention is a policy the owner has to set rather than a default we
+can pick (§10.2 q8 leaves exactly this open). It is a middleware concern, not a
+schema one, so building it later costs a middleware and a table — not a hunt
+through the codebase.
+
 `core.audit_log` is append-only and has **no** hash chain in v1. §10.2 q8
 records that the audit triggers were written and never run because they touch
 money write paths; here they are in scope from the start, on the one write

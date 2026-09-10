@@ -451,3 +451,41 @@ converts blanks to null deliberately.
 **Verified**: UD SINAR ABADI starts with no contact, the form fills PIC, phone,
 address and both accounts, the second-account warning appears once there are
 two, and it survives a reload.
+
+## F10 · 2026-09-11 · the audit question, answered by counting
+
+**The owner asked** whether change/login/activity logging for the IT module
+needs to be in the schema and API from the start, or can be skipped for now.
+
+**Counted rather than guessed.** Of 23 mutating functions across the four
+services, 21 already wrote an audit row in the same `apply()` as the change.
+The two that did not were `identity.actAs` — the demo's sign-in, so precisely
+the login event in question — and `syncRound`, a sweep that creates rows with
+no person behind it. Both now do.
+
+**Why that settles it.** The expensive half of auditing was never the table.
+A table can be added by a migration on any Tuesday. The expensive half is the
+*seam*: the guarantee that a business row cannot be written without its audit
+row. Retrofitting that means finding every write path and hoping none was
+missed — and the number of write paths only grows. That seam exists, and it is
+in the definition of done, so it keeps existing.
+
+**What genuinely can wait, and why it is cheap later:**
+
+- **The IT screens.** They read the trail; they do not produce it.
+- **Hash chaining.** A property of the table, addable in place.
+- **Read-access logging** — who looked at a salary, who opened the ledger. This
+  is the one with a real cost: it grows without bound, it fires on every
+  request rather than every change, and its retention is a policy the owner has
+  to set. It is middleware, not schema, so deferring it costs a middleware and
+  a table later, not a rewrite.
+
+**One thing we did not default** (Q22): how long the access log is kept and who
+may read it. Every other open question in this plan carries a default so work
+never blocks. This one does not, deliberately — a log of who read what is a
+surveillance decision, and picking a default quietly is how such a decision
+gets made by accident rather than chosen.
+
+**What surprised us.** The answer was already in the code and nobody had asked
+it that way. "Is auditing built?" is unanswerable in the abstract; "how many of
+our writes are audited?" takes one script and returns 21 of 23.

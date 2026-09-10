@@ -426,6 +426,12 @@ export async function syncRound(): Promise<Result<RoundView>> {
       });
       added += 1;
     }
+    if (added > 0) {
+      writeAudit(draft, {
+        service: SERVICE, entity: "payment_round", entity_no: roundId,
+        action: "sync", outcome: "ok", reason: `${added} line(s) rolled in`,
+      });
+    }
   });
 
   const view = roundView(roundId)!;

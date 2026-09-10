@@ -38,7 +38,15 @@ export async function actAs(userId: string): Promise<Result<Session>> {
   const user = getState().users.find((u) => u.id === userId);
   if (!user) return notFound(SERVICE, "user_not_found", "User not found.");
   apply((draft) => {
+    /* In Phase 1 this is "act as"; in Phase 2 it is a sign-in. Either way it is
+     * a recorded fact: an access trail with no session events cannot answer
+     * "who was in the system at the time", which is usually the first question
+     * anyone asks it. */
     draft.session_user_id = userId;
+    writeAudit(draft, {
+      service: SERVICE, entity: "session", entity_no: user.email,
+      action: "sign_in", outcome: "ok", reason: "demo act-as",
+    });
   });
   return ok(SERVICE, toSession(user));
 }

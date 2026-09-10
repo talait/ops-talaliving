@@ -59,6 +59,7 @@ export const NAV: NavSection[] = [
       { label: "Purchase Order", href: "/procurement/po", icon: FileText, permission: "procurement.read" },
       { label: "Receiving Report", href: "/procurement/penerimaan", icon: PackageCheck, permission: "procurement.read" },
       { label: "Suppliers", href: "/procurement/supplier", icon: Truck, permission: "procurement.read" },
+      { label: "Catalogue", href: "/procurement/catalog", icon: Boxes, permission: "procurement.read" },
     ],
   },
   {

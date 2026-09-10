@@ -4,6 +4,7 @@ import type {
   Vendor, Item, Uom, Project, ItemCategory,
   PrDocument, PrLine, PrLineView, PaymentRound, RoundSummary,
   PurchaseOrder, PoLine, PoStatusView, Receipt, ReceiptCondition, PrCategory, UomCode,
+  VendorView, ItemView,
 } from "@/services/procurement/contracts";
 import { PROBLEM_CONDITIONS } from "@/services/procurement/contracts";
 import { LOCALE } from "@/lib/format";
@@ -633,4 +634,170 @@ export async function createReceipt(
   const result = { receipt, notified };
   remember(SERVICE, endpoint, idempotencyKey, result);
   return ok(SERVICE, result);
+}
+
+/* ------------------------------------------------------------------ */
+/* Reference data — curation                                           */
+/* ------------------------------------------------------------------ */
+
+function vendorView(state: ReturnType<typeof getState>, v: Vendor): VendorView {
+  const absorbed = state.vendors.filter((x) => x.merged_into === v.id);
+  const ids = new Set([v.id, ...absorbed.map((a) => a.id)]);
+  const trx = state.transactions.filter((t) => t.vendor_id && ids.has(t.vendor_id) && t.status !== "VOID");
+  return {
+    ...v,
+    transaction_count: trx.length,
+    total_spend: trx.filter((t) => t.direction === "OUT").reduce((s, t) => s + t.amount_idr, 0),
+    last_purchase: trx.map((t) => t.trx_date).sort().pop() ?? null,
+    open_pr_lines: state.pr_lines.filter((l) => l.vendor_id && ids.has(l.vendor_id) && !l.removed_at).length,
+    absorbed,
+  };
+}
+
+export async function listVendorViews(opts: { q?: string } = {}): Promise<Result<VendorView[]>> {
+  await latency();
+  const state = getState();
+  let rows = state.vendors.filter((v) => !v.merged_into);
+  if (opts.q) {
+    const q = opts.q.toLowerCase();
+    rows = rows.filter((v) => v.name.toLowerCase().includes(q) || v.aka.some((a) => a.toLowerCase().includes(q)));
+  }
+  return ok(SERVICE, rows.map((v) => vendorView(state, v)));
+}
+
+export async function getVendor(id: string): Promise<Result<VendorView>> {
+  await latency();
+  const state = getState();
+  const v = state.vendors.find((x) => x.id === id);
+  if (!v) return notFound(SERVICE, "vendor_not_found", "Vendor not found.");
+  return ok(SERVICE, vendorView(state, v));
+}
+
+/** Promote to curated: it now appears in dropdowns and in the extractor's list
+ *  of names it may treat as canonical. Deliberately a human act — auto-curating
+ *  would feed every spelling variant in as if it were the real name. */
+export async function curateVendor(id: string, curated: boolean): Promise<Result<VendorView>> {
+  await latency();
+  const v = getState().vendors.find((x) => x.id === id);
+  if (!v) return notFound(SERVICE, "vendor_not_found", "Vendor not found.");
+  if (v.is_curated === curated) {
+    return conflict(SERVICE, "already_set", `Already ${curated ? "curated" : "uncurated"} — nothing changed.`);
+  }
+  apply((draft) => {
+    draft.vendors.find((x) => x.id === id)!.is_curated = curated;
+    writeAudit(draft, { service: SERVICE, entity: "vendor", entity_no: v.code, action: curated ? "curate" : "uncurate", outcome: "ok", reason: null });
+  });
+  return ok(SERVICE, vendorView(getState(), getState().vendors.find((x) => x.id === id)!));
+}
+
+/** Merge a duplicate spelling into the real vendor.
+ *
+ *  The absorbed row is KEPT and marked, never deleted: every transaction that
+ *  pointed at it still points at it, so history does not move when somebody
+ *  corrects a name years later (D4). Readers follow `merged_into`.
+ *
+ *  Only ever a human decision. Two spellings differing by nothing but spacing
+ *  are one thing; two differing by a WORD are a question, and the answer is
+ *  not the machine's.
+ */
+export async function mergeVendor(loserId: string, winnerId: string): Promise<Result<VendorView>> {
+  await latency();
+  const state = getState();
+  const loser = state.vendors.find((v) => v.id === loserId);
+  const winner = state.vendors.find((v) => v.id === winnerId);
+  if (!loser || !winner) return notFound(SERVICE, "vendor_not_found", "Vendor not found.");
+  if (loserId === winnerId) return invalid(SERVICE, "same_vendor", "A vendor cannot be merged into itself.", { field: "winner" });
+  if (loser.merged_into) return conflict(SERVICE, "already_merged", `${loser.name} has already been merged.`);
+
+  apply((draft) => {
+    const l = draft.vendors.find((v) => v.id === loserId)!;
+    const w = draft.vendors.find((v) => v.id === winnerId)!;
+    l.merged_into = winnerId;
+    for (const spelling of [l.name, ...l.aka]) {
+      if (!w.aka.includes(spelling) && spelling !== w.name) w.aka.push(spelling);
+    }
+    writeAudit(draft, { service: SERVICE, entity: "vendor", entity_no: l.code, action: "merge", outcome: "ok", reason: `into ${w.name}` });
+    writeOutbox(draft, { service: SERVICE, event_type: "procurement.vendor.merged", payload: { loser: l.name, winner: w.name } });
+  });
+  return ok(SERVICE, vendorView(getState(), getState().vendors.find((v) => v.id === winnerId)!));
+}
+
+function itemView(state: ReturnType<typeof getState>, i: Item): ItemView {
+  return {
+    ...i,
+    category_name: state.item_categories.find((c) => c.code === i.category_code)?.name ?? i.category_code,
+    last_vendor_name: state.vendors.find((v) => v.id === i.last_vendor_id)?.name ?? null,
+    suggested_price: i.standard_price ?? i.last_price,
+    purchase_count: state.transaction_lines.filter((l) => l.item_id === i.id).length
+      + state.pr_lines.filter((l) => l.item_id === i.id).length,
+  };
+}
+
+export async function listItemViews(opts: { q?: string; category?: string } = {}): Promise<Result<ItemView[]>> {
+  await latency();
+  const state = getState();
+  let rows = state.items.filter((i) => !i.merged_into);
+  if (opts.q) {
+    const q = opts.q.toLowerCase();
+    rows = rows.filter((i) => i.name.toLowerCase().includes(q) || i.code.toLowerCase().includes(q));
+  }
+  if (opts.category) rows = rows.filter((i) => i.category_code === opts.category);
+  return ok(SERVICE, rows.map((i) => itemView(state, i)));
+}
+
+export async function createItem(
+  input: { name: string; base_uom: UomCode; category_code?: string; kind?: "goods" | "service" },
+  idempotencyKey?: string,
+): Promise<Result<ItemView>> {
+  await latency();
+  const cached = replayed<ItemView>(SERVICE, "createItem", idempotencyKey);
+  if (cached) return cached;
+
+  const name = input.name.trim();
+  if (!name) return invalid(SERVICE, "name_required", "Item name is required.", { field: "name" });
+  const existing = getState().items.find((i) => i.name.toLowerCase() === name.toLowerCase());
+  if (existing) return conflict(SERVICE, "item_exists", `"${existing.name}" already exists — nothing changed.`, { item_id: existing.id });
+
+  const item: Item = {
+    id: newId("itm"),
+    code: `ITM-${String(getState().items.length + 1).padStart(4, "0")}`,
+    name, aka: [], category_code: input.category_code ?? "uncurated",
+    base_uom: input.base_uom, kind: input.kind ?? "goods",
+    /* Born uncurated: recorded, visible here, and absent from dropdowns until
+     * a human says it is a real catalogue entry. */
+    is_curated: false,
+    standard_price: null, last_price: null, last_vendor_id: null, last_purchased_at: null,
+    merged_into: null,
+  };
+  apply((draft) => {
+    draft.items.push(item);
+    writeAudit(draft, { service: SERVICE, entity: "item", entity_no: item.code, action: "create", outcome: "ok", reason: null });
+  });
+  const view = itemView(getState(), item);
+  remember(SERVICE, "createItem", idempotencyKey, view);
+  return ok(SERVICE, view);
+}
+
+export async function curateItem(
+  id: string,
+  input: { curated: boolean; category_code?: string; standard_price?: number | null },
+): Promise<Result<ItemView>> {
+  await latency();
+  const item = getState().items.find((i) => i.id === id);
+  if (!item) return notFound(SERVICE, "item_not_found", "Item not found.");
+  if (input.standard_price != null && input.standard_price < 0) {
+    return invalid(SERVICE, "price_negative", "A standard price cannot be negative.", { field: "standard_price" });
+  }
+  apply((draft) => {
+    const i = draft.items.find((x) => x.id === id)!;
+    i.is_curated = input.curated;
+    if (input.category_code) i.category_code = input.category_code;
+    /* `standard_price` is the curated price and is only ever set by a person.
+     * `last_price` is a trace of what was actually paid and is never edited
+     * here — conflating them is how a one-off panic purchase becomes the
+     * official price. */
+    if (input.standard_price !== undefined) i.standard_price = input.standard_price;
+    writeAudit(draft, { service: SERVICE, entity: "item", entity_no: i.code, action: "curate", outcome: "ok", reason: null });
+  });
+  return ok(SERVICE, itemView(getState(), getState().items.find((i) => i.id === id)!));
 }

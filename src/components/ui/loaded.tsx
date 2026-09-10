@@ -1,0 +1,106 @@
+"use client";
+
+import React from "react";
+import { AlertTriangle, RefreshCw } from "lucide-react";
+import { Button } from "./primitives";
+import { cn } from "@/lib/cn";
+import type { ApiError } from "@/services/_shared/envelope";
+
+/** A load, carried as a value.
+ *
+ *  Taken from the one thing the old system's own review said was worth keeping:
+ *  a failure is a value with a visible badge, never a blank table pretending to
+ *  be an empty one. The difference matters — "there are no vendors" and "we
+ *  could not ask" look identical otherwise, and only one of them is a reason to
+ *  stop working.
+ */
+export type LoadState<T> =
+  | { status: "loading" }
+  | { status: "ready"; data: T }
+  | { status: "failed"; error: ApiError };
+
+export function SourceBadge({ state }: { state: LoadState<unknown> }) {
+  const map = {
+    loading: { label: "loading", cls: "bg-slate-100 text-slate-500 ring-slate-200" },
+    ready: { label: "live", cls: "bg-emerald-50 text-emerald-700 ring-emerald-200" },
+    failed: { label: "failed", cls: "bg-rose-50 text-rose-700 ring-rose-200" },
+  }[state.status];
+  return (
+    <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ring-1 ring-inset", map.cls)}>
+      <span className="h-1 w-1 rounded-full bg-current opacity-70" />
+      {map.label}
+    </span>
+  );
+}
+
+export function Loaded<T>({
+  state,
+  children,
+  onRetry,
+  skeletonRows = 5,
+}: {
+  state: LoadState<T>;
+  children: (data: T) => React.ReactNode;
+  onRetry?: () => void;
+  skeletonRows?: number;
+}) {
+  if (state.status === "loading") {
+    return (
+      <div className="space-y-2 px-5 py-4" aria-busy="true">
+        {Array.from({ length: skeletonRows }).map((_, i) => (
+          <div key={i} className="h-9 animate-pulse rounded-lg bg-slate-100" />
+        ))}
+      </div>
+    );
+  }
+
+  if (state.status === "failed") {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 px-6 py-12 text-center">
+        <span className="flex h-11 w-11 items-center justify-center rounded-full bg-rose-50 text-rose-600">
+          <AlertTriangle className="h-5 w-5" />
+        </span>
+        <div>
+          <p className="text-sm font-semibold text-slate-700">Could not load this</p>
+          {/* The message the service gave, verbatim. A refusal a person cannot
+              read is a refusal they will report as a mystery. */}
+          <p className="mt-1 max-w-sm text-sm text-slate-500">{state.error.message}</p>
+          <p className="mt-1 font-mono text-[11px] text-slate-400">
+            {state.error.status} {state.error.code}
+          </p>
+        </div>
+        {onRetry && (
+          <Button variant="outline" size="sm" icon={RefreshCw} onClick={onRetry}>
+            Try again
+          </Button>
+        )}
+      </div>
+    );
+  }
+
+  return <>{children(state.data)}</>;
+}
+
+/** Turns a service call into a `LoadState`. One line per screen, so no screen
+ *  invents its own loading convention. */
+export function useLoad<T>(
+  run: () => Promise<{ data?: T; error?: ApiError }>,
+  deps: React.DependencyList,
+): [LoadState<T>, () => void] {
+  const [state, setState] = React.useState<LoadState<T>>({ status: "loading" });
+  const [tick, setTick] = React.useState(0);
+
+  React.useEffect(() => {
+    let alive = true;
+    setState({ status: "loading" });
+    void run().then((res) => {
+      if (!alive) return;
+      if (res.error) setState({ status: "failed", error: res.error });
+      else setState({ status: "ready", data: res.data as T });
+    });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [...deps, tick]);
+
+  return [state, () => setTick((t) => t + 1)];
+}

@@ -321,3 +321,51 @@ confidence from reading the component.
 no real system should. It is a demo affordance and goes with the demo layer;
 in Phase 2 granting access is somebody else's decision and rightly not
 self-serve.
+
+## F7 · 2026-09-11 · M3 — curation, and a question merging asked
+
+**1. Merging a vendor asked a schema question the plan had anticipated but not
+answered.** `02-database.md` gave vendors a real foreign key (D4) and noted, in
+passing, that history sometimes needs a `*_name_at_time` snapshot. Building the
+merge is what made that concrete: with a real FK there are only two options,
+and both cost something.
+
+- *Repoint* every reference to the winner — and a transaction from August now
+  says a name nobody used in August.
+- *Keep* the absorbed row and mark it — history stays put, but the row lingers.
+
+We keep the row (D41). It is the option that does not rewrite the past, and the
+recap is explicit that vendor text in the ledger is never changed. What it
+still cannot answer is **which spelling the document actually showed** — that
+needs the snapshot column, and it is now a real question rather than a
+footnote.
+
+**2. Two prices had to be visibly two things.** `standard_price` and
+`last_price` were already separate columns, and separate columns are invisible.
+Side by side, each with its own caption — "Curated. Never written
+automatically" against "CV SUMBER KAYU JATI, 2026-08-24" — the distinction
+finally reads. The drawer then says out loud what a form would prefill and
+why. That sentence is doing more work than the schema comment ever did.
+
+**3. Half of the curation rule cannot be proved yet.** "Uncurated things are
+shown and marked" is demonstrable here and verified: 12 vendors, 3 marked, and
+a newly typed vendor arrives uncurated. "…and absent from dropdowns" needs a
+dropdown, which arrives with the PR form at M4. Asserted here, proved there —
+worth noting so nobody assumes it was checked.
+
+**4. A vendor with no transactions is not missing data.** CV SUMBER KAYU JATI
+shows zero spend, because its PR lines are approved and sitting in an open
+payment round — nothing has been paid yet. Correct, and it looked like a bug
+for a moment. A screen that reports money will keep producing this shape, and
+"no money yet" and "no data" need to stay distinguishable.
+
+**5. `<Loaded>` earned its place a milestone early.** Both screens needed to
+answer "could not load" on the day they were written, and `useLoad` means
+neither invented its own convention. The failure state shows the service's own
+message plus its status and code — a refusal nobody can read is one that gets
+reported as a mystery.
+
+**What surprised us.** The most useful thing on either screen is a sentence,
+not a control: the amber panel explaining *why* something is uncurated. The
+rule was already in the code and in three documents; it had never been said to
+the person looking at the row.

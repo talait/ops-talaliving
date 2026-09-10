@@ -87,7 +87,13 @@ export interface Vendor {
   id: string;
   code: string;
   name: string;
+  /** Spellings absorbed by a merge. They keep the extractor able to recognise
+   *  what people actually write. */
   aka: string[];
+  /** Set when this row was merged into another. The row is KEPT: every
+   *  transaction that referenced it still does, so history does not move when
+   *  a name is later corrected (D4). Readers follow the pointer. */
+  merged_into?: string | null;
   /** false means RECORDED BUT NOT YET CURATED — visible in lists, absent from
    *  dropdowns. A name a human types is always accepted (owner, 2026-08-05). */
   is_curated: boolean;
@@ -124,6 +130,7 @@ export interface Item {
   code: string;
   name: string;
   aka: string[];
+  merged_into?: string | null;
   category_code: string;
   base_uom: UomCode;
   kind: ItemKind;
@@ -318,6 +325,24 @@ export interface RoundSummary {
 
 /** What the approval queue and the PR list hand a screen: the line, plus
  *  everything derived from it, in one object so nothing is recomputed twice. */
+/** A vendor with what we have actually bought from it. */
+export interface VendorView extends Vendor {
+  transaction_count: number;
+  total_spend: number;
+  last_purchase: string | null;
+  open_pr_lines: number;
+  absorbed: Vendor[];
+}
+
+export interface ItemView extends Item {
+  category_name: string;
+  last_vendor_name: string | null;
+  /** What a form would prefill: the curated price if there is one, otherwise
+   *  the last price paid. A hint, never a price list. */
+  suggested_price: number | null;
+  purchase_count: number;
+}
+
 export interface PrLineView extends PrLine {
   status: LineStatus;
   coverage: LineCoverage;

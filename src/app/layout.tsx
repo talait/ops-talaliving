@@ -8,7 +8,7 @@ import { DemoProvider } from "@/demo/provider";
 
 export const metadata: Metadata = {
   title: BRAND.documentTitle,
-  description: "Internal operations system for furniture manufacturing.",
+  description: "PT Talahome — internal operations.",
 };
 
 export const viewport: Viewport = {

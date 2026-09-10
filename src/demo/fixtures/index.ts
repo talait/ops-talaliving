@@ -6,6 +6,7 @@ import {
 import {
   PR_DOCUMENTS, PR_LINES, PR_APPROVALS, PAYMENT_ROUNDS, PAYMENT_ROUND_LINES,
   RECEIPTS, PURCHASE_ORDERS, PO_LINES, PO_SCHEDULE,
+  LINE_VARIANCES, LINE_SETTLEMENTS,
 } from "./pr";
 import {
   TRANSACTIONS, TRANSACTION_LINES, PAYMENT_ALLOCATIONS, EVIDENCE_INBOX,
@@ -34,7 +35,8 @@ export function initialState(): DemoState {
     payment_rounds: PAYMENT_ROUNDS,
     payment_round_lines: PAYMENT_ROUND_LINES,
     receipts: RECEIPTS,
-    line_settlements: [],
+    line_settlements: LINE_SETTLEMENTS,
+    line_variances: LINE_VARIANCES,
 
     purchase_orders: PURCHASE_ORDERS,
     po_lines: PO_LINES,

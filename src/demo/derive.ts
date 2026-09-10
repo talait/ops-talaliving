@@ -15,6 +15,7 @@ import type {
   PrLine, PrApproval, LineStatus, LineCoverage, PrLineView,
   PoStatusView, RoundSummary, PaymentRound,
   PurchaseFact, CategoryCount, VendorItemSummary, ItemSource, MeetingState,
+  VarianceView,
 } from "@/services/procurement/contracts";
 import { COUNTING_CONDITIONS, PROBLEM_CONDITIONS } from "@/services/procurement/contracts";
 import type {
@@ -203,6 +204,42 @@ export function meetingState(state: DemoState, line: PrLine): MeetingState {
   return "neither";
 }
 
+/** Three numbers that are allowed to differ, and the two gaps between them.
+ *
+ *  requested → approved is a DECISION: the CEO cut it, and money may only
+ *  shrink on the way through approval (A8). That is not a variance and is not
+ *  reported as one.
+ *
+ *  approved → paid is the gap leadership is asking about: money that moved is
+ *  not money that was authorised. Under means still owed, or settled cheaper.
+ *  Over means money left beyond the yes — which is the direction that matters,
+ *  and the one a "paid" flag would have hidden entirely.
+ */
+export function varianceOf(state: DemoState, line: PrLine): VarianceView {
+  const approval = currentApproval(state, line.id);
+  const cov = lineCoverage(state, line);
+  const approved = approval?.approved ? approval.approved_amount ?? line.item_total : line.item_total;
+  const paid = cov.covered;
+  const delta = paid - approved;
+
+  const explanation = state.line_variances
+    .filter((v) => v.line_id === line.id)
+    .sort((a, b) => a.recorded_at.localeCompare(b.recorded_at))
+    .pop() ?? null;
+
+  return {
+    requested: line.item_total,
+    approved,
+    paid,
+    delta,
+    kind: delta === 0 ? "none" : delta > 0 ? "over" : "under",
+    /* Below the tolerance it is rounding, not a variance. Reporting arithmetic
+     * as an exception is how people learn to ignore exceptions. */
+    material: paid > 0 && Math.abs(delta) > PAYMENT_TOLERANCE_IDR,
+    explanation,
+  };
+}
+
 export function prLineView(state: DemoState, line: PrLine): PrLineView {
   const doc = state.pr_documents.find((d) => d.id === line.doc_id);
   const vendor = state.vendors.find((v) => v.id === line.vendor_id);
@@ -227,6 +264,8 @@ export function prLineView(state: DemoState, line: PrLine): PrLineView {
     has_problem_receipt: hasProblemReceipt(state, line),
     evidence_count: links.length,
     has_payment_proof: kinds.has("Payment Proof"),
+    variance: varianceOf(state, line),
+    trx_nos: fundingTransactions(state, line.line_no_full).map((t) => t.trx_no),
   };
 }
 
@@ -247,7 +286,11 @@ export function openLines(state: DemoState): PrLineView[] {
       return !line.removed_at;
     })
     .map((line) => prLineView(state, line))
-    .filter((l) => l.status !== "COMPLETED")
+    /* A line that paid more than was approved and carries nobody's explanation
+     * is not finished, whatever its status ladder says. Letting it drop off
+     * the board because the goods arrived is precisely how an overpayment
+     * stops being anyone's problem. */
+    .filter((l) => l.status !== "COMPLETED" || (l.variance.material && !l.variance.explanation))
     .sort((a, b) => (b.submitted_at ?? "").localeCompare(a.submitted_at ?? ""));
 }
 

@@ -56,6 +56,7 @@ Update the row, the date, and the note **in the same commit** as the work.
 | M2 | Demo session: multi-module grants + four authorities | D2 | DONE | 2026-09-11 | grant picker; menu filtering verified in a browser |
 | M3 | Reference data: vendors, items, projects | D3 | DONE | 2026-09-11 | curation, merge, two-price model; verified in a browser |
 | M4 | Requests board: line-first, four meeting states, evidence | D4 | DONE | 2026-09-11 | redefined per owner — line is the unit (D48) |
+| M4b | Approved-against-paid: variance, explanation, pay-from-line | D4 | DONE | 2026-09-11 | D53–D57. Posting a payment from a line writes the ledger row (D32 delivered early) |
 | M5 | PR: the standing approval queue (CEO), approval trail | D5 | TODO | — | D19–D21 |
 | M6 | Payment rounds: sync, approve, transfer, close | D6 | TODO | — | |
 | M7 | **Checkpoint: walk Flow B on a phone, with the team** | D7 | TODO | — | week-1 review |

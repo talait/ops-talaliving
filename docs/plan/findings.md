@@ -582,3 +582,44 @@ fields.
 auto table layout: the purpose text ran straight through the Vendor column.
 The constraint has to sit on an element *inside* the cell. Fits exactly at
 1280 now.
+
+## F13 — "Why is the paid amount not the approved amount?" is a question about patterns, not events
+
+The owner asked what the application should say when leadership sees that a
+request for Rp 10.080.000 was paid as Rp 9.500.000: why, how much, whose
+mistake, and what the balance is.
+
+Three of those four the application can answer exactly. **How much** is
+arithmetic it already had. **Why** is a sentence a human writes, and the app's
+only job is to refuse to let the line close without one. **The balance** is
+the same subtraction, stated in the direction that matters: money paid beyond
+a yes is owed back, money not paid is either still owed or was never spent.
+
+**Whose mistake it was, it cannot answer, and a field claiming to would be
+believed.** No system can see from the outside whether Rp 225.000 was a typo,
+a vendor raising a price, or somebody paying without looking. So the model
+does not carry blame. It carries a closed list of seven kinds, so the kinds
+can be counted — and counting is where the owner's real question gets
+answered. One Rp 200.000 gap is noise. Twelve tagged *vendor price differed*
+against one supplier is a supplier who quotes badly. Six tagged *entered
+wrongly* by one person is a training problem. The application cannot judge one
+event; it can make a pattern impossible to miss.
+
+Two consequences fell out of building it:
+
+1. **The explanation is also the settlement.** A shortfall explained as
+   anything other than "paid in parts" is a decision that the line is done
+   cheaper — which is the `line_settlements` row A12 already asked for. One
+   act, not two, and no line sits at "Rp 580.000 still owed" forever because
+   nobody knew where the button was.
+2. **A COMPLETED line can still owe an answer.** The status ladder said the
+   sandpaper line was finished: approved, paid, received. It had also paid
+   Rp 225.000 more than was approved. The board now keeps such a line visible
+   until somebody explains it — the ladder describes the goods, not the money.
+
+**A process note, and a wasted twenty minutes.** The first browser check
+showed no variances at all. Nothing was wrong with the code: a `next start`
+from an earlier session still held port 3100 and was serving a build made
+before the change. Checking `ps` before believing a screen costs five seconds;
+believing it cost twenty minutes of reading correct code.
+

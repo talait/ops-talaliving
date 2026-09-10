@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import {
-  ClipboardList, Plus, CheckCircle2, Clock, AlertTriangle, Circle, FileText,
+  ClipboardList, Plus, CheckCircle2, Clock, AlertTriangle, Circle, FileText, Scale,
 } from "lucide-react";
 import { Button, Card, CardHeader, PageHeader } from "@/components/ui/primitives";
 import { DataTable, type Column } from "@/components/ui/data-table";
@@ -13,7 +13,8 @@ import { formatIDR, formatNumber } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { procurement } from "@/demo/api";
 import {
-  MEETING_STATE_LABEL, type PrLineView, type MeetingState,
+  MEETING_STATE_LABEL, VARIANCE_REASON_LABEL,
+  type PrLineView, type MeetingState, type VarianceReason,
 } from "@/services/procurement/contracts";
 import { useToast } from "@/store/toast";
 import { useSession } from "@/store/session";
@@ -48,16 +49,22 @@ export default function RequestsBoardPage() {
   const [q, setQ] = useState("");
   const [stateFilter, setStateFilter] = useState<MeetingState | "">("");
   const [showSettled, setShowSettled] = useState(false);
+  const [varianceOnly, setVarianceOnly] = useState(false);
   const [selected, setSelected] = useState<PrLineView | null>(null);
 
   const [lines, reload] = useLoad(
     () => (showSettled ? procurement.listAllLines() : procurement.listOpenLines()),
     [showSettled],
   );
+  /* Loaded apart from the board because a difference outlives the line: the
+     plywood that closed Rp 180.000 cheaper is off the open board and still
+     part of the answer to "does this keep happening". */
+  const [variances, reloadVariances] = useLoad(() => procurement.listVariances(), []);
   const mayEdit = can("procurement.create");
 
   function matches(l: PrLineView) {
     if (stateFilter && l.meeting_state !== stateFilter) return false;
+    if (varianceOnly && !l.variance.material) return false;
     if (!q) return true;
     const n = q.toLowerCase();
     return l.description.toLowerCase().includes(n)
@@ -73,6 +80,7 @@ export default function RequestsBoardPage() {
     toast("success", "Removed", `${l.line_no_full} is no longer needed.`);
     setSelected(null);
     reload();
+    reloadVariances();
   }
 
   const columns: Column<PrLineView>[] = [
@@ -123,6 +131,18 @@ export default function RequestsBoardPage() {
           {l.approval?.approved && l.approval.approved_amount !== l.item_total && (
             <p className="text-[11px] text-brand-700">approved {formatIDR(l.approval.approved_amount ?? 0)}</p>
           )}
+          {/* The number leadership asks for, on the row rather than one click
+              away: not what we asked, what actually left the bank. */}
+          {l.variance.material && (
+            <p className={cn(
+              "whitespace-nowrap text-[11px] font-medium",
+              l.variance.kind === "over" ? "text-rose-600" : "text-amber-700",
+            )}>
+              paid {formatIDR(l.variance.paid)} · {l.variance.kind === "over" ? "+" : "−"}
+              {formatIDR(Math.abs(l.variance.delta))}
+              {!l.variance.explanation && " · unexplained"}
+            </p>
+          )}
         </div>
       ),
     },
@@ -134,6 +154,11 @@ export default function RequestsBoardPage() {
           <StatusPill kind="line" status={l.status} />
           {l.coverage.covered > 0 && !l.coverage.settled && (
             <p className="text-[11px] text-slate-500">{formatIDR(l.coverage.remaining)} still owed</p>
+          )}
+          {/* A line can be COMPLETED and still owe an answer, so the ladder
+              alone would read "finished" over an unexplained overpayment. */}
+          {l.variance.material && !l.variance.explanation && (
+            <p className="text-[11px] font-medium text-rose-600">needs an explanation</p>
           )}
         </div>
       ),
@@ -166,7 +191,12 @@ export default function RequestsBoardPage() {
             state: s,
             rows: all.filter((l) => l.meeting_state === s),
           }));
-          const rows = all.filter(matches);
+          /* When the filter is on the rows come from the variance list itself,
+             not from the board: a difference on a line that closed months ago
+             is still a difference, and it would not survive a filter over
+             what is merely open. */
+          const source = varianceOnly && variances.status === "ready" ? variances.data : all;
+          const rows = source.filter(matches);
           return (
             <>
               {/* The four questions a leadership meeting actually asks, in the
@@ -198,6 +228,12 @@ export default function RequestsBoardPage() {
                 })}
               </div>
 
+              <VarianceStrip
+                rows={variances.status === "ready" ? variances.data : []}
+                active={varianceOnly}
+                onToggle={() => setVarianceOnly((v) => !v)}
+              />
+
               {counts.find((c) => c.state === "paid_unapproved")!.rows.length > 0 && (
                 <div className="mb-5 flex items-start gap-3 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3">
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" />
@@ -212,7 +248,10 @@ export default function RequestsBoardPage() {
 
               <Card>
                 <CardHeader
-                  title={stateFilter ? MEETING_STATE_LABEL[stateFilter] : "All open items"}
+                  title={
+                    varianceOnly ? "Paid ≠ approved"
+                      : stateFilter ? MEETING_STATE_LABEL[stateFilter] : "All open items"
+                  }
                   subtitle="One row per item, not per document. An item from last month's submission sits beside one from today, because that is how it will be discussed."
                   icon={ClipboardList}
                   action={
@@ -254,9 +293,96 @@ export default function RequestsBoardPage() {
       <LineDrawer
         line={selected}
         onClose={() => setSelected(null)}
-        onChanged={(l) => { setSelected(l); reload(); }}
+        onChanged={(l) => { setSelected(l); reload(); reloadVariances(); }}
         onRemove={removeLine}
       />
+    </div>
+  );
+}
+
+/** The difference between what leadership approved and what the bank actually
+ *  paid, summed and counted by kind.
+ *
+ *  The application will not tell you whether one gap was an input error or a
+ *  staff error — it cannot know, and a field that guesses gets believed. What
+ *  it can do is count the kinds honestly: one gap of Rp 200.000 is noise,
+ *  twelve of them tagged "vendor price differed" against the same supplier is
+ *  a supplier who quotes badly, and six tagged "entered wrongly" by the same
+ *  person is a training problem. One event is unknowable; a pattern is not.
+ */
+function VarianceStrip({
+  rows, active, onToggle,
+}: {
+  rows: PrLineView[];
+  active: boolean;
+  onToggle: () => void;
+}) {
+  if (rows.length === 0) return null;
+
+  const over = rows.filter((l) => l.variance.kind === "over");
+  const under = rows.filter((l) => l.variance.kind === "under");
+  const unexplained = rows.filter((l) => !l.variance.explanation);
+  const overTotal = over.reduce((s, l) => s + l.variance.delta, 0);
+  const underTotal = under.reduce((s, l) => s + Math.abs(l.variance.delta), 0);
+
+  const byReason = new Map<VarianceReason, { n: number; total: number }>();
+  for (const l of rows) {
+    const r = l.variance.explanation?.reason;
+    if (!r) continue;
+    const cur = byReason.get(r) ?? { n: 0, total: 0 };
+    byReason.set(r, { n: cur.n + 1, total: cur.total + Math.abs(l.variance.delta) });
+  }
+
+  return (
+    <div className={cn(
+      "mb-5 rounded-xl border bg-white px-4 py-3.5 shadow-card",
+      active ? "border-brand-400 ring-2 ring-brand-100" : "border-slate-200",
+    )}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+            <Scale className="h-4 w-4 text-slate-500" />
+            Paid is not what was approved on {rows.length} item{rows.length > 1 ? "s" : ""}
+          </p>
+          <p className="mt-1 text-[13px] text-slate-600">
+            {over.length > 0 && (
+              <span className="text-rose-700">
+                {formatIDR(overTotal)} paid beyond approval on {over.length}
+              </span>
+            )}
+            {over.length > 0 && under.length > 0 && " · "}
+            {under.length > 0 && (
+              <span className="text-amber-700">
+                {formatIDR(underTotal)} under approval on {under.length}
+              </span>
+            )}
+            {unexplained.length > 0 && (
+              <span className="text-slate-700"> · {unexplained.length} still waiting for somebody to explain it</span>
+            )}
+          </p>
+        </div>
+        <Button variant={active ? "primary" : "outline"} size="sm" onClick={onToggle}>
+          {active ? "Show everything" : "Show only these"}
+        </Button>
+      </div>
+
+      {byReason.size > 0 && (
+        <ul className="mt-3 flex flex-wrap gap-2 border-t border-slate-100 pt-3">
+          {[...byReason.entries()]
+            .sort((a, b) => b[1].total - a[1].total)
+            .map(([reason, agg]) => (
+              <li key={reason} className="rounded-lg bg-slate-100 px-2.5 py-1 text-[12px] text-slate-700">
+                {VARIANCE_REASON_LABEL[reason]} · {agg.n} · {formatIDR(agg.total)}
+              </li>
+            ))}
+          {unexplained.length > 0 && (
+            <li className="rounded-lg bg-rose-50 px-2.5 py-1 text-[12px] font-medium text-rose-700">
+              Not explained · {unexplained.length} ·{" "}
+              {formatIDR(unexplained.reduce((s, l) => s + Math.abs(l.variance.delta), 0))}
+            </li>
+          )}
+        </ul>
+      )}
     </div>
   );
 }

@@ -2,7 +2,7 @@ import type { Session, User, ModuleGrant, Authority } from "@/services/identity/
 import type {
   Vendor, Uom, UomConversion, ItemCategory, Item, Project,
   PrDocument, PrLine, PrApproval, PaymentRound, PaymentRoundLine,
-  Receipt, LineSettlement, PurchaseOrder, PoLine, PoScheduleTerm,
+  Receipt, LineSettlement, PurchaseOrder, PoLine, PoScheduleTerm, LineVariance,
 } from "@/services/procurement/contracts";
 import type {
   Account, TransactionType, Transaction, TransactionLine,
@@ -62,6 +62,7 @@ export interface DemoState {
   payment_round_lines: PaymentRoundLine[];
   receipts: Receipt[];
   line_settlements: LineSettlement[];
+  line_variances: LineVariance[];
 
   purchase_orders: PurchaseOrder[];
   po_lines: PoLine[];

@@ -1,6 +1,7 @@
 import type {
   PrDocument, PrLine, PrApproval, PaymentRound, PaymentRoundLine, Receipt,
   PurchaseOrder, PoLine, PoScheduleTerm, PrCategory, UomCode,
+  LineVariance, LineSettlement,
 } from "@/services/procurement/contracts";
 import { itemIdByCode } from "./reference";
 
@@ -118,6 +119,31 @@ export const PR_APPROVALS: PrApproval[] = [
    * this at all; the trail carries it plainly. */
   { id: "apr_10", line_id: "prl_0403", step: "GOODS", approved: true, approved_qty: 2, approved_amount: 870_000, recorded_by: "usr_evin", recorded_by_email: "evin@talaliving.com", recorded_at: "2026-09-09T10:18:00+08:00", channel: "web" },
   { id: "apr_11", line_id: "prl_0403", step: "GOODS", approved: false, approved_qty: null, approved_amount: null, recorded_by: "usr_evin", recorded_by_email: "evin@talaliving.com", recorded_at: "2026-09-09T14:07:00+08:00", channel: "web" },
+];
+
+/* The plywood came in Rp 180.000 under the approved figure and Anggun said so
+ * on the day. The explanation is what closes the line: without it the line
+ * would sit at "Rp 180.000 still owed" forever, and a shortfall must close by
+ * a named reason rather than by a tolerance nobody set (A12).
+ *
+ * Nothing explains the sandpaper overpayment on purpose — that line is what
+ * the board is for. */
+export const LINE_VARIANCES: LineVariance[] = [
+  {
+    id: "var_01", line_id: "prl_0201", reason: "price_changed",
+    note: "Vendor dropped to Rp 287.500/lembar for the 40-sheet order.",
+    amount_at_time: -180_000,
+    recorded_by: "usr_anggun", recorded_by_email: "anggun@talaliving.com",
+    recorded_at: "2026-08-29T16:35:00+08:00",
+  },
+];
+
+export const LINE_SETTLEMENTS: LineSettlement[] = [
+  {
+    id: "stl_01", line_id: "prl_0201", shortfall: 180_000,
+    reason: "Vendor price differed from the quote — Vendor dropped to Rp 287.500/lembar for the 40-sheet order.",
+    decided_by: "usr_anggun", decided_at: "2026-08-29T16:35:00+08:00",
+  },
 ];
 
 export const PAYMENT_ROUNDS: PaymentRound[] = [

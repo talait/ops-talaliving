@@ -4,15 +4,16 @@ import type {
   Vendor, Item, Uom, Project, ItemCategory,
   PrDocument, PrLine, PrLineView, PaymentRound, RoundSummary,
   PurchaseOrder, PoLine, PoStatusView, Receipt, ReceiptCondition, PrCategory, UomCode,
-  VendorView, ItemView,
+  VendorView, ItemView, VarianceReason,
 } from "@/services/procurement/contracts";
 import type { PrLine as PrLineRow } from "@/services/procurement/contracts";
-import { PROBLEM_CONDITIONS } from "@/services/procurement/contracts";
+import { PROBLEM_CONDITIONS, VARIANCE_REASON_LABEL } from "@/services/procurement/contracts";
 import { LOCALE } from "@/lib/format";
 import { getState, apply, newId, nextDocNumber, writeAudit, writeOutbox } from "../store";
 import {
   prLineView, approvalQueue, lineCoverage, roundSummary, poStatus, isApproved,
   boughtCategories, itemsBoughtFrom, itemSources, purchaseFacts, openLines,
+  varianceOf, currentApproval,
 } from "../derive";
 import {
   latency, actingUser, requireAuthority, conflict, replayed, remember, paged,
@@ -961,4 +962,124 @@ export async function addDraftLine(docNo: string, input: NewLineInput): Promise<
     writeAudit(draft, { service: SERVICE, entity: "pr_line", entity_no: docNo, action: "add_draft_line", outcome: "ok", reason: null });
   });
   return ok(SERVICE, prLineView(getState(), getState().pr_lines.find((l) => l.id === newId_)!));
+}
+
+/* ------------------------------------------------------------------ */
+/* Variance                                                            */
+/* ------------------------------------------------------------------ */
+
+/** What accounting needs to post a ledger row from this line, without reaching
+ *  into procurement's tables. In Phase 2 this is
+ *  `GET /procurement/pr/lines/{line_no}` and the caller is a fetch (ADR-004). */
+export async function lineForPosting(lineNo: string): Promise<Result<{
+  line_no: string;
+  description: string;
+  approved_amount: number;
+  vendor_id: string | null;
+  project_id: string | null;
+  already_covered: number;
+  removed: boolean;
+}>> {
+  const state = getState();
+  const line = state.pr_lines.find((l) => l.line_no_full === lineNo);
+  if (!line) return notFound(SERVICE, "line_not_found", `Line ${lineNo} not found.`);
+  const doc = state.pr_documents.find((d) => d.id === line.doc_id);
+  const cov = lineCoverage(state, line);
+  const approval = currentApproval(state, line.id);
+  return ok(SERVICE, {
+    line_no: lineNo,
+    description: line.description,
+    approved_amount: approval?.approved ? approval.approved_amount ?? line.item_total : line.item_total,
+    vendor_id: line.vendor_id,
+    project_id: doc?.project_id ?? null,
+    already_covered: cov.covered,
+    removed: !!line.removed_at,
+  });
+}
+
+/** Every line where what was paid is not what was approved, whether the line
+ *  is still open or long finished.
+ *
+ *  Deliberately not filtered to open lines: a difference does not stop being a
+ *  difference because the line closed, and the question leadership asks is
+ *  about the pattern across months, not about this week's board.
+ */
+export async function listVariances(): Promise<Result<PrLineView[]>> {
+  await latency();
+  const state = getState();
+  return ok(SERVICE, state.pr_lines
+    .filter((l) => {
+      const doc = state.pr_documents.find((d) => d.id === l.doc_id);
+      return doc && doc.status !== "CANCELLED" && doc.status !== "DRAFT" && !l.removed_at;
+    })
+    .map((l) => prLineView(state, l))
+    .filter((l) => l.variance.material)
+    .sort((a, b) => Math.abs(b.variance.delta) - Math.abs(a.variance.delta)));
+}
+
+/** Explain why what was paid is not what was approved.
+ *
+ *  Append-only: a correction is a new statement, not an edit of the old one.
+ *  The reason is from a closed list so the KINDS can be counted — one variance
+ *  tells you nothing, and a pattern tells you everything.
+ */
+export async function explainVariance(
+  input: { line_no: string; reason: VarianceReason; note?: string },
+  idempotencyKey?: string,
+): Promise<Result<PrLineView>> {
+  await latency();
+  const endpoint = `explainVariance:${input.line_no}`;
+  const cached = replayed<PrLineView>(SERVICE, endpoint, idempotencyKey);
+  if (cached) return cached;
+
+  const state = getState();
+  const line = state.pr_lines.find((l) => l.line_no_full === input.line_no);
+  if (!line) return notFound(SERVICE, "line_not_found", `Line ${input.line_no} not found.`);
+
+  const v = varianceOf(state, line);
+  if (!v.material) {
+    return conflict(
+      SERVICE, "no_variance",
+      "There is nothing to explain — what was paid matches what was approved, within rounding.",
+    );
+  }
+  if (input.reason === "other" && !input.note?.trim()) {
+    return invalid(SERVICE, "note_required", "“Something else” needs a sentence saying what.", { field: "note" });
+  }
+
+  const user = actingUser();
+  /* An underpayment explained by anything except "more to come" is a decision
+   * that the line is finished cheaper than approved. That decision is a
+   * settlement — the same row a human would otherwise have to write twice —
+   * so the explanation closes the line instead of leaving it owed forever
+   * (A12: a shortfall closes by a named reason, never by a silent tolerance). */
+  const settles = v.kind === "under" && input.reason !== "partial_payment";
+  apply((draft) => {
+    draft.line_variances.push({
+      id: newId("var"), line_id: line.id, reason: input.reason,
+      note: input.note?.trim() || null,
+      amount_at_time: v.delta,
+      recorded_by: user.id, recorded_by_email: user.email,
+      recorded_at: new Date().toISOString(),
+    });
+    if (settles && !draft.line_settlements.some((s) => s.line_id === line.id)) {
+      draft.line_settlements.push({
+        id: newId("stl"), line_id: line.id, shortfall: Math.abs(v.delta),
+        reason: `${VARIANCE_REASON_LABEL[input.reason]}${input.note?.trim() ? ` — ${input.note.trim()}` : ""}`,
+        decided_by: user.id, decided_at: new Date().toISOString(),
+      });
+    }
+    writeAudit(draft, {
+      service: SERVICE, entity: "pr_line", entity_no: input.line_no,
+      action: "explain_variance", outcome: "ok", reason: input.reason,
+    });
+    writeOutbox(draft, {
+      service: SERVICE, event_type: "procurement.variance.explained",
+      payload: { line_no: input.line_no, reason: input.reason, delta: v.delta },
+    });
+  });
+
+  const view = prLineView(getState(), getState().pr_lines.find((l) => l.id === line.id)!);
+  remember(SERVICE, endpoint, idempotencyKey, view);
+  return ok(SERVICE, view);
 }

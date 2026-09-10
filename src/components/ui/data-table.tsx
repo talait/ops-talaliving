@@ -62,7 +62,11 @@ export function DataTable<T>({
                 onClick={onRowClick ? () => onRowClick(row) : undefined}
                 className={cn(
                   "border-b border-slate-100 transition-colors last:border-0",
-                  onRowClick && "cursor-pointer hover:bg-brand-50/40",
+                  /* A clickable row has to look clickable before it is hovered and
+                     * change clearly when it is. `brand-50/40` was almost the same
+                     * colour as the row beside it, which on a 40-row board means
+                     * losing your place mid-scan. */
+                    onRowClick && "cursor-pointer hover:bg-slate-100",
                 )}
               >
                 {columns.map((col) => (

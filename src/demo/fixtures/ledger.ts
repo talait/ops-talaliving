@@ -23,7 +23,7 @@ type TrxSeed = [
 const TRX_SEEDS: TrxSeed[] = [
   ["trx-26-08-20_001", "2026-08-20", "acc_bca271", "IN", 29_100_000, "CASHFLOW", null, null, "Round funding pay-26-08-22_01, from BCA 064", "COMPLETED"],
   ["trx-26-08-20_002", "2026-08-20", "acc_bca064", "OUT", 29_100_000, "CASHFLOW", null, null, "Transfer to BCA 271 — weekly funding", "COMPLETED"],
-  ["trx-26-08-20_003", "2026-08-20", "acc_bca271", "OUT", 3_825_000, "SUPPLIERS", "vnd_07", "prj_25007", "AMPLAS 120 GRIT, 500 lembar", "COMPLETED"],
+  ["trx-26-08-20_003", "2026-08-20", "acc_bca271", "OUT", 4_050_000, "SUPPLIERS", "vnd_07", "prj_25007", "AMPLAS 120 GRIT, 500 lembar", "COMPLETED"],
   ["trx-26-08-20_004", "2026-08-20", "acc_bca271", "OUT", 6_500, "BANK CHARGES", null, null, "Transfer admin fee", "COMPLETED"],
   ["trx-26-08-21_001", "2026-08-21", "acc_bca271", "OUT", 5_550_000, "SUPPLIERS", "vnd_02", "prj_25007", "ENGSEL SENDOK HUBEN, 300 pcs", "POSTED"],
   ["trx-26-08-21_002", "2026-08-21", "acc_bca271", "OUT", 19_668_000, "PREPAID VENDOR", "vnd_08", "prj_25007", "30% deposit, veneer and HPL PO po-26-08-14_01", "POSTED"],
@@ -38,7 +38,7 @@ const TRX_SEEDS: TrxSeed[] = [
   ["trx-26-08-28_001", "2026-08-28", "acc_bni325", "OUT", 28_400_000, "RECCURING - PAYROLL", null, null, "Weekly payroll W35", "COMPLETED"],
   ["trx-26-08-29_001", "2026-08-29", "acc_bca271", "IN", 12_100_000, "CASHFLOW", null, null, "Round funding pay-26-08-31_01, from BCA 064", "COMPLETED"],
   ["trx-26-08-29_005", "2026-08-29", "acc_bca064", "OUT", 12_100_000, "CASHFLOW", null, null, "Transfer to BCA 271 — round funding", "COMPLETED"],
-  ["trx-26-08-29_002", "2026-08-29", "acc_bca271", "OUT", 11_680_000, "SUPPLIERS", "vnd_03", "prj_25004", "PLYWOOD 18MM, 40 lembar", "POSTED"],
+  ["trx-26-08-29_002", "2026-08-29", "acc_bca271", "OUT", 11_500_000, "SUPPLIERS", "vnd_03", "prj_25004", "PLYWOOD 18MM, 40 lembar", "POSTED"],
   ["trx-26-08-29_003", "2026-08-29", "acc_petty", "OUT", 350_000, "OTHERS", "vnd_10", "prj_25004", "Grounds mowing, workshop", "COMPLETED"],
   ["trx-26-08-29_004", "2026-08-29", "acc_bca271", "OUT", 0, "SUPPLIERS", "vnd_03", null, "PLYWOOD 18MM — entered twice", "VOID"],
   ["trx-26-08-31_001", "2026-08-31", "acc_bni325", "OUT", 890_000, "OFFICE", "vnd_03", null, "Stationery and copier paper", "COMPLETED"],
@@ -89,20 +89,27 @@ export function trxIdByNo(no: string): string {
 }
 
 export const TRANSACTION_LINES: TransactionLine[] = [
-  { id: "trl_01", trx_id: trxIdByNo("trx-26-08-20_003"), line_no: 1, item_id: null, description: "AMPLAS 120 GRIT", qty: 500, uom: "lembar", unit_price: 7_650, amount: 3_825_000 },
+  { id: "trl_01", trx_id: trxIdByNo("trx-26-08-20_003"), line_no: 1, item_id: null, description: "AMPLAS 120 GRIT", qty: 500, uom: "lembar", unit_price: 8_100, amount: 4_050_000 },
   { id: "trl_02", trx_id: trxIdByNo("trx-26-08-21_001"), line_no: 1, item_id: null, description: "ENGSEL SENDOK HUBEN", qty: 300, uom: "pcs", unit_price: 18_500, amount: 5_550_000 },
-  { id: "trl_03", trx_id: trxIdByNo("trx-26-08-29_002"), line_no: 1, item_id: null, description: "PLYWOOD 18MM 122X244", qty: 40, uom: "lembar", unit_price: 292_000, amount: 11_680_000 },
+  { id: "trl_03", trx_id: trxIdByNo("trx-26-08-29_002"), line_no: 1, item_id: null, description: "PLYWOOD 18MM 122X244", qty: 40, uom: "lembar", unit_price: 287_500, amount: 11_500_000 },
   { id: "trl_04", trx_id: trxIdByNo("trx-26-08-22_001"), line_no: 1, item_id: null, description: "PAKU 5CM", qty: 4, uom: "kg", unit_price: 22_500, amount: 90_000 },
   { id: "trl_05", trx_id: trxIdByNo("trx-26-08-22_001"), line_no: 2, item_id: null, description: "SEKRUP GYPSUM 1 INCH", qty: 2, uom: "box", unit_price: 47_500, amount: 95_000 },
 ];
 
 /* Coverage, not a paid flag. A line becomes PAID because money actually
- * reached it — "a stamp pointing at nothing is not paid" (A10). */
+ * reached it — "a stamp pointing at nothing is not paid" (A10).
+ *
+ * Two of these deliberately do not match what was approved, because in a real
+ * month two of them never do:
+ *   alc_01  Rp 225.000 MORE than approved, and nobody has said why yet.
+ *   alc_04  Rp 180.000 LESS than approved, explained and closed (var_01).
+ * A model that cannot hold those two rows is a model that quietly rounds one
+ * of them away. */
 export const PAYMENT_ALLOCATIONS: PaymentAllocation[] = [
-  { id: "alc_01", trx_id: trxIdByNo("trx-26-08-20_003"), pr_line_no: "pr-26-08-18_01-L01", po_no: null, amount: 3_825_000, method: "transfer", superseded_by: null, allocated_by: "usr_putri", allocated_at: "2026-08-20T16:10:00+08:00" },
+  { id: "alc_01", trx_id: trxIdByNo("trx-26-08-20_003"), pr_line_no: "pr-26-08-18_01-L01", po_no: null, amount: 4_050_000, method: "transfer", superseded_by: null, allocated_by: "usr_putri", allocated_at: "2026-08-20T16:10:00+08:00" },
   { id: "alc_02", trx_id: trxIdByNo("trx-26-08-21_001"), pr_line_no: "pr-26-08-18_01-L02", po_no: null, amount: 5_550_000, method: "transfer", superseded_by: null, allocated_by: "usr_putri", allocated_at: "2026-08-21T16:10:00+08:00" },
   { id: "alc_03", trx_id: trxIdByNo("trx-26-08-21_002"), pr_line_no: "pr-26-08-18_01-L03", po_no: "po-26-08-14_01", amount: 19_668_000, method: "transfer", superseded_by: null, allocated_by: "usr_putri", allocated_at: "2026-08-21T16:12:00+08:00" },
-  { id: "alc_04", trx_id: trxIdByNo("trx-26-08-29_002"), pr_line_no: "pr-26-08-27_01-L01", po_no: null, amount: 11_680_000, method: "transfer", superseded_by: null, allocated_by: "usr_anggun", allocated_at: "2026-08-29T16:20:00+08:00" },
+  { id: "alc_04", trx_id: trxIdByNo("trx-26-08-29_002"), pr_line_no: "pr-26-08-27_01-L01", po_no: null, amount: 11_500_000, method: "transfer", superseded_by: null, allocated_by: "usr_anggun", allocated_at: "2026-08-29T16:20:00+08:00" },
   /* Cash out of petty cash against a line nobody had approved. The allocation
    * is real, so the coverage is real, so the board shows it — which is the
    * point (A6: warn, never hide). */

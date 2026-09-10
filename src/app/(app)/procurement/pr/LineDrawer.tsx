@@ -17,6 +17,8 @@ import {
 import { DOC_KINDS, type DocKind, type AttachmentView } from "@/services/documents/contracts";
 import { useToast } from "@/store/toast";
 import { useSession } from "@/store/session";
+import { VariancePanel } from "./VariancePanel";
+import { PayFromLine } from "./PayFromLine";
 
 /** One item, everything about it.
  *
@@ -40,6 +42,9 @@ export function LineDrawer({
   const [saving, setSaving] = useState(false);
   const [kind, setKind] = useState<DocKind>("Payment Proof");
   const [evidence, setEvidence] = useState<AttachmentView[]>([]);
+  /* A payment proof just attached here, held so the ledger form can reuse the
+     same file instead of asking for it a second time. */
+  const [proof, setProof] = useState<{ id: string; filename: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const mayEdit = can("procurement.update");
 
@@ -47,6 +52,7 @@ export function LineDrawer({
 
   useEffect(() => {
     setEditing(false);
+    setProof(null);
     if (!line) { setEvidence([]); return; }
     void documents.byEntity("pr_line", line.line_no_full).then((r) => {
       if (r.data) setEvidence(r.data);
@@ -89,6 +95,7 @@ export function LineDrawer({
       attachment_id: up.data.id, entity: "pr_line", entity_no: line!.line_no_full, kind,
     });
     if (link.error) { toast("warning", "Not attached", link.error.message); return; }
+    if (kind === "Payment Proof") setProof({ id: up.data.id, filename: file.name });
     if (up.data.duplicate_suspect) {
       /* Advisory, never a block: the same receipt really can be photographed
          twice, and refusing the second one hides the first (A6). */
@@ -146,6 +153,11 @@ export function LineDrawer({
             {MEETING_STATE_LABEL[line.meeting_state]}
           </Badge>
           {line.has_payment_proof && <Badge tone="violet">payment proof on file</Badge>}
+          {/* A line can be COMPLETED and still owe an answer. Without this the
+              header would read "Approved and paid" over a Rp 225.000 overpayment. */}
+          {line.variance.material && !line.variance.explanation && (
+            <Badge tone="red">difference not explained</Badge>
+          )}
         </div>
 
         {editing ? (
@@ -238,9 +250,41 @@ export function LineDrawer({
                 <Progress value={pct} tone={cov.settled ? "green" : "amber"} />
                 <p className="mt-1 text-[11px] text-slate-500">
                   {formatIDR(cov.covered)} of {formatIDR(cov.approved)} covered
-                  {cov.remaining > 0 && ` · ${formatIDR(cov.remaining)} still owed`}
+                  {/* Owed and short are not the same thing: once somebody has
+                      explained the gap, the rest was never spent. */}
+                  {cov.remaining > 0 && (cov.settled
+                    ? ` · closed ${formatIDR(cov.remaining)} short`
+                    : ` · ${formatIDR(cov.remaining)} still owed`)}
                 </p>
               </div>
+            )}
+
+            <VariancePanel line={line} onChanged={onChanged} />
+
+            {line.trx_nos.length > 0 && (
+              <p className="text-[12px] text-slate-500">
+                Paid by{" "}
+                <span className="font-mono text-slate-600">{line.trx_nos.join(", ")}</span>
+                {" "}— the same money, read from the ledger rather than repeated here.
+              </p>
+            )}
+
+            {/* Only on an approved line. Money moving before a yes is a real
+                event and the ledger records it when it happens — but the
+                application will not offer it as an ordinary button (D21). */}
+            {line.approval?.approved && !cov.settled && !line.removed_at && (
+              <PayFromLine
+                line={line}
+                proof={proof}
+                onPosted={async () => {
+                  setProof(null);
+                  const relist = await procurement.listAllLines();
+                  const updated = relist.data?.find((l) => l.id === line!.id);
+                  if (updated) onChanged(updated);
+                  const refreshed = await documents.byEntity("pr_line", line!.line_no_full);
+                  if (refreshed.data) setEvidence(refreshed.data);
+                }}
+              />
             )}
 
             {/* Evidence, attached from the line itself. */}
@@ -257,7 +301,7 @@ export function LineDrawer({
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-[13px] text-slate-700">{a.filename}</span>
                         <span className="block text-[11px] text-slate-400">
-                          {a.links.map((l) => l.kind).join(", ")} · {(a.bytes / 1024).toFixed(0)} KB
+                          {[...new Set(a.links.map((l) => l.kind))].join(", ")} · {(a.bytes / 1024).toFixed(0)} KB
                         </span>
                       </span>
                       {a.covers_count > 1 && <Badge tone="slate">covers {a.covers_count}</Badge>}

@@ -299,6 +299,7 @@ erDiagram
     payment_rounds ||--o{ payment_round_lines : "freezes"
     pr_lines ||--o{ payment_round_lines : "in"
     pr_lines ||--o{ line_settlements : "short settled"
+    pr_lines ||--o{ line_variances : "explained"
 
     pr_documents {
         uuid id PK
@@ -374,7 +375,40 @@ erDiagram
         text reason "NOT NULL. a named human decision"
         uuid decided_by FK
     }
+    line_variances {
+        uuid id PK
+        uuid line_id FK
+        variance_reason_t reason "closed list of seven"
+        text note "required when reason = other"
+        bigint amount_at_time "the gap when it was explained"
+        uuid recorded_by FK
+        timestamptz recorded_at
+    }
 ```
+
+**`line_variances` — why the money that moved is not the money approved**
+(D54, D55). Append-only, like every decision record here: a correction is a new
+row beside the old one, never an edit. Three columns carry the weight.
+
+`reason` is an enum of seven and never free text, because the value of this
+table is *counting kinds*. `price_changed`, `quantity_changed`, `rounding`,
+`input_error`, `partial_payment`, `overpaid`, `other` — and `other` requires
+`note`, refused with 422 otherwise.
+
+There is **no `fault` or `blamed_on` column, deliberately.** Whether one
+Rp 225.000 gap was a typo or carelessness is not knowable from the data, and a
+column that claims to know gets believed. What is knowable is the shape of the
+pile: twelve `price_changed` against one vendor, six `input_error` from one
+person.
+
+`amount_at_time` freezes the gap as it stood when somebody explained it, so a
+later payment on the same line does not silently rewrite what was being
+explained.
+
+**The link to `line_settlements`** (D56): an underpayment explained as anything
+except `partial_payment` writes a settlement row in the same transaction, with
+the explanation as its `reason`. A12 asked for a shortfall to close by a named
+human decision — this is that decision, so it is one act.
 
 **Approval is a checkbox** (D28). `pr_approvals` keeps its append-only shape
 and its identity columns — a toggle writes a row, so "approved at 14:02, then

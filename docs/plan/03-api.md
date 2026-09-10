@@ -127,6 +127,9 @@ PR chain:
 | GET | `/pr/queue` | the standing approval queue: every submitted line not approved and not removed (D21). Nothing ages out |
 | POST | `/pr/lines/{line_no}/remove` | no longer needed (D29). Soft — the row stays with who and when. **409 once any money has been allocated to the line**: that is a return or a credit, not a removal |
 | GET | `/pr/lines/{line_no}/history` | approvals, revisions, allocations, receipts — the full trail |
+| GET | `/pr/lines/{line_no}/for-posting` | the seam accounting calls before writing a payment against a line (ADR-004): description, approved amount, vendor, project, already-covered, removed. Never a table read across services |
+| POST | `/pr/lines/{line_no}/variance` | explain why paid ≠ approved. `{reason, note?}`, reason from a closed list of seven (D55). **409 when there is nothing to explain** — inside the Rp 1.000 tolerance, or nothing paid. **422 when `reason = other` without a note.** Append-only: a different explanation is a new row. An underpayment explained as anything but `partial_payment` also writes the `line_settlements` row that closes the line (D56) |
+| GET | `/pr/variances` | every line where paid ≠ approved by more than the tolerance, open or finished, worst first. Not filtered to open lines — a difference does not stop being one because the line closed |
 
 Rounds:
 
@@ -160,6 +163,7 @@ PO and receiving:
 | POST | `/transactions/{trx_no}/complete` | mark COMPLETED. §10.1 item 15 — never built in v1, built here |
 | POST | `/allocations` | `{trx_no, pr_line_no, amount, method}`. **422 if Σ allocations would exceed the transaction** (A9) |
 | POST | `/allocations/{id}/supersede` | corrections are new rows |
+| POST | `/transactions/from-line` | **paying a request line is one act** (D53): writes the transaction, the allocation to the line, and the document link, with the PR line number in the ledger description. Requires the `post_ledger` authority. `source_ref = pr-line:<line_no>:<date>:<amount>`, so a retry is `duplicate` — never a second payment. **422** when the line does not exist, **409** when it was removed or the same payment is already posted |
 | GET | `/review` | the PENDING queue |
 | POST | `/review/{ref_id}/confirm` | → a transaction. `Others` goes to notes, not the ledger |
 | POST | `/review/{ref_id}/attach` | → links to existing transactions, creates no money |

@@ -362,11 +362,73 @@ export type MeetingState =
   | "neither";         // still just a request
 
 export const MEETING_STATE_LABEL: Record<MeetingState, string> = {
-  settled: "Settled",
+  /* "Approved and paid", not "Settled": the quadrant answers two questions and
+     neither of them is whether the line is finished. A line can be approved
+     and paid and still be Rp 580.000 short. */
+  settled: "Approved and paid",
   approved_unpaid: "Approved, not paid",
   paid_unapproved: "Paid, not approved",
   neither: "Waiting for approval",
 };
+
+/** Why the money that moved is not the money that was approved.
+ *
+ *  A closed list rather than free text, for one reason: a single Rp 200,000
+ *  difference is noise, and no application can tell you whether it was a typo
+ *  or carelessness. Twelve of them tagged `price_changed` against the same
+ *  vendor is a supplier who quotes badly; six tagged `input_error` from the
+ *  same person is a training problem. The app cannot judge one event — it can
+ *  count the kinds, and that is what makes the question answerable.
+ */
+export const VARIANCE_REASONS = [
+  "price_changed",
+  "quantity_changed",
+  "rounding",
+  "input_error",
+  "partial_payment",
+  "overpaid",
+  "other",
+] as const;
+export type VarianceReason = (typeof VARIANCE_REASONS)[number];
+
+export const VARIANCE_REASON_LABEL: Record<VarianceReason, string> = {
+  price_changed: "Vendor price differed from the quote",
+  quantity_changed: "A different quantity was taken",
+  rounding: "Transfer was rounded",
+  input_error: "An amount was entered wrongly",
+  partial_payment: "Paid in parts — more to come",
+  overpaid: "Overpaid — the vendor owes us",
+  other: "Something else",
+};
+
+/** Append-only. An explanation is a statement somebody made on a date, and
+ *  correcting it means making a new one, not editing the old. */
+export interface LineVariance {
+  id: string;
+  line_id: string;
+  reason: VarianceReason;
+  note: string | null;
+  /** The gap at the moment it was explained — kept, so a later payment does
+   *  not silently rewrite what was being explained. */
+  amount_at_time: number;
+  recorded_by: string;
+  recorded_by_email: string;
+  recorded_at: string;
+}
+
+export type VarianceKind = "none" | "under" | "over";
+
+export interface VarianceView {
+  requested: number;
+  approved: number;
+  paid: number;
+  /** paid − approved. Negative means less money moved than was authorised. */
+  delta: number;
+  kind: VarianceKind;
+  /** Below the rounding tolerance this is not a variance, it is arithmetic. */
+  material: boolean;
+  explanation: LineVariance | null;
+}
 
 /** One purchase fact, from wherever it can be found. The single derivation
  *  behind both directions of the question: what do we buy from this vendor,
@@ -444,6 +506,9 @@ export interface PrLineView extends PrLine {
   submitted_at: string | null;
   evidence_count: number;
   has_payment_proof: boolean;
+  variance: VarianceView;
+  /** The ledger rows that funded this line, by public id. */
+  trx_nos: string[];
   coverage: LineCoverage;
   approval: PrApproval | null;
   doc_no: string;

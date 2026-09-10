@@ -10,6 +10,7 @@ import {
   accountBalances, transactionView, allocatedTotal, inboxHealth, lineCoverage,
 } from "../derive";
 import { latency, actingUser, requireAuthority, conflict, replayed, remember, paged } from "./_kit";
+import * as procurement from "./procurement";
 
 const SERVICE = "accounting" as const;
 
@@ -307,3 +308,97 @@ export async function coverageFor(lineNoFull: string): Promise<Result<ReturnType
 }
 
 export type { Transaction };
+
+/** Post a ledger row FROM a paid purchase-request line.
+ *
+ *  The owner's rule: a request that has been paid, whose document is uploaded
+ *  here, is the same event as the ledger entry — supporting document and PR
+ *  number included. So this does the whole thing in one act: it posts the
+ *  transaction, allocates it to the line, and carries the document across.
+ *  Doing it in three separate steps is how two of them get skipped.
+ *
+ *  The PR number goes in the description and in the allocation, so the ledger
+ *  row can say what it was for without anyone opening procurement.
+ */
+export async function postFromLine(
+  input: {
+    line_no: string;
+    amount: number;
+    account_id: string;
+    trx_date: string;
+    type_code: TransactionTypeCode;
+    attachment_id?: string;
+  },
+  idempotencyKey?: string,
+): Promise<Result<TransactionView>> {
+  await latency();
+  const endpoint = `postFromLine:${input.line_no}`;
+  const cached = replayed<TransactionView>(SERVICE, endpoint, idempotencyKey);
+  if (cached) return cached;
+
+  const denied = requireAuthority(SERVICE, "post_ledger");
+  if (denied) return denied;
+
+  /* Validated at the seam rather than by reaching into procurement's tables
+   * (ADR-004). In Phase 2 this line is a fetch. */
+  const lineRes = await procurement.lineForPosting(input.line_no);
+  if (lineRes.error) return lineRes.error.code === "line_not_found"
+    ? invalid(SERVICE, "pr_line_not_found", `Line ${input.line_no} does not exist in procurement.`, { field: "line_no" })
+    : lineRes as unknown as Result<TransactionView>;
+  const line = lineRes.data;
+  if (line.removed) {
+    return conflict(SERVICE, "line_removed", `Line ${input.line_no} has been removed.`);
+  }
+  if (input.amount <= 0) {
+    return invalid(SERVICE, "amount_positive", "Amount must be greater than zero.", { field: "amount" });
+  }
+
+  const sourceRef = `pr-line:${input.line_no}:${input.trx_date}:${input.amount}`;
+  const existing = getState().transactions.find((t) => t.source_ref === sourceRef);
+  if (existing) {
+    return conflict(SERVICE, "already_posted", `Already posted as ${existing.trx_no} — nothing changed.`, { trx_no: existing.trx_no });
+  }
+
+  const user = actingUser();
+  let trxNo = "";
+  apply((draft) => {
+    trxNo = nextDocNumber(draft, "trx");
+    const trxId = newId("trx");
+    draft.transactions.unshift({
+      id: trxId, trx_no: trxNo, trx_date: input.trx_date,
+      account_id: input.account_id, direction: "OUT", amount_idr: input.amount,
+      type_code: input.type_code, vendor_id: line.vendor_id,
+      project_id: line.project_id,
+      /* The PR number lives in the description too, so the ledger reads
+       * correctly on its own. */
+      description: `${line.description} — ${input.line_no}`,
+      remark: null, status: "POSTED", source_ref: sourceRef,
+      posted_by: user.id, posted_at: new Date().toISOString(), void_reason: null,
+    });
+    draft.payment_allocations.push({
+      id: newId("alc"), trx_id: trxId, pr_line_no: input.line_no, po_no: null,
+      amount: input.amount, method: "transfer", superseded_by: null,
+      allocated_by: user.id, allocated_at: new Date().toISOString(),
+    });
+    if (input.attachment_id) {
+      draft.attachment_links.push({
+        id: newId("lnk"), attachment_id: input.attachment_id,
+        entity: "transaction", entity_no: trxNo, kind: "Payment Proof",
+        linked_by: user.id, linked_at: new Date().toISOString(),
+      });
+    }
+    writeAudit(draft, {
+      service: SERVICE, entity: "transaction", entity_no: trxNo,
+      action: "post_from_line", outcome: "ok", reason: input.line_no,
+    });
+    writeOutbox(draft, {
+      service: SERVICE, event_type: "accounting.transaction.posted",
+      payload: { trx_no: trxNo, pr_line_no: input.line_no, amount: input.amount },
+    });
+  });
+
+  const state = getState();
+  const view = transactionView(state, state.transactions.find((t) => t.trx_no === trxNo)!);
+  remember(SERVICE, endpoint, idempotencyKey, view);
+  return ok(SERVICE, view);
+}

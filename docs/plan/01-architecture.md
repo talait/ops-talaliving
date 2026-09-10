@@ -176,20 +176,89 @@ becomes presentation, not identity.
 **Deduplication is advisory.** An identical sha256 raises
 `duplicate_suspect`; it never blocks (A6).
 
-## ADR-008 — The outbox is the third-party seam
+## ADR-008 — The outbox is the third-party seam, and Chat's way in
 
 **Decision.** Every service writes domain events to `core.outbox`
 (`service`, `event_type`, `payload`, `occurred_at`, `delivered_at`). A single
 worker delivers them. Nothing calls an external system inline.
 
 **Why.** This is what "re-attach and add connection to a third service later"
-actually needs. Google Chat cards, a WhatsApp notifier, an accounting export,
+actually needs. A Google Chat bot, a WhatsApp notifier, an accounting export,
 a Sheets mirror — each becomes a subscriber, and none of them can slow down
-or fail a money write. It also gives the Chat door a way back in without a
-second write path (`00-context.md` §E).
+or fail a money write.
 
-**In v1** the outbox is written to and has one subscriber: the audit view.
-Delivery to anything external is out of scope this fortnight.
+**Google Chat's role, stated** (owner, 2026-09-10). Chat is **notification,
+confirmation, and the interface for people who do not have web access**. It is
+no longer the intake door for evidence. Concretely:
+
+- **Out, via the outbox**: a line needs your approval; a round is waiting to
+  be closed; goods have been sitting unreceived for three days; a payment
+  landed. These are what the bot exists to deliver, and the existing reader
+  bot already has the connection.
+- **In, via the API**: approve · hold · reject a line; confirm receiving with
+  a photo; acknowledge. A field worker or a warehouse hand does these from
+  their phone in Chat because they will never log into the web app.
+- **The exception road only**: a context-free photo — bought first, no PR —
+  still enters through Chat, because the person who bought it is exactly the
+  person without web access. It lands in the exception inbox (ADR-010).
+
+**What does not change: channel membership is not authorization.** A Chat
+action is a real action, so the bot calls the same API a browser calls, as the
+identified person, and permission is checked the same way. The rule the rekap
+states — "AI proposes, never posts; otherwise chat channel membership becomes
+the authorization boundary to the ledger" — survives intact, and gets sharper:
+a *person* in Chat may act within their role, and the *bot* may not act at all.
+
+**In Phase 1** the outbox is written to and has one subscriber: the audit view.
+The bot is integrated later, by the owner's decision.
+
+## ADR-010 — Evidence is attached from the record, never matched to it
+
+**Decision.** The normal way a document enters the system is that somebody
+opens the thing it belongs to — a PR line, a ledger row — and attaches it
+there. The linkage is **declared at upload time**, because the person is
+standing on the parent.
+
+A context-free upload, where the document arrives first and its parent is
+unknown, is the **exception road**: purchase-first-approval-later. It keeps
+its own inbox and stays narrow.
+
+**Why** (owner, 2026-09-10). Today every document is an orphan looking for a
+parent. A photo lands in Chat with no context, an extraction guesses at a
+vendor and an amount, and a human reconstructs the linkage afterwards from
+name similarity and amount proximity. That is the "unordered" problem, and it
+is why tracing is hard: nothing recorded *who decided* that this receipt
+belongs to that line, only that someone once picked it off a list.
+
+Reversing the direction removes the guess rather than improving it.
+
+**What this deletes.** Most of §3.3's machinery exists only to support the
+guess: slot naming for AI rows versus human rows, a candidate line picker
+capped at 25, the rule that the selected line is *always* offered even when
+it is not a candidate, the empty-candidate-list workaround that made a slot
+vanish. None of it is needed when the parent is already known.
+
+**What survives, because it is real and not an artefact of the guess:**
+
+| The question | Old model | New model |
+|---|---|---|
+| Which PR does this belong to? | AI matches by name and amount; a human confirms from a capped list | answered by construction |
+| Is it a supporting document for a transaction already booked? | the third button, added because Confirm double-books and Reject loses the evidence | answered by construction |
+| **One document, many transactions?** | all-or-nothing across targets, or the file is parked as unnameable | real, and now first-class: attach from one, then "also covers…" adds the others. `attachment_links` is many-to-many from the first migration |
+| **One PR line, many transactions?** | coverage over allocations | unchanged — two transfers settling one line already works |
+
+**What it does to the AI.** Its job shrinks from classification to
+verification. Attaching a receipt to a line means the vendor, the expected
+amount and the line are already known, so the only question is whether the
+document agrees with them. A disagreement is an **advisory warning** (A6),
+never a block — the receipt total and the approved amount differing is
+information, not an error.
+
+**The health check.** The exception inbox should shrink as people learn to
+attach from the record. If it does not, something is wrong with the normal
+road and the inbox is being used to route around it. Unlike the old queue it
+is never retired — buying first and approving later is a real thing that will
+keep happening — but its size is a signal worth watching.
 
 ## ADR-009 — Phase 1 is a frontend on demo data, deployed from day one
 

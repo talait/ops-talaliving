@@ -27,6 +27,11 @@ gets had twice.
 | 11 | 2026-09-10 | Keep the topbar role switcher in Phase 1, as a labelled demo control; delete it in Phase 2 | in a demo, switching role is how you show permissions work |
 | 12 | 2026-09-10 | `john-lau` and `ops.talaliving.com` keep running, untouched. No data migration in Phase 1 | v2 can be wrong without costing anyone a day's accounting |
 | 13 | 2026-09-10 | `02-database.md` gets rewritten on D14 against `findings.md` | it was written before we walked anything |
+| 14 | 2026-09-10 | **Evidence is attached from the record it belongs to** — from a PR line or a ledger row — never matched to it afterwards | ADR-010. Today every document is an orphan looking for a parent, and a human reconstructs the linkage from name and amount proximity. That is why tracing is hard |
+| 15 | 2026-09-10 | A context-free upload is the **exception road** only: bought first, approved later. It keeps its own inbox and its size is watched | the guess is unavoidable there, and only there |
+| 16 | 2026-09-10 | **Google Chat is notification, confirmation, and the interface for people without web access** — not the intake door for evidence | owner, 2026-09-10. Chat is good at reaching someone who will never open the web app; it is bad at recording what a document belongs to |
+| 17 | 2026-09-10 | A Chat action is a real action: the bot calls the same API as the browser, as the identified person. **Channel membership is never authorization** | the rekap's rule survives and sharpens — a *person* in Chat may act within their role; the *bot* may not act at all |
+| 18 | 2026-09-10 | One document covering several parents is a **first-class action** (*juga mencakup…*), not a repair | it is why 674 files sit parked today as unnameable |
 
 ---
 
@@ -47,6 +52,9 @@ them**: the demo can show two versions of a screen and let the owner point.
 | Q7 | How is `PAID_UNAPPROVED` handled — recover or write off? | **Neither automatically.** It is terminal, flagged to leadership, never deleted. The policy is the owner's | low |
 | Q8 | Which of `WAITING APPROVAL` / `WAITING FOR APPROVAL` is canonical? | **`WAITING FOR APPROVAL`**, the view's spelling. The other is a legacy sheet string | trivial now, annoying later |
 | Q9 | Do service lines (mowing, a bill) need a receiving report, or is payment proof enough? | **Payment proof is enough** for `kind='service'`. Today those lines are stuck at PAID forever | medium — it changes a status predicate |
+| Q14 | When accounting attaches a payment proof from a PR line, should the ledger transaction be **created in the same step**, or attached to one that already exists? | **Both, offered on the same panel**: if the line has no transaction yet, attaching a payment proof offers to post one, prefilled from the line; if it has one, the document links to it. The person never navigates away to do the other half | low — it is one panel, two states |
+| Q15 | Who may resolve something in the exception inbox — anyone in `finance`, or a named few? | **`finance` and `it_admin`**, matching who may post today. The resolution is recorded with their name either way | low |
+| Q16 | Should a Chat approval be possible for **money** decisions, or only for goods and receiving? | **Goods and receiving only** in the first cut. Fund approval and closing a round stay on the web, where the balances are visible next to the decision | low now, higher once people are used to it |
 | Q10 | What is transaction type `EJO` — 77 transactions, Rp529 M, unclassified? | **Carried as-is, unclassified, and shown**. Never quietly folded into `OTHERS` | low |
 | Q11 | Does the demo need an Indonesian UI, or is the current mix fine? | **The current mix**: Indonesian labels and stored vocabulary, basic English structure — the owner's 2026-08-27 direction. Screens where people *decide* get translated first | low |
 | Q12 | Custom domain: does `dev-ops.talaliving.com` point at Vercel now? | **Not yet.** The Vercel URL is enough for Phase 1; a DNS record adds it whenever asked | trivial |

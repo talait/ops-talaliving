@@ -16,9 +16,9 @@ same way, because that is what keeps the plan alive.
 | D5 | Mon 14 Sep | M5 approval chain + trail | ✓ |
 | D6 | Tue 15 Sep | M6 payment rounds | ✓ |
 | D7 | Wed 16 Sep | M7 checkpoint — walk Flow B with the team | — |
-| D8 | Thu 17 Sep | M8 ledger | ✓ |
-| D9 | Fri 18 Sep | M9 review queue | ✓ |
-| D10 | Sat 19 Sep | M10 evidence | ✓ |
+| D8 | Thu 17 Sep | M8 ledger + attach from a row | ✓ |
+| D9 | Fri 18 Sep | M9 evidence, the main road | ✓ |
+| D10 | Sat 19 Sep | M10 the exception inbox | ✓ |
 | D11 | Sun 20 Sep | M11 PO + receiving | ✓ |
 | D12 | Mon 21 Sep | M12 meeting board, cashflow, dashboard | ✓ |
 | D13 | Tue 22 Sep | M13 polish, phone, demo reset | ✓ |
@@ -182,49 +182,62 @@ that we did not know on D1. Fix what is cheap; add the rest to the board.
 > is wrong, and what it revealed about the business rules. Fix anything cheap
 > now and add the rest to the board as new rows. Update the board and commit.
 
-## D8 — Thu 17 Sep · M8 ledger
+## D8 — Thu 17 Sep · M8 ledger, and attaching from a row
 
 - `/accounting/ledger` — filter bar, table, drawer with lines, evidence,
   allocations, and the path to the PR and PO
+- **the attach block in the ledger drawer** (ADR-010): attach a document to
+  this transaction, from here, with the kind and the agreement check
 - VOID with a mandatory reason; mark COMPLETED (§10.1 item 15 — never built
   in the old web app, built here)
 - the five accounts with their exact spellings
 
-> Read `docs/plan/README.md`. Do M8: the ledger list and drawer against the
-> demo accounting API. Void sets the amount to zero with a reason and keeps
-> the row — never a delete. Append to `findings.md`. Update the board and
-> commit.
-
-## D9 — Fri 18 Sep · M9 review queue — the money screen
-
-Build it exactly as drawn in `04-frontend.md`. It gets the most care because
-it is where money is decided.
-
-- three buttons: Confirm & post · Attach to existing · Reject
-- `Others` branches to notes before anything else is touched
-- advisory duplicate banners that point at Attach and never block
-- "— not on a PR —" always offered, never the accidental default
-- human-added rows marked as human-added
-
-> Read `docs/plan/README.md` and `04-frontend.md`. Do M9: the review screen at
-> `/accounting/verifikasi` with all three buttons and the advisory banners.
-> Attach must create no money. Append to `findings.md`. Update the board and
-> commit.
-
-## D10 — Sat 19 Sep · M10 evidence
-
-- upload in the demo layer: file → object URL + a fake sha256, so duplicate
-  detection is demonstrable
-- `<EvidenceStrip>`, lightbox, drag to upload, camera capture on a phone
-- `/accounting/bukti` — browse by entity, month, type
-- one document reaching several ledger rows, and every row that funded a line
-  showing its receiving photo
-
-> Read `docs/plan/README.md`. Do M10: the documents demo API and the evidence
-> screens. Show a single document attached to several transactions, and show
-> a receiving photo reaching every ledger row that funded its line. Test
-> upload from a phone-sized viewport. Append to `findings.md`. Update the
+> Read `docs/plan/README.md` and `04-frontend.md`. Do M8: the ledger list and
+> drawer against the demo accounting API, including the attach block from
+> ADR-010 — a document is attached from the transaction it belongs to, and
+> the agreement check only warns. Void sets the amount to zero with a reason
+> and keeps the row — never a delete. Append to `findings.md`. Update the
 > board and commit.
+
+## D9 — Fri 18 Sep · M9 evidence — the main road
+
+The interaction the whole system turns on (ADR-010). It has to be two taps.
+
+- the documents demo layer: file → object URL + a fake sha256, so the
+  duplicate check is demonstrable
+- `<EvidenceStrip>` in **both** the PR line drawer and the ledger row drawer —
+  one component used twice, because it is the same road
+- *juga mencakup…* — one document covering several lines or transactions, as
+  a first-class action, each link recording who declared it
+- the money-to-document path: a receiving photo reaching every ledger row that
+  funded its line
+- `/accounting/bukti` — browse by entity, month, type
+- camera capture on a phone, because half of these are photographed
+
+> Read `docs/plan/README.md` and `04-frontend.md`. Do M9: the documents demo
+> API and the attach-from-the-record flow in both drawers, per ADR-010. Show
+> one document covering several transactions, and a receiving photo reaching
+> every ledger row that funded its line. Every link records who declared it
+> and when. Test capture from a phone-sized viewport. Append to `findings.md`.
+> Update the board and commit.
+
+## D10 — Sat 19 Sep · M10 the exception inbox
+
+The narrow road: documents whose parent is genuinely unknown, because someone
+bought first and the approval came later.
+
+- `/accounting/verifikasi` — photo left, form right, five resolutions:
+  jadikan transaksi · buat baris PR retroaktif · tautkan · catatan · tolak
+- `Others` branches to notes before anything else is touched
+- duplicate warnings are advisory and point at *Tautkan*
+- `/accounting/catatan` for the notes
+- **the inbox health number** — how many arrived this way this week
+
+> Read `docs/plan/README.md` and `04-frontend.md`. Do M10: the exception inbox
+> at `/accounting/verifikasi` with the five resolutions from `04-frontend.md`.
+> It carries only documents with no known parent — everything else is attached
+> from the record. Nothing is ever discarded. Show the weekly inbox count.
+> Append to `findings.md`. Update the board and commit.
 
 ## D11 — Sun 20 Sep · M11 PO + receiving
 

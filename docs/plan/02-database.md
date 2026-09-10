@@ -403,7 +403,7 @@ erDiagram
     transactions ||--o{ transaction_lines : "itemised"
     transactions ||--o{ payment_allocations : "funds"
     transactions ||--o{ transaction_docs : "evidenced"
-    review_queue ||--o| transactions : "produced"
+    evidence_inbox ||--o| transactions : "produced"
     accounts ||--o{ bank_statements : "of"
     bank_statements ||--o{ statement_lines : "contains"
 
@@ -468,14 +468,16 @@ erDiagram
         uuid attachment_id FK
         doc_kind_t doc_type
     }
-    review_queue {
+    evidence_inbox {
         uuid id PK
-        text ref_id UK "upload_id ~ slot"
+        text ref_id UK "the exception road only"
+        inbox_origin_t origin "chat|web"
         review_status_t status "PENDING|CONFIRMED|ATTACHED|REJECTED|CANCELLED|NOTED"
         uuid attachment_id FK
+        uuid reported_by FK
         jsonb extracted "open payload. proposal only"
         uuid produced_trx_id FK
-        text duplicate_of_ref
+        text produced_pr_line_no "retroactive PR line"
         text[] similar_trx_nos
     }
     bank_statements {
@@ -502,9 +504,56 @@ Note what is **not** here: no `sheet_ref`, no `push_id`, no `pushes` table, no
 `trx_ids` reservation table, no `queue_writes`. All four exist in `john-lau`
 only to keep a spreadsheet and a database in step (D1, ADR-006).
 
+Note also what has **shrunk**: the review queue is now `evidence_inbox` and
+carries only the exception road (ADR-010). It has no slot naming, no candidate
+line picker and no `duplicate_of_event`, because those existed to support a
+guess that no longer has to be made.
+
 `statement_lines` is a real table, not `interpretations.output.rows` — §9.3.7
 names that JSON blob as the only home statement lines had, which is why they
 could not be queried.
+
+---
+
+## Evidence: the main road and the exception road
+
+ADR-010 inverts how a document reaches the system, and the schema has to make
+the normal case the cheap one.
+
+**The main road — `core.attachment_links`.** Somebody opens a PR line or a
+ledger row and attaches a file there. One insert into `core.attachments`, one
+into `core.attachment_links` naming the entity, done. No queue, no extraction
+step standing between the upload and the link, no status to resolve.
+
+The link table is **many-to-many from the first migration**, not as a fix:
+
+- one receipt covering three ledger rows is three link rows, added by
+  attaching from the first and then choosing *also covers…*
+- one ledger row carrying a receipt, a payment proof and a receiving photo is
+  three link rows with different `kind`
+- a document is never *moved* from one parent to another — a wrong link is
+  removed and a right one added, and both are in the audit log
+
+This is what makes tracing work: every link row records **who** declared it
+and **when**, which the old model could not, because the linkage was inferred
+rather than stated.
+
+**The exception road — `acct.evidence_inbox`.** A document whose parent is
+genuinely unknown: bought first, approved later. It arrives from Chat (the
+buyer has no web access) or from the web, gets an AI reading as a *proposal*,
+and waits for a person to resolve it into one of: a new transaction, a
+retroactive PR line, a link to something that already exists, a personal note
+(`Others`), or a rejection. Nothing is ever discarded (A16).
+
+`origin` records which door it came through, so `v_inbox_health` can answer
+the question that matters: is the exception road being used as an exception,
+or as a way around the normal one?
+
+**What the AI is for now.** On the main road it verifies rather than
+classifies: the vendor, the expected amount and the parent are already known,
+so the only question is whether the document agrees. It disagrees → an
+advisory warning (A6), never a block. On the exception road it does what it
+does today — proposes, and never posts.
 
 ---
 
@@ -521,6 +570,7 @@ could not be queried.
 | `v_po_line_status` | procure | per-line delivery and payment |
 | `v_round_summary` | procure | REQUESTED, paying-account balance, TO TRANSFER, remaining after payment |
 | `v_unlinked_transactions` | acct | money with no PR line — shown, never hidden |
+| `v_inbox_health` | acct | how many context-free documents arrived this week, and how many are still unresolved. The exception road should stay small (ADR-010) |
 | `v_meeting_board` | procure | the four states: lunas · disetujui belum bayar · dibayar belum disetujui · belum keduanya |
 
 `v_pr_line_status` is carried over rather than redesigned. It encodes

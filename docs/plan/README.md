@@ -59,9 +59,9 @@ Update the row, the date, and the note **in the same commit** as the work.
 | M5 | PR: IT gate, goods approval, approval trail | D5 | TODO | — | |
 | M6 | Payment rounds: sync, approve, transfer, close | D6 | TODO | — | |
 | M7 | **Checkpoint: walk Flow B on a phone, with the team** | D7 | TODO | — | week-1 review |
-| M8 | Ledger: list, drawer, void, mark completed | D8 | TODO | — | |
-| M9 | Review queue: Confirm · Attach · Reject | D9 | TODO | — | the money screen |
-| M10 | Evidence: upload, thumbnails, the path to a document | D10 | TODO | — | |
+| M8 | Ledger: list, drawer, attach from a row, void, complete | D8 | TODO | — | |
+| M9 | Evidence attached from the record — the main road | D9 | TODO | — | ADR-010 |
+| M10 | The exception inbox: bought first, approved later | D10 | TODO | — | should stay small |
 | M11 | PO: two axes, exposure; receiving with photo | D11 | TODO | — | |
 | M12 | Meeting board, cashflow, dashboard on demo data | D12 | TODO | — | |
 | M13 | Polish: phone, empty states, refusals, demo reset | D13 | TODO | — | |

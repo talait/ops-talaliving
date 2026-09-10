@@ -113,10 +113,20 @@ From §9.3.12, the rekap's own list of what deserves to survive:
 "one fact, two doors" — an approval from the web writes the same row as an
 approval from a Chat card, differing only in `channel`.
 
-**v2 keeps the principle and starts with one door.** The web is the door.
-`channel` exists on every decision row from day one, and the API is the seam a
-Chat bot would call later — it does not get its own write path. The
-spreadsheet is an export.
+**v2 keeps the principle and gives each door a job** (owner, 2026-09-10).
+The spreadsheet is an export and stops being a door at all. The other two
+split by what they are actually good at:
+
+| Door | What it is for |
+|---|---|
+| **Web** | the record. Evidence is attached *from* the PR line or the ledger row it belongs to (ADR-010). Accounting works here |
+| **Google Chat** | notification, confirmation, and the interface for people who never log into the web app — approve a line, confirm receiving with a photo, acknowledge. Plus the one exception intake: a purchase made before any PR existed |
+
+`channel` still exists on every decision row, because an approval from a Chat
+card and an approval from the web are the same fact through different doors.
+Chat does **not** get its own write path: the bot calls the same API the
+browser calls, as the identified person, and permission is checked the same
+way. A reader bot already exists; integrating it is a later decision.
 
 `john-lau` and its Chat pipeline keep running on their own Supabase project
 throughout. **No migration of live data is in scope this fortnight.** When

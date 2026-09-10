@@ -45,7 +45,7 @@ number of components that have to be added.
 | `<ApprovalTrail>` | vertical timeline over `pr_approvals` + revisions + allocations + receipts: who, when, from which door. Append-only data deserves an append-only display |
 | `<AdvisoryBanner tone="amber">` | duplicates, receipt-total mismatches, similar transactions. **Never disables the button** (A6). Amber, dismissible, states what it saw |
 | `<RefusalToast>` | renders the API `error.outcome`: refused → "this decision belongs to `<role>` — logged, not applied"; duplicate → "already recorded — nothing changed" |
-| `<EvidenceStrip>` | thumbnails from `documents`, click to lightbox, drag to upload |
+| `<EvidenceStrip>` | the attach block above: thumbnails, kind, the agreement check, *Lampirkan*, *juga mencakup…*. Appears identically in the PR line drawer and the ledger row drawer — **the main road, so it is one component used twice** |
 | `<FilterBar>` | date range, account, vendor, status — the same bar on every list, so muscle memory transfers |
 | `<RefreshBadge>` | "3 new since you opened this" + a reload button. Backlog §10's own recommended order: **badge and reload first**, polling second, realtime third. Never lose a reviewer's half-typed draft to a refresh |
 
@@ -71,7 +71,10 @@ Carried from what works today, plus what the money rules demand:
    "Forbidden" (A7).
 7. **Approval and payment are never the same button, on any screen** (A1).
    They are not even in the same card.
-8. **A number the database owns is never recomputed in the browser.** If a
+8. **Evidence is attached from the thing it belongs to.** Every PR line and
+   every ledger row carries an attach affordance; no screen asks a person to
+   pick a parent off a list unless the parent is genuinely unknown (ADR-010).
+9. **A number the database owns is never recomputed in the browser.** If a
    balance does not load, show `—` and the source badge. Never a substitute
    computed client-side, which is how a screen ends up disagreeing with the
    books.
@@ -85,7 +88,7 @@ Every new route is one line in `nav.ts`.
 
 | Route | Screen | Milestone |
 |---|---|---|
-| ▸ `/procurement/pr` | PR list: filter bar, table, row → drawer with lines, coverage, trail. Header actions: **Buat PR** | M4 |
+| ▸ `/procurement/pr` | PR list: filter bar, table, row → drawer with lines, coverage, trail, evidence. Line actions: **attach a document here**. Header: **Buat PR** | M4 |
 | ✚ `/procurement/pr/baru` | multi-line create. A full page, not a drawer — this is the one place people type for ten minutes. Item combobox with last price and unit, vendor type-ahead that accepts a new name, running total | M4 |
 | ✚ `/procurement/persetujuan` | approval queue for the signed-in approver, grouped by document. Per line: APPROVED · HOLD · REJECTED, an editable approved amount that **cannot exceed requested**, a mandatory reason on HOLD/REJECTED | M5 |
 | ✚ `/procurement/ronde` | the OPEN round: requested, paying-account balances, TO TRANSFER, remaining after payment. Approve round · record transfer · **close round** (with the list of what closing releases) | M6 |
@@ -99,62 +102,80 @@ Every new route is one line in `nav.ts`.
 | Route | Screen | Milestone |
 |---|---|---|
 | ▸ `/accounting/ledger` | the ledger: filter bar, table, row → drawer with lines, evidence, allocations, the path to PR and PO. Actions: mark COMPLETED, VOID with a reason | M8 |
-| ▸ `/accounting/verifikasi` | **WAITING REVIEW.** The queue, one document at a time: photo on the left, form on the right, three buttons — Confirm & post · Attach to existing · Reject. Advisory duplicate banners. This is the screen that decides money; it gets the most care | M9 |
+| ▸ `/accounting/verifikasi` | **The exception inbox.** Only documents whose parent is unknown — bought first, approved later. Photo left, form right; resolve into a transaction, a retroactive PR line, a link to something existing, a note, or a rejection. Should stay small | M10 |
 | ▸ `/accounting/cashflow` | five account balances from the view, movement chart, tie-out | M12 |
-| ✚ `/accounting/bukti` | evidence browser by entity, month, type | M10 |
-| ✚ `/accounting/catatan` | `Others` documents — a different notepad that does not touch the company ledger (owner, 2026-08-27) | M9 |
+| ✚ `/accounting/bukti` | evidence browser by entity, month, type; and the inbox health number | M9 |
+| ✚ `/accounting/catatan` | `Others` documents — a different notepad that does not touch the company ledger (owner, 2026-08-27) | M10 |
 | ▸ `/accounting/budget`, `/accounting/payslip` | untouched placeholders | — |
 
 Every other module keeps its honest "not built yet" placeholder. A page that
 looks nearly finished generates false bug reports; a page that says it is not
 built does not.
 
-## The review screen, in detail
+## Attaching a document: the main road
 
-It is worth spelling out, because it is where the system's care shows.
+ADR-010 changes where evidence enters. It is worth drawing, because it is the
+interaction the whole system now turns on and it has to be two taps.
+
+Every PR line drawer and every ledger row drawer carries the same block:
 
 ```
-┌──────────────────────────────┬───────────────────────────────┐
-│  evidence                    │  what the AI read             │
-│  ┌────────────────────────┐  │  vendor    [ combobox      ]  │
-│  │                        │  │  date      [ 2026-09-10    ]  │
-│  │      the photo         │  │  type      ( ) Receipt        │
-│  │   pinch, rotate, zoom  │  │            (•) Payment Proof  │
-│  │                        │  │            ( ) Receiving Item │
-│  └────────────────────────┘  │            ( ) Others         │
-│  ⚠ identical bytes seen      │  account   [ BCA 271 ▾     ]  │
-│    2026-09-08 — advisory     │  ──────────────────────────   │
-│  ⚠ trx-26-09-09_014 has the  │  items                        │
-│    same amount and account   │  ▸ … qty · unit · price       │
-│                              │  + tambah item                │
-│                              │  ──────────────────────────   │
-│                              │  covers PR line               │
-│                              │  [ — not on a PR —        ▾]  │
-│  confidence 74 — check it    │                               │
-├──────────────────────────────┴───────────────────────────────┤
-│  [ Confirm & post ]  [ Attach to existing ]  [ Reject ]      │
+┌──────────────────────────────────────────────────────────────┐
+│  pr-26-09-10_01-L03   KAYU JATI SORTIMEN A   4,2 m³          │
+│  diminta Rp 18.900.000 · disetujui Rp 18.900.000             │
+├──────────────────────────────────────────────────────────────┤
+│  Dokumen                                    [ + Lampirkan ]  │
+│  ┌──────┐ ┌──────┐                                           │
+│  │ nota │ │bukti │   nota · 09 Sep · Rp 18.900.000  ✓ cocok  │
+│  │      │ │bayar │   bukti bayar · 10 Sep · trx-26-09-10_004 │
+│  └──────┘ └──────┘                                           │
+│  ⚠ nota Rp 19.100.000 — Rp 200.000 di atas yang disetujui.   │
+│    Dicatat, tidak diblokir.                                  │
 └──────────────────────────────────────────────────────────────┘
 ```
 
-Rules the screen must hold, each from a real incident:
+What makes it work:
 
-- **Three buttons, not two.** Attach exists because a payment proof arriving
-  for an already-booked receipt has only bad answers otherwise: Confirm
-  double-books, Reject loses the evidence (Flow D, 2026-08-28).
-- `Others` never reaches the ledger — it branches to notes **before** anything
-  else is touched.
-- **"— not on a PR —" is a deliberate choice**, always offered, never the
-  default that happens by accident.
-- A value the extraction produced that is outside a closed list stays
-  selectable: "a value outside the list isn't wrong, just uncurated".
-- Human-added item rows are marked as human-added. "What did the AI read"
-  must stay answerable forever.
-- Duplicate warnings **point at the Attach button** instead of blocking.
-- An unsaved draft is discarded on moving to the next row, and the screen says
-  so. This is not a place to leave half-finished work.
-- Confirming shows a staged progress overlay, not a frozen button. In v1 the
-  post is one database transaction rather than 11–14 seconds of spreadsheet
-  round-trips — but the overlay stays, because slow networks exist.
+1. **The parent is known, so nothing is asked twice.** Tapping *Lampirkan*
+   opens the camera or the file picker, asks only for the document kind
+   (nota · bukti bayar · foto barang · lainnya), and links it. Vendor, amount,
+   line and PR come from the record.
+2. **The check runs after, and only warns.** The extraction compares what it
+   reads against what the line says. Agreement gets a quiet ✓; disagreement
+   gets an amber line stating both numbers. Never a blocked button (A6).
+3. **One document, several parents** is a first-class action, not a repair.
+   An attached document's menu has *juga mencakup…* — pick the other lines or
+   transactions it covers, and each becomes its own link, each recording who
+   declared it.
+4. **Every link says who and when.** Tracing was the thing that was hard;
+   a link that records the person who declared it is the fix.
+5. **Removing a link is not deleting a file.** The file stays, the link goes,
+   both are in the audit log.
+
+## The exception inbox
+
+The old review screen, minus everything that existed to support a guess. It
+holds only documents whose parent is genuinely unknown — someone bought
+something before any PR existed, photographed it into Chat, and the system
+has no idea what it belongs to.
+
+Resolutions, one of five:
+
+| Action | Result |
+|---|---|
+| **Jadikan transaksi** | posts a ledger row, off-PR, visible in `v_unlinked_transactions` |
+| **Buat baris PR retroaktif** | the purchase-first case with a name on it: creates the line it should have had, still needing approval |
+| **Tautkan** | it belongs to something that already exists — link it and create no money |
+| **Catatan** | `Others`. Goes to notes, never the ledger, and branches before anything else is touched |
+| **Tolak** | recorded, never discarded (A16) |
+
+Two rules the screen keeps from the old one, because both were paid for:
+`Others` branches before the ledger is touched, and duplicate warnings are
+advisory and point at *Tautkan* rather than blocking.
+
+And one number on it that is not decoration: **how many documents came in
+this way this week.** If the exception road grows, the normal road has a
+problem — people are routing around it, and the reason is worth finding.
 
 ## The demo layer, from the screen's point of view
 

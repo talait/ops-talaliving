@@ -410,13 +410,32 @@ export async function getInboxHealth(): Promise<Result<InboxHealth>> {
   return ok(SERVICE, inboxHealth(getState()));
 }
 
-/** Five resolutions, and none of them discards anything (A16). `Others`
- *  branches to notes before the ledger is touched at all. */
+/** Five resolutions, and none of them discards anything (A16).
+ *
+ *  The inbox holds documents whose parent is genuinely unknown — somebody
+ *  bought first and the paperwork arrived in a chat thread. Every road out of
+ *  it is recorded, including the two that never touch the ledger:
+ *
+ *    transaction    it becomes a ledger row (the document is its evidence)
+ *    retro_pr_line  a request line written after the fact, then paid
+ *    link           the money is already booked; this is its missing proof
+ *    note           not a company transaction — kept, never posted
+ *    reject         not ours, or unreadable. Kept with a reason, never posted
+ *
+ *  **A rejected row is the opposite of a ledger row** (D94). Rejecting is how
+ *  you say "no money of ours moved here", and the file stays so the decision
+ *  can be read later — which is the whole reason nothing is deleted.
+ */
 export async function resolveInbox(
   input: {
     ref_id: string;
     resolution: "transaction" | "retro_pr_line" | "link" | "note" | "reject";
+    /** What it produced, when it produced something. */
     trx_no?: string;
+    pr_line_no?: string;
+    /** Mandatory for `reject` and `note`: a row nobody explained is a row
+     *  nobody can review. */
+    reason?: string;
   },
   idempotencyKey?: string,
 ): Promise<Result<EvidenceInboxRow>> {
@@ -428,10 +447,23 @@ export async function resolveInbox(
   const denied = requireAuthority(SERVICE, "resolve_inbox");
   if (denied) return denied;
 
-  const row = getState().evidence_inbox.find((r) => r.ref_id === input.ref_id);
+  const state = getState();
+  const row = state.evidence_inbox.find((r) => r.ref_id === input.ref_id);
   if (!row) return notFound(SERVICE, "inbox_row_not_found", `Row ${input.ref_id} not found.`);
   if (row.status !== "PENDING") {
     return conflict(SERVICE, "already_resolved", `This row is already ${row.status} — nothing changed.`);
+  }
+  if ((input.resolution === "reject" || input.resolution === "note") && !input.reason?.trim()) {
+    return invalid(
+      SERVICE, "reason_required",
+      input.resolution === "reject"
+        ? "Say why this is not ours. A rejection nobody explained cannot be reviewed later."
+        : "Say what this is. A note with no words is a file in a drawer.",
+      { field: "reason" },
+    );
+  }
+  if ((input.resolution === "transaction" || input.resolution === "link") && !input.trx_no) {
+    return invalid(SERVICE, "trx_required", "Which ledger row does this belong to?", { field: "trx_no" });
   }
 
   const nextStatus = {
@@ -442,15 +474,40 @@ export async function resolveInbox(
   apply((draft) => {
     const r = draft.evidence_inbox.find((x) => x.ref_id === input.ref_id)!;
     r.status = nextStatus;
+    if (input.trx_no) {
+      r.produced_trx_id = draft.transactions.find((t) => t.trx_no === input.trx_no)?.id ?? null;
+    }
+    if (input.pr_line_no) r.produced_pr_line_no = input.pr_line_no;
+    if (input.reason?.trim()) {
+      r.extracted = { ...r.extracted, note: input.reason.trim() };
+    }
     writeAudit(draft, {
       service: SERVICE, entity: "evidence_inbox", entity_no: input.ref_id,
-      action: `resolve.${input.resolution}`, outcome: "ok", reason: null,
+      action: `resolve.${input.resolution}`, outcome: "ok", reason: input.reason?.trim() ?? null,
+      detail: {
+        status_before: row.status, status_after: nextStatus,
+        trx_no: input.trx_no ?? null, pr_line_no: input.pr_line_no ?? null,
+        amount_read: row.extracted.amount_idr ?? null,
+      },
+    });
+    writeOutbox(draft, {
+      service: SERVICE, event_type: "accounting.inbox.resolved",
+      payload: { ref_id: input.ref_id, resolution: input.resolution, trx_no: input.trx_no ?? null },
     });
   });
 
   const updated = getState().evidence_inbox.find((r) => r.ref_id === input.ref_id)!;
   remember(SERVICE, endpoint, idempotencyKey, updated);
   return ok(SERVICE, updated);
+}
+
+/** Everything the inbox has ever held, resolved or not — because "what did we
+ *  decide about that photo" is asked long after the row leaves the queue. */
+export async function listInboxAll(): Promise<Result<EvidenceInboxRow[]>> {
+  await latency();
+  return ok(SERVICE, [...getState().evidence_inbox].sort(
+    (a, b) => b.reported_at.localeCompare(a.reported_at),
+  ));
 }
 
 /* ------------------------------------------------------------------ */

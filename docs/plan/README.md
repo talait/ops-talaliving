@@ -64,7 +64,7 @@ Update the row, the date, and the note **in the same commit** as the work.
 | M7 | **Checkpoint: walk Flow B on a phone, with the team** | D7 | DONE | 2026-09-11 | walked with the owner across this session; the corrections it produced are D64–D83 and F15–F22 |
 | M8 | Ledger: list, drawer, attach from a row, void, complete | D8 | DONE | 2026-09-11 | `/accounting/ledger` + cash position, pagination, posting with evidence and detail (D84–D89) |
 | M9 | Evidence attached from the record — the main road | D9 | DONE | 2026-09-11 | one `<EvidenceStrip>` in both drawers, *also covers*, the money-to-document path, camera capture. The documents browser is parked (D93) |
-| M10 | The exception inbox: bought first, approved later | D10 | TODO | — | should stay small |
+| M10 | The exception inbox: bought first, approved later | D10 | DONE | 2026-09-11 | `/accounting/verifikasi`, five roads, nothing discarded. Reject is the road that never reaches the ledger (D94) |
 | M11 | PO: two axes, exposure; receiving with photo | D11 | TODO | — | |
 | M12 | Cashflow + **liquidation report** + dashboard on demo data | D12 | TODO | — | the meeting board landed early and now has its own screen (D74). Liquidation: money in vs where it went (owner, 2026-09-11) |
 | M13 | Polish: phone, empty states, refusals, demo reset | D13 | TODO | — | |

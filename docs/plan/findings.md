@@ -1051,3 +1051,45 @@ because on a phone the difference between "open the camera" and "browse a file
 tree" is the difference between the photograph being taken and the paperwork
 following later, which is where the unexplained rows come from.
 
+## F26 — "does the inbox put rejected files in the ledger?" — no, and that is the point
+
+The question came in as a guess at what M10 was for: files uploaded to chat,
+rejected in the review queue, recorded in the ledger. Half right, and the half
+that is wrong is the interesting one.
+
+**Reject is the road that never reaches the ledger.** Five roads leave this
+queue, and only three of them produce a ledger row:
+
+- *make a transaction* — money left, nobody raised a request; the file becomes
+  its evidence
+- *retro request line* — the request nobody wrote, written after the fact, then
+  paid and allocated (D95). It is written **unapproved on purpose**: the board
+  then shows it as *paid, not approved*, which is what happened. Writing it
+  pre-approved would launder an unauthorised purchase into an ordinary one.
+- *link to a row* — the money was already booked and this is its missing proof
+
+The other two are the opposite of a ledger row. *Note* says "this is not a
+company transaction". *Reject* says "no money of ours moved here". Both demand
+a sentence, both keep the file, and neither writes anything to the books
+(D94) — because the question that arrives months later is not "where is that
+photo" but "what did we decide about it".
+
+Two things the build settled:
+
+**The duplicate warning has to point somewhere.** `nota-sinar-abadi.jpg` looks
+like `trx-26-09-03_001`, already in the ledger. Saying so is not enough: the
+warning names the row and offers the *link* road, prefilled. Posting it again
+would invent money, and the difference between a warning and a trap is whether
+it tells you what to do instead.
+
+**The extraction's vendor is offered, not assumed** (D96). The first version
+left the field empty, and posting was refused for a missing vendor whose name
+was on the screen two inches above. It is now pre-selected on an exact name
+match only — a near-miss quietly picking the wrong supplier would be worse
+than the empty field, and the posting is still a person agreeing with the
+reading rather than the reading being believed (A13).
+
+The weekly count sits at the top for a reason worth restating: **it measures
+the main road, not this screen.** A queue that grows means people are going
+around the front door.
+

@@ -792,3 +792,34 @@ account is now seeded lean, as it really is: funded per payment round rather
 than held full. The number the screen exists for is a number the screen
 actually shows.
 
+## F19 — a cap that assumed the wrong direction, and a total that assumed a quantity
+
+Three small corrections from one round of use, each of the same shape: a rule
+that was true of the common case and wrong about the rest.
+
+**"Approval can only reduce" assumed the request was always the higher
+number.** It usually is — but a vendor raises a price between the request and
+the meeting, and a leader approving Rp 1.200.000 for something asked at
+Rp 870.000 is deciding, not erring. The cap turned that decision into a 422.
+Removed (D76): the field now says *Rp 330.000 more than asked* in words, and
+the difference between requested and approved is reported the way every other
+difference on the line is.
+
+**The amount was always quantity × price.** For a service line — no quantity,
+no unit price, just a figure the vendor quoted — that meant the price could
+not be edited at all, and saving the line recomputed its amount from a missing
+quantity and zeroed it. The edit form now carries all three fields: changing
+quantity or price recomputes the amount, and typing the amount leaves them
+alone and says which figure will be used (D75).
+
+**Ticking wrote immediately.** On a board where a meeting reads down a list of
+fifteen items, every tick was a committed approval, and the total only existed
+after the fact. Now a tick picks; the count and the total sit in a bar above
+the lists; one confirm commits — *Approve* if you hold the authority, *Send to
+the approver on Chat* if you do not (D77). The same list, the same button
+position, two different acts depending on who is in the chair — which is
+exactly the distinction the chat route was built to keep.
+
+And the small one: the "to pay" total moved from the foot of the table to the
+top of it. It is the answer; the rows are the working.
+

@@ -287,7 +287,13 @@ function ChatItem({
           <label htmlFor={`a-${item.id}`} className="block text-[11px] text-slate-500">
             For how much <span className="text-slate-400">of {formatIDR(item.item_total)}</span>
           </label>
-          <MoneyInput id={`a-${item.id}`} size="sm" value={amount} ceiling={item.item_total} onChange={setAmount} className="mt-1" />
+          <MoneyInput id={`a-${item.id}`} size="sm" value={amount} onChange={setAmount} className="mt-1" />
+          {amount !== item.item_total && (
+            <p className={cn("mt-1 text-[11px]", amount > item.item_total ? "text-amber-700" : "text-brand-700")}>
+              {formatIDR(Math.abs(amount - item.item_total))}{" "}
+              {amount > item.item_total ? "more" : "less"} than asked
+            </p>
+          )}
         </div>
         <div className="sm:col-span-2">
           <label htmlFor={`i-${item.id}`} className="block text-[11px] text-slate-500">Instructions (optional)</label>

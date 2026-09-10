@@ -343,27 +343,20 @@ export async function approveLine(
     return conflict(SERVICE, "line_removed", `Line ${input.line_no} has been removed and cannot be approved.`);
   }
 
-  /* Quantity and money shrink together. Approving 40 of the 60 litres asked
-   * for is the decision leadership actually takes; the amount that follows
-   * from it is arithmetic, and asking somebody to do that arithmetic in their
-   * head is how an approval ends up disagreeing with itself (D65). */
+  /* Quantity and money move together — approving 40 of the 60 litres asked for
+   * approves two-thirds of the price, and asking somebody to do that
+   * arithmetic in their head is how an approval ends up disagreeing with
+   * itself (D65).
+   *
+   * Neither is capped at what was requested (D76, owner). The old rule said
+   * approval could only reduce, which assumed the request was always the
+   * higher number — but the vendor raises a price between the request and the
+   * meeting, and a leader approving Rp 4.500.000 for something asked at
+   * Rp 4.275.000 is making a real decision, not a mistake. What that leaves
+   * behind is a difference between requested and approved, which the line
+   * already carries and reports. */
   const qty = input.approved_qty ?? line.qty;
-  if (input.approved && qty != null && line.qty != null && qty > line.qty) {
-    return invalid(
-      SERVICE, "approved_qty_above_requested",
-      `Approved quantity (${qty}) is more than the ${line.qty} ${line.uom ?? ""} requested. Approval can only reduce.`.trim(),
-      { field: "approved_qty", requested: line.qty, attempted: qty },
-    );
-  }
-
   const amount = input.approved_amount ?? line.item_total;
-  if (input.approved && amount > line.item_total) {
-    return invalid(
-      SERVICE, "approved_above_requested",
-      `Approved amount (${amount.toLocaleString(LOCALE)}) exceeds the amount requested (${line.item_total.toLocaleString(LOCALE)}). Approval can only reduce.`,
-      { field: "approved_amount", requested: line.item_total, attempted: amount },
-    );
-  }
 
   const already = isApproved(state, line.id);
   if (already === input.approved) {
@@ -647,14 +640,9 @@ export async function answerFromChat(
   if (!line) return notFound(SERVICE, "line_not_found", "The item this card refers to no longer exists.");
   if (line.removed_at) return conflict(SERVICE, "line_removed", `${line.line_no_full} has been removed since the card was sent.`);
 
+  /* Not capped at what was asked for (D76): the price may have moved between
+   * the request and the meeting. */
   const amount = input.approved_amount ?? line.item_total;
-  if (input.approved && amount > line.item_total) {
-    return invalid(
-      SERVICE, "approved_above_requested",
-      `Approved amount (${amount.toLocaleString(LOCALE)}) exceeds the ${line.item_total.toLocaleString(LOCALE)} requested. Approval can only reduce.`,
-      { field: "approved_amount" },
-    );
-  }
 
   apply((draft) => {
     const r = draft.approval_requests.find((x) => x.id === req.id)!;
@@ -1412,7 +1400,8 @@ export async function whereToBuy(query: string): Promise<Result<ItemView[]>> {
 export async function updateLine(
   lineNo: string,
   input: Partial<Pick<PrLineRow,
-    "description" | "qty" | "uom" | "unit_price" | "vendor_id" | "category" | "purpose" | "need_by" | "item_id">>,
+    "description" | "qty" | "uom" | "unit_price" | "vendor_id" | "category" | "purpose" | "need_by"
+    | "item_id" | "item_total">>,
 ): Promise<Result<PrLineView>> {
   await latency();
   const state = getState();
@@ -1449,7 +1438,16 @@ export async function updateLine(
   apply((draft) => {
     const l = draft.pr_lines.find((x) => x.id === line.id)!;
     Object.assign(l, input);
-    l.item_total = Math.round((l.qty ?? 0) * (l.unit_price ?? 0));
+    /* The amount is quantity × price when there is a quantity and a price, and
+     * whatever the caller says otherwise. Plenty of real lines have neither —
+     * a service, a delivery charge, a lump sum quoted by the vendor — and
+     * recomputing those from a missing quantity would silently zero the one
+     * number that mattered (D75). */
+    if (input.item_total === undefined) {
+      l.item_total = l.qty != null && l.unit_price != null
+        ? Math.round(l.qty * l.unit_price)
+        : l.item_total;
+    }
     writeAudit(draft, {
       service: SERVICE, entity: "pr_line", entity_no: lineNo,
       action: "edit_line", outcome: "ok",

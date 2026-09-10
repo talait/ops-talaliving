@@ -198,7 +198,13 @@ export function DecisionPanel({
               )}
               <div>
                 <label htmlFor="dp-amount" className="block text-xs text-slate-500">For how much</label>
-                <MoneyInput id="dp-amount" value={amount} ceiling={line.item_total} onChange={setAmount} className="mt-1" />
+                <MoneyInput id="dp-amount" value={amount} onChange={setAmount} className="mt-1" />
+                {amount !== line.item_total && (
+                  <p className={cn("mt-1 text-[11px]", amount > line.item_total ? "text-amber-700" : "text-brand-700")}>
+                    {formatIDR(Math.abs(amount - line.item_total))}{" "}
+                    {amount > line.item_total ? "more" : "less"} than asked
+                  </p>
+                )}
               </div>
             </div>
           )}

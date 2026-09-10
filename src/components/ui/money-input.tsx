@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { formatIDR, LOCALE } from "@/lib/format";
+import { LOCALE } from "@/lib/format";
 import { cn } from "@/lib/cn";
 
 /** Rupiah in, rupiah out.
@@ -15,14 +15,15 @@ import { cn } from "@/lib/cn";
  *  is the entire job of this control, so it keeps the separators and parses
  *  the digits back out.
  *
- *  `ceiling` is the approval rule at the input: money can only shrink on its
- *  way through approval (A8). The field says so before the service refuses it,
- *  because a refusal you could have been warned about is a worse refusal.
+ *  It carries no ceiling. Approval used to be capped at what was requested,
+ *  which assumed the request was always the higher number — but prices move
+ *  between the request and the meeting (D76). A screen that wants to point out
+ *  a figure above what was asked says so in words beside the field, where it
+ *  reads as information rather than as a wall.
  */
 export function MoneyInput({
   value,
   onChange,
-  ceiling,
   id,
   disabled,
   placeholder,
@@ -31,7 +32,6 @@ export function MoneyInput({
 }: {
   value: number;
   onChange: (value: number) => void;
-  ceiling?: number;
   id?: string;
   disabled?: boolean;
   placeholder?: string;
@@ -48,8 +48,6 @@ export function MoneyInput({
     if (digitsToNumber(text) !== value) setText(group(value ?? 0));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
-
-  const over = ceiling !== undefined && value > ceiling;
 
   return (
     <div className={className}>
@@ -77,15 +75,9 @@ export function MoneyInput({
           className={cn(
             "w-full rounded-lg border border-slate-200 text-right tabular-nums focus:border-brand-400 focus:outline-none disabled:bg-slate-50",
             size === "sm" ? "h-8 pl-6 pr-2 text-[13px]" : "h-10 pl-9 pr-3 text-sm",
-            over && "border-rose-300 bg-rose-50/40",
           )}
         />
       </div>
-      {over && (
-        <p className="mt-1 text-xs text-rose-600">
-          Above the {formatIDR(ceiling)} requested. Approval can only reduce.
-        </p>
-      )}
     </div>
   );
 }

@@ -69,6 +69,7 @@ export function LineDrawer({
       description: line!.description, qty: line!.qty, uom: line!.uom,
       unit_price: line!.unit_price, category: line!.category,
       purpose: line!.purpose, need_by: line!.need_by,
+      item_total: line!.item_total,
     });
     setEditing(true);
   }
@@ -83,6 +84,9 @@ export function LineDrawer({
       category: draft.category ?? null,
       purpose: (draft.purpose ?? "").toString().trim() || null,
       need_by: draft.need_by ?? null,
+      /* Sent explicitly, because the amount is not always quantity × price:
+         a service line has neither, and the total is the only figure it has. */
+      item_total: draft.item_total ?? 0,
     });
     setSaving(false);
     if (res.error) { toast(res.error.status === 409 ? "warning" : "critical", "Not saved", res.error.message); return; }
@@ -181,7 +185,15 @@ export function LineDrawer({
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <div>
                 <label htmlFor="ed-qty" className="block text-xs text-slate-500">Qty</label>
-                <NumberInput id="ed-qty" value={draft.qty ?? 0} onChange={(v) => setDraft({ ...draft, qty: v })} min={0} className="mt-1" />
+                <NumberInput
+                  id="ed-qty"
+                  value={draft.qty ?? 0}
+                  onChange={(v) => setDraft({
+                    ...draft, qty: v, item_total: Math.round(v * (draft.unit_price ?? 0)),
+                  })}
+                  min={0}
+                  className="mt-1"
+                />
               </div>
               <div>
                 <label htmlFor="ed-uom" className="block text-xs text-slate-500">Unit</label>
@@ -193,7 +205,39 @@ export function LineDrawer({
               </div>
               <div className="col-span-2">
                 <label htmlFor="ed-price" className="block text-xs text-slate-500">Unit price</label>
-                <MoneyInput id="ed-price" value={draft.unit_price ?? 0} onChange={(v) => setDraft({ ...draft, unit_price: v })} className="mt-1" />
+                <MoneyInput
+                  id="ed-price"
+                  value={draft.unit_price ?? 0}
+                  onChange={(v) => setDraft({
+                    ...draft,
+                    unit_price: v,
+                    /* The amount follows the price while both parts exist. */
+                    item_total: Math.round((draft.qty ?? 0) * v),
+                  })}
+                  className="mt-1"
+                />
+              </div>
+              <div className="col-span-2 sm:col-span-4">
+                <label htmlFor="ed-total" className="block text-xs text-slate-500">
+                  Amount <span className="text-slate-400">— editable on its own, for a line with no quantity</span>
+                </label>
+                <MoneyInput
+                  id="ed-total"
+                  value={draft.item_total ?? 0}
+                  onChange={(v) => setDraft({ ...draft, item_total: v })}
+                  className="mt-1"
+                />
+                {/* Said, not corrected: a vendor quoting a lump sum for two
+                    sets is a real thing, and silently overwriting the figure
+                    somebody typed is how a screen loses trust. */}
+                {draft.qty != null && draft.unit_price != null
+                  && Math.round(draft.qty * draft.unit_price) !== draft.item_total && (
+                  <p className="mt-1 text-[11px] text-amber-700">
+                    {formatNumber(draft.qty)} × {formatIDR(draft.unit_price)} ={" "}
+                    {formatIDR(Math.round(draft.qty * draft.unit_price))} — the amount above
+                    is different, and it is the one that will be used.
+                  </p>
+                )}
               </div>
             </div>
             <div>

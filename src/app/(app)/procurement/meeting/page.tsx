@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import {
-  Users, Send, Circle, Clock, AlertTriangle, ExternalLink,
+  Send, Circle, Clock, AlertTriangle, ExternalLink, Check,
 } from "lucide-react";
 import Link from "next/link";
 import { Button, Card, CardHeader, PageHeader } from "@/components/ui/primitives";
@@ -43,9 +43,11 @@ export default function MeetingBoardPage() {
   const [selected, setSelected] = useState<PrLineView | null>(null);
   const [qtyDraft, setQtyDraft] = useState<Record<string, number>>({});
   const [amountDraft, setAmountDraft] = useState<Record<string, number>>({});
-  const [ticked, setTicked] = useState<Record<string, boolean>>({});
-  const [busy, setBusy] = useState<string | null>(null);
-  const [sending, setSending] = useState(false);
+  /* Ticking marks an intention, not a decision. Nothing is written until the
+     one confirm at the top — so a meeting can go through the list, change its
+     mind twice, and see the total before anything is committed (D77). */
+  const [picked, setPicked] = useState<Record<string, boolean>>({});
+  const [busy, setBusy] = useState(false);
 
   const mayDecide = hasAuthority("approve_goods");
   const mayAsk = can("procurement.create");
@@ -61,40 +63,58 @@ export default function MeetingBoardPage() {
     if (l.unit_price != null) setAmountDraft((d) => ({ ...d, [l.id]: Math.round(v * l.unit_price!) }));
   }
 
-  async function approve(l: PrLineView) {
-    setBusy(l.id);
-    setTicked((t) => ({ ...t, [l.id]: true }));
-    const res = await procurement.approveLine({
-      line_no: l.line_no_full,
-      approved: true,
-      approved_qty: l.qty != null ? qtyOf(l) : null,
-      approved_amount: amountOf(l),
-    });
-    setBusy(null);
-    if (res.error) {
-      toast(res.error.status === 403 ? "critical" : "warning", "Not approved", res.error.message);
-      setTicked((t) => ({ ...t, [l.id]: false }));
-      return;
-    }
-    toast("success", `Approved ${formatIDR(amountOf(l))}`, l.description);
-    reload();
+  function toggle(l: PrLineView) {
+    setPicked((p) => ({ ...p, [l.id]: !p[l.id] }));
   }
 
-  async function askOnChat(rows: PrLineView[]) {
-    const askable = rows.filter((l) => !l.approval?.approved && !l.removed_at && !l.pending_request);
+  /** Approve everything ticked, in one act.
+   *
+   *  Only for somebody who actually holds the authority. For everybody else
+   *  the same selection goes to the approver's chat instead — the meeting
+   *  usually runs on a laptop that is not theirs, and recording their yes
+   *  under whoever logged in is the mistake the chat route exists to prevent
+   *  (D69).
+   */
+  async function approveSelected(rows: PrLineView[]) {
+    setBusy(true);
+    let done = 0;
+    for (const l of rows) {
+      const res = await procurement.approveLine({
+        line_no: l.line_no_full,
+        approved: true,
+        approved_qty: l.qty != null ? qtyOf(l) : null,
+        approved_amount: amountOf(l),
+      });
+      if (res.error) {
+        toast(res.error.status === 403 ? "critical" : "warning", `Not approved · ${l.line_no_full}`, res.error.message);
+        continue;
+      }
+      done += 1;
+    }
+    setBusy(false);
+    if (done > 0) {
+      toast("success", `Approved ${done} item(s)`, formatIDR(rows.reduce((s, l) => s + amountOf(l), 0)));
+      setPicked({});
+      reload();
+    }
+  }
+
+  async function sendSelected(rows: PrLineView[]) {
+    const askable = rows.filter((l) => !l.pending_request);
     if (askable.length === 0) {
-      toast("warning", "Nothing to send", "Everything here is decided already or already waiting for an answer.");
+      toast("warning", "Nothing to send", "Every item you picked is already waiting for an answer.");
       return;
     }
-    setSending(true);
+    setBusy(true);
     const res = await procurement.requestApproval({ line_nos: askable.map((l) => l.line_no_full) });
-    setSending(false);
+    setBusy(false);
     if (res.error) { toast("warning", "Not sent", res.error.message); return; }
     toast(
       "success",
       `Sent ${res.data.items.length} item(s) as ${res.data.batch_no}`,
       `${formatIDR(res.data.requested_total)} for ${res.data.sent_to_email} to decide`,
     );
+    setPicked({});
     reload();
   }
 
@@ -152,59 +172,66 @@ export default function MeetingBoardPage() {
       ),
     },
     {
-      key: "decision",
-      header: "Decision",
+      key: "pick",
+      header: "Pick",
       className: "whitespace-normal",
       render: (l) => {
-        if (!mayDecide) {
-          return (
-            <div className="space-y-0.5">
-              <StatusPill kind="line" status={l.status} />
-              {l.pending_request && (
-                <p className="text-[11px] text-slate-500">
-                  asked {l.pending_request.sent_to_email.split("@")[0]} on chat
-                </p>
-              )}
-            </div>
-          );
-        }
+        const on = picked[l.id] ?? false;
         return (
-          <div className="w-[188px] space-y-1.5" onClick={(e) => e.stopPropagation()}>
-            {l.qty != null && (
-              <div className="flex items-center gap-1.5">
-                <NumberInput
-                  id={`mq-${l.id}`}
-                  size="sm"
-                  value={qtyOf(l)}
-                  onChange={(v) => setQty(l, v)}
-                  min={0}
-                  max={l.qty ?? undefined}
-                  className="w-20 text-right"
-                />
-                <span className="text-[11px] text-slate-400">of {formatNumber(l.qty)} {l.uom ?? ""}</span>
-              </div>
-            )}
-            <MoneyInput
-              id={`ma-${l.id}`}
-              size="sm"
-              value={amountOf(l)}
-              ceiling={l.item_total}
-              onChange={(v) => setAmountDraft((d) => ({ ...d, [l.id]: v }))}
-            />
-            <label className="flex items-center gap-2 text-[13px] text-slate-700">
+          /* Stops the click from opening the drawer: the row is a link, these
+             controls are not. */
+          <div className="w-[196px] space-y-1.5" onClick={(e) => e.stopPropagation()}>
+            <label className="flex items-center gap-2 text-[13px] font-medium text-slate-700">
               <input
-                id={`mok-${l.id}`}
+                id={`pick-${l.id}`}
                 type="checkbox"
-                checked={ticked[l.id] ?? false}
-                disabled={busy === l.id}
-                onChange={() => approve(l)}
+                checked={on}
+                onChange={() => toggle(l)}
                 className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-400"
               />
-              {busy === l.id ? "Recording…" : "Approve"}
+              {mayDecide ? "Approve this" : "Include in the ask"}
             </label>
+
+            {/* The amounts only matter once it is picked, and showing four
+                fields per row on a list nobody has ticked is noise. */}
+            {on && (
+              <>
+                {l.qty != null && (
+                  <div className="flex items-center gap-1.5">
+                    <NumberInput
+                      id={`mq-${l.id}`}
+                      size="sm"
+                      value={qtyOf(l)}
+                      onChange={(v) => setQty(l, v)}
+                      min={0}
+                      className="w-20 text-right"
+                    />
+                    <span className="text-[11px] text-slate-400">of {formatNumber(l.qty)} {l.uom ?? ""}</span>
+                  </div>
+                )}
+                <MoneyInput
+                  id={`ma-${l.id}`}
+                  size="sm"
+                  value={amountOf(l)}
+                  onChange={(v) => setAmountDraft((d) => ({ ...d, [l.id]: v }))}
+                />
+                {amountOf(l) !== l.item_total && (
+                  <p className={cn(
+                    "text-[11px]",
+                    amountOf(l) > l.item_total ? "text-amber-700" : "text-brand-700",
+                  )}>
+                    {formatIDR(Math.abs(amountOf(l) - l.item_total))}{" "}
+                    {amountOf(l) > l.item_total ? "more" : "less"} than asked
+                  </p>
+                )}
+              </>
+            )}
+
+            {!on && <StatusPill kind="line" status={l.status} />}
             {l.pending_request && (
               <p className="text-[11px] text-slate-500">
-                asked on chat · {new Date(l.pending_request.sent_at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
+                asked {l.pending_request.sent_to_email.split("@")[0]} on chat ·{" "}
+                {new Date(l.pending_request.sent_at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
               </p>
             )}
           </div>
@@ -273,9 +300,48 @@ export default function MeetingBoardPage() {
           const waitingTotal = waiting.reduce((s, l) => s + l.item_total, 0);
           const payTotal = toPay.reduce((s, l) => s + l.coverage.remaining, 0);
 
+          const chosen = waiting.filter((l) => picked[l.id]);
+          const chosenTotal = chosen.reduce((s, l) => s + amountOf(l), 0);
+
           return (
             <>
               <MoneyPanel lines={all} />
+
+              {/* The confirm sits ABOVE the lists, with the total on it: a
+                  meeting ticks its way down the page and then looks up to see
+                  what it just committed to. Ticking writes nothing (D77). */}
+              {chosen.length > 0 && (
+                <div className="mb-4 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border border-brand-300 bg-brand-50 px-4 py-3 shadow-card">
+                  <p className="text-[13px] text-brand-900">
+                    <span className="text-xl font-bold tabular-nums">{chosen.length}</span>{" "}
+                    item{chosen.length === 1 ? "" : "s"} picked
+                  </p>
+                  <p className="text-[13px] text-brand-900">
+                    <span className="text-xl font-bold tabular-nums">{formatIDR(chosenTotal)}</span>{" "}
+                    to pay if this goes through
+                  </p>
+                  <div className="ml-auto flex flex-wrap items-center gap-2">
+                    <Button variant="ghost" size="sm" onClick={() => setPicked({})} disabled={busy}>
+                      Clear
+                    </Button>
+                    {mayDecide ? (
+                      <Button size="sm" icon={Check} disabled={busy} onClick={() => approveSelected(chosen)}>
+                        {busy ? "Recording…" : `Approve ${chosen.length} · ${formatIDR(chosenTotal)}`}
+                      </Button>
+                    ) : (
+                      <Button size="sm" icon={Send} disabled={busy || !mayAsk} onClick={() => sendSelected(chosen)}>
+                        {busy ? "Sending…" : `Send ${chosen.length} to the approver on Chat`}
+                      </Button>
+                    )}
+                  </div>
+                  {!mayDecide && (
+                    <p className="w-full text-[12px] text-brand-800">
+                      You are not the approver, so this does not record a yes — it puts the
+                      list in their chat, and their answer is recorded as theirs.
+                    </p>
+                  )}
+                </div>
+              )}
 
               {paidUnapproved.length > 0 && (
                 <p className="mb-4 flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[13px] text-rose-800">
@@ -297,17 +363,6 @@ export default function MeetingBoardPage() {
                   action={
                     <div className="flex flex-wrap items-center gap-2">
                       <SourceBadge state={lines} />
-                      {mayAsk && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          icon={Send}
-                          disabled={sending}
-                          onClick={() => askOnChat(waiting)}
-                        >
-                          {sending ? "Sending…" : "Ask on Chat"}
-                        </Button>
-                      )}
                       {mayAsk && <QuickAdd onAdded={reload} />}
                     </div>
                   }
@@ -328,6 +383,16 @@ export default function MeetingBoardPage() {
                   subtitle={`${toPay.length} item(s) · ${formatIDR(payTotal)} still to pay. This is the money that has to be in BCA 271.`}
                   icon={Clock}
                 />
+                {/* The total belongs at the top: it is the answer, and the
+                    rows underneath are the working. */}
+                {toPay.length > 0 && (
+                  <div className="flex flex-wrap items-baseline gap-x-3 border-b border-slate-100 bg-slate-50/70 px-4 py-2.5">
+                    <span className="text-[13px] text-slate-600">{toPay.length} item(s) to pay</span>
+                    <span className="text-lg font-bold tabular-nums tracking-tight text-slate-800">
+                      {formatIDR(payTotal)}
+                    </span>
+                  </div>
+                )}
                 <DataTable
                   dense
                   columns={payColumns}
@@ -335,19 +400,6 @@ export default function MeetingBoardPage() {
                   rowKey={(l) => l.id}
                   onRowClick={setSelected}
                   empty="Nothing approved is waiting for payment."
-                  footer={
-                    toPay.length > 0 ? (
-                      <tr>
-                        <td className="px-4 py-2.5 text-[13px] text-slate-600" colSpan={2}>
-                          {toPay.length} item(s) to pay
-                        </td>
-                        <td className={cn("px-4 py-2.5 text-right tabular-nums font-semibold text-slate-800")}>
-                          {formatIDR(payTotal)}
-                        </td>
-                        <td />
-                      </tr>
-                    ) : undefined
-                  }
                 />
               </Card>
             </>

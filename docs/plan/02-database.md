@@ -1,0 +1,580 @@
+# 02 — Database
+
+> **Phase note — nothing here is built yet.** This is the *target* schema.
+> In Phase 1 it has exactly one job: it is the shape the demo types in
+> `src/services/*/contracts.ts` are cut to, so column names, enums and
+> relationships are already right when Phase 2 starts.
+>
+> **This document is expected to be wrong in places, and gets rewritten on
+> D14** against what walking the workflow teaches us (`findings.md`). That is
+> the point of doing the frontend first — a guess costs an edit here instead
+> of a migration later. Do not treat it as settled.
+
+New Supabase project (Phase 2). One database, one schema per service. Every table
+ships with RLS in the migration that creates it (ADR-002).
+
+## Conventions
+
+| Thing | Rule |
+|---|---|
+| Primary keys | `uuid` `default gen_random_uuid()` for internal identity |
+| Public identifiers | a separate `*_no` text column, `UNIQUE`, minted by `core.next_doc_number()` (ADR-005). This is what humans, URLs and other systems use |
+| Money | `bigint`, whole rupiah, always positive. Direction is a separate `IN`/`OUT` column (as today, §3.4) |
+| Quantities | `numeric(18,4)` — 0,001 m³ of a log is money (§ format.ts already assumes 3 decimals) |
+| Time | `timestamptz`, always. The *office day* (WITA, `Asia/Makassar`) is derived where needed, never stored as a naked date except `trx_date` |
+| Status | Postgres `ENUM` types, never text with a comment (D2) |
+| Names | `snake_case`, domain words, **never a spreadsheet header** (D1). `amount_idr` not `idr_amount`; `direction` not `in_out` |
+| Text search names | `name` plus `aka text[]` for absorbed spellings, as today (§3.7) |
+| Append-only tables | `REVOKE UPDATE, DELETE`; corrections via a new row + `superseded_by uuid` |
+| Every table | `created_at`, `created_by` (uuid → `core.users`) |
+| Every business table | RLS enabled, policies referencing `core.has_permission()` |
+| Deletes | not granted to anyone, anywhere. Corrections are VOID or supersession (A5) |
+
+### The one function every policy calls
+
+```sql
+core.has_permission(permission_code text) returns boolean
+-- reads auth.uid() -> core.user_roles -> core.role_permissions
+-- STABLE, SECURITY DEFINER, search_path pinned
+```
+
+### Settings, so a tolerance has one home
+
+`core.settings(key text pk, value_num numeric, value_text text, note text)`
+seeded with `payment_tolerance_idr = 1000`, `statement_tolerance_idr = 0`,
+`approval_tolerance = 0.01`, `office_timezone = 'Asia/Makassar'`.
+Views read it. Nothing hardcodes a tolerance ever again (D3).
+
+---
+
+## Schema `core` — identity, audit, numbering, files
+
+```mermaid
+erDiagram
+    users ||--o{ user_roles : "has"
+    roles ||--o{ user_roles : "granted by"
+    roles ||--o{ role_permissions : "holds"
+    permissions ||--o{ role_permissions : "in"
+    users ||--o{ audit_log : "acted"
+    users ||--o{ attachments : "uploaded"
+    attachments ||--o{ attachment_links : "linked"
+
+    users {
+        uuid id PK "= auth.users.id"
+        text email UK
+        text full_name
+        boolean is_active
+    }
+    roles {
+        text code PK "finance, director, purchasing..."
+        text name
+        text description
+    }
+    permissions {
+        text code PK "procurement.approve"
+        text module
+        text action
+    }
+    role_permissions {
+        text role_code FK
+        text permission_code FK
+    }
+    user_roles {
+        uuid user_id FK
+        text role_code FK
+        uuid granted_by FK
+        timestamptz granted_at
+    }
+    audit_log {
+        uuid id PK
+        timestamptz at
+        uuid actor_id FK
+        text service
+        text entity
+        text entity_no
+        text action
+        jsonb before
+        jsonb after
+        outcome_t outcome "ok|refused|duplicate|noop"
+        text reason
+    }
+    doc_numbers {
+        text prefix PK
+        date day PK
+        int seq
+    }
+    attachments {
+        uuid id PK
+        text storage_path
+        text sha256
+        text mime
+        bigint bytes
+        uuid uploaded_by FK
+        text source "web|api|import"
+    }
+    attachment_links {
+        uuid id PK
+        uuid attachment_id FK
+        text entity "transaction|pr_line|po|receipt"
+        text entity_no
+        doc_kind_t kind "receipt|payment_proof|receiving_item|other"
+        uuid linked_by FK
+    }
+    outbox {
+        uuid id PK
+        text service
+        text event_type
+        jsonb payload
+        timestamptz occurred_at
+        timestamptz delivered_at
+    }
+    settings {
+        text key PK
+        numeric value_num
+        text value_text
+    }
+```
+
+**Roles seeded in v1** (from §6, narrowed to who actually exists):
+`it_admin` (everything) · `director` (read all, approve goods) ·
+`finance` (accounting **and** procurement — deliberately one role: "splitting
+it produces someone who can approve a purchase without ever seeing the cash",
+§6.3) · `purchasing` (create PR, receive) · `warehouse` (receive) ·
+`employee` (create PR, read own).
+
+`core.audit_log` is append-only and has **no** hash chain in v1. §10.2 q8
+records that the audit triggers were written and never run because they touch
+money write paths; here they are in scope from the start, on the one write
+seam only (ADR-006), which is the narrow path they should always have used.
+
+---
+
+## Schema `procure` — reference data, PR chain, PO
+
+### Reference data
+
+```mermaid
+erDiagram
+    vendors ||--o{ items : "last supplied"
+    item_categories ||--o{ items : "classifies"
+    item_categories ||--o{ item_categories : "parent"
+    uom ||--o{ items : "base unit"
+    uom ||--o{ uom_conversions : "from"
+    uom ||--o{ uom_conversions : "to"
+
+    vendors {
+        uuid id PK
+        text code UK
+        text name
+        text[] aka
+        boolean is_curated "false = recorded, not yet curated"
+        text phone
+        text address
+        text bank_account
+        text npwp
+    }
+    item_categories {
+        text code PK
+        text parent_code FK
+        text name
+    }
+    items {
+        uuid id PK
+        text code UK
+        text name
+        text[] aka
+        text category_code FK
+        text base_uom FK
+        item_kind_t kind "goods|service"
+        boolean is_curated
+        bigint standard_price "curated. never auto-written"
+        bigint last_price "hint, moves forward in time only"
+        uuid last_vendor_id FK
+        date last_purchased_at
+    }
+    uom {
+        text code PK "pcs, kg, m3, batang..."
+        text name
+        uom_dimension_t dimension "count|mass|length|area|volume"
+    }
+    uom_conversions {
+        uuid id PK
+        text from_uom FK
+        text to_uom FK
+        numeric factor
+        numeric yield_ratio "null unless it is a conversion with loss"
+        text note
+    }
+    projects {
+        uuid id PK
+        text code UK "PRN, 5 digits: 25004"
+        text name
+        boolean is_active
+    }
+```
+
+`uom_conversions` exists in v1 **as a table only** — procurement needs
+`box → pcs`. The wood yield chain (log m³ → sawn boards at 45–60% → dried →
+components with 10–30% offcut, README "what must be designed right from the
+start") is the inventory milestone, and it plugs in here rather than needing
+a new model. Stock is always stored in an item's `base_uom`.
+
+`is_curated=false` keeps its exact `john-lau` meaning: **recorded, and
+invisible in dropdowns and AI prompts until a human promotes it** (§3.7).
+A new vendor typed by a human must always be accepted — that was the owner's
+call on 2026-08-05 and it stands.
+
+### PR chain
+
+```mermaid
+erDiagram
+    pr_documents ||--o{ pr_lines : "contains"
+    pr_lines ||--o{ pr_approvals : "decided"
+    pr_lines ||--o{ pr_line_revisions : "superseded"
+    pr_lines ||--o{ receipts : "received"
+    vendors ||--o{ pr_lines : "from"
+    items ||--o{ pr_lines : "of"
+    payment_rounds ||--o{ payment_round_lines : "freezes"
+    pr_lines ||--o{ payment_round_lines : "in"
+    pr_lines ||--o{ line_settlements : "short settled"
+
+    pr_documents {
+        uuid id PK
+        text doc_no UK "pr-26-09-10_01"
+        pr_doc_type_t doc_type "PR|FUND"
+        pr_doc_status_t status "DRAFT|SUBMITTED|APPROVED|CLOSED|CANCELLED"
+        uuid requested_by FK
+        uuid project_id FK
+        text purpose
+        timestamptz submitted_at
+    }
+    pr_lines {
+        uuid id PK
+        uuid doc_id FK
+        int line_no "-> pr-26-09-10_01-L03"
+        text line_no_full UK "generated column"
+        uuid item_id FK
+        text description "what the requester actually wrote"
+        numeric qty
+        text uom FK
+        bigint unit_price
+        bigint item_total "what was ASKED. never zeroed to cancel"
+        uuid vendor_id FK
+        uuid po_line_id FK "null unless funding a PO"
+        text category "RAW MATERIAL|MACHINING|..."
+        date need_by
+    }
+    pr_approvals {
+        uuid id PK
+        uuid line_id FK
+        approval_step_t step "IT|GOODS|FUNDS"
+        approval_decision_t decision "APPROVED|HOLD|REJECTED"
+        numeric approved_qty
+        bigint approved_amount "CHECK not above item_total"
+        uuid recorded_by FK
+        channel_t channel "web|chat|sheet|script|api"
+        text reason
+        timestamptz recorded_at
+    }
+    payment_rounds {
+        uuid id PK
+        text round_no UK "pay-26-09-10_01"
+        round_status_t status "OPEN|APPROVED|TRANSFERRED|CLOSED"
+        uuid approved_by FK
+        bigint transferred_amount
+        text transferred_trx_no
+        uuid closed_by FK
+        timestamptz closed_at
+    }
+    payment_round_lines {
+        uuid id PK
+        uuid round_id FK
+        uuid line_id FK
+        bigint requested_amount "frozen at APPROVE ROUND"
+    }
+    receipts {
+        uuid id PK
+        text receipt_no UK
+        uuid line_id FK "exactly one of line_id/po_line_id"
+        uuid po_line_id FK
+        numeric qty_received
+        receipt_condition_t condition
+        uuid received_by FK
+        uuid qc_by FK
+        timestamptz received_at
+    }
+    line_settlements {
+        uuid id PK
+        uuid line_id FK
+        bigint shortfall
+        text reason "NOT NULL. a named human decision"
+        uuid decided_by FK
+    }
+```
+
+### PO
+
+```mermaid
+erDiagram
+    vendors ||--o{ purchase_orders : "to"
+    purchase_orders ||--o{ po_lines : "contains"
+    purchase_orders ||--o{ po_amendments : "amended"
+    purchase_orders ||--o{ po_schedule : "terms"
+    purchase_orders ||--o{ vendor_credits : "credits"
+    purchase_orders ||--o{ vendor_docs : "evidenced"
+    po_lines ||--o{ pr_lines : "funded by"
+
+    purchase_orders {
+        uuid id PK
+        text po_no UK "po-26-09-10_01"
+        uuid vendor_id FK
+        po_status_t status "DRAFT|ISSUED|CLOSED|CANCELLED"
+        timestamptz issued_at "stamped from the first approved PR"
+        uuid issued_by FK
+    }
+    po_lines {
+        uuid id PK
+        uuid po_id FK
+        int line_no
+        uuid item_id FK
+        numeric qty
+        text uom FK
+        bigint unit_price
+        bigint line_total
+        uuid superseded_by FK
+    }
+    po_amendments {
+        uuid id PK
+        uuid po_id FK
+        text amendment_no "po-...-A01"
+        bigint delta_value
+        text reason
+        uuid approved_by FK
+    }
+    po_schedule {
+        uuid id PK
+        uuid po_id FK
+        text term_no "po-...-M01"
+        po_payment_kind_t kind "DP|PROGRESS|FINAL"
+        schedule_basis_t basis "percent|amount"
+        numeric basis_value
+        due_rule_t due_rule "on_issue|on_delivery|date"
+        date due_date
+    }
+    vendor_credits {
+        uuid id PK
+        uuid po_id FK
+        bigint amount
+        credit_reason_t reason "cancellation|return|overpayment|other"
+        uuid applied_to_po_id FK
+        boolean refunded
+    }
+    vendor_docs {
+        uuid id PK
+        uuid po_id FK
+        vendor_doc_kind_t kind "quotation|invoice|delivery_note|other"
+        text doc_no
+        uuid attachment_id FK
+    }
+```
+
+**PO rules held by the schema** (§3.9):
+
+- `contract_value` = Σ non-superseded `po_lines.line_total` — a view, never
+  a column.
+- A PO is born `DRAFT` and becomes `ISSUED` only when the first PR line
+  pointing at it is approved. After that the obligation moves **only** through
+  an approved `po_amendments` row.
+- One `DP` and one `FINAL` per PO (partial unique index); `PROGRESS`
+  unlimited.
+- A write-back that would cut a line's qty below what has already been
+  received is refused — that is a return/credit decision, not an edit.
+- No separate PO approval surface, and no second money path: a PO is funded
+  by PR lines that carry its `po_line_id`, and those ride the weekly round.
+
+---
+
+## Schema `acct` — accounts, ledger, allocations, review
+
+```mermaid
+erDiagram
+    accounts ||--o{ transactions : "posted to"
+    transaction_types ||--o{ transactions : "typed"
+    transactions ||--o{ transaction_lines : "itemised"
+    transactions ||--o{ payment_allocations : "funds"
+    transactions ||--o{ transaction_docs : "evidenced"
+    review_queue ||--o| transactions : "produced"
+    accounts ||--o{ bank_statements : "of"
+    bank_statements ||--o{ statement_lines : "contains"
+
+    accounts {
+        uuid id PK
+        text code UK "BCA 271 - spelled exactly"
+        text name
+        account_custody_t custody "accounting|leadership"
+        boolean is_paying "may pay a vendor"
+        text currency
+        bigint opening_balance
+        date opened_on
+        boolean is_active
+    }
+    transaction_types {
+        text code PK "SUPPLIERS, BANK CHARGES..."
+        boolean is_purchase "vetoes auto-complete"
+        boolean auto_complete
+        boolean creates_catalog_item
+    }
+    transactions {
+        uuid id PK
+        text trx_no UK "trx-26-09-10_001"
+        date trx_date
+        uuid account_id FK
+        direction_t direction "IN|OUT"
+        bigint amount_idr "always positive"
+        text type_code FK
+        uuid vendor_id FK
+        uuid project_id FK
+        text description
+        text remark
+        trx_status_t status "POSTED|COMPLETED|UNTRACKED|VOID"
+        text source_ref UK "the idempotency claim"
+        uuid posted_by FK
+        text void_reason
+    }
+    transaction_lines {
+        uuid id PK
+        uuid trx_id FK
+        int line_no
+        uuid item_id FK
+        text description
+        numeric qty
+        text uom FK
+        bigint unit_price
+        bigint amount
+    }
+    payment_allocations {
+        uuid id PK
+        uuid trx_id FK
+        text pr_line_no "public id. validated at the seam"
+        text po_no
+        bigint amount
+        alloc_method_t method "transfer|cash|other"
+        uuid superseded_by FK
+        uuid allocated_by FK
+    }
+    transaction_docs {
+        uuid id PK
+        uuid trx_id FK
+        uuid attachment_id FK
+        doc_kind_t doc_type
+    }
+    review_queue {
+        uuid id PK
+        text ref_id UK "upload_id ~ slot"
+        review_status_t status "PENDING|CONFIRMED|ATTACHED|REJECTED|CANCELLED|NOTED"
+        uuid attachment_id FK
+        jsonb extracted "open payload. proposal only"
+        uuid produced_trx_id FK
+        text duplicate_of_ref
+        text[] similar_trx_nos
+    }
+    bank_statements {
+        uuid id PK
+        uuid account_id FK
+        date period_start
+        date period_end
+        statement_status_t status "PENDING|BOOKED|ABANDONED"
+        uuid attachment_id FK
+    }
+    statement_lines {
+        uuid id PK
+        uuid statement_id FK
+        int line_no
+        date value_date
+        direction_t direction
+        bigint amount_idr
+        text raw_description
+        uuid booked_trx_id FK
+    }
+```
+
+Note what is **not** here: no `sheet_ref`, no `push_id`, no `pushes` table, no
+`trx_ids` reservation table, no `queue_writes`. All four exist in `john-lau`
+only to keep a spreadsheet and a database in step (D1, ADR-006).
+
+`statement_lines` is a real table, not `interpretations.output.rows` — §9.3.7
+names that JSON blob as the only home statement lines had, which is why they
+could not be queried.
+
+---
+
+## Views — the only place derived state lives
+
+| View | Schema | Answers |
+|---|---|---|
+| `v_account_balance` | acct | balance per account = opening + Σ IN − Σ OUT, excluding VOID. **The database owns the number** (D9) |
+| `v_transaction_complete` | acct | is the evidence chain complete for this row |
+| `v_allocations_public` | acct | the published seam procurement reads (ADR-004) |
+| `v_pr_line_coverage` | procure | `approved` = coalesce(approved_amount, item_total, 0); `covered` = Σ non-superseded allocations; `remaining`; `settled`. Tolerance from `core.settings` |
+| `v_pr_line_status` | procure | the **one** ladder, resolved in order: DRAFT → REJECTED → COMPLETED → PARTIAL → PAID → WAITING FOR PAYMENT → APPROVED → HELD → WAITING FOR APPROVAL (§3.8 `line_status` v7, carried over exactly) |
+| `v_po_status` | procure | `contract_value`, `paid_to_date`, `outstanding`, `value_received`, **`exposure` = paid − received**, and the two independent axes |
+| `v_po_line_status` | procure | per-line delivery and payment |
+| `v_round_summary` | procure | REQUESTED, paying-account balance, TO TRANSFER, remaining after payment |
+| `v_unlinked_transactions` | acct | money with no PR line — shown, never hidden |
+| `v_meeting_board` | procure | the four states: lunas · disetujui belum bayar · dibayar belum disetujui · belum keduanya |
+
+`v_pr_line_status` is carried over rather than redesigned. It encodes
+decisions that cost real incidents: **PAID requires that the transaction
+exists**, not that a field is filled ("a stamp pointing at nothing is not
+paid"); a round marked TRANSFERRED does not make a line PAID ("send money ≠
+payment"); a line with no qty (a service, a bill) completes on one GOOD
+report.
+
+---
+
+## RLS sketch
+
+```sql
+alter table procure.pr_lines enable row level security;
+
+create policy pr_lines_read on procure.pr_lines for select
+  to authenticated using (core.has_permission('procurement.read'));
+
+create policy pr_lines_write on procure.pr_lines for insert
+  to authenticated with check (core.has_permission('procurement.create'));
+
+-- no update policy: lines are revised by superseding, through the service
+-- no delete policy, and DELETE is not granted (A2, A5)
+```
+
+Approval tables get a policy that also checks the step:
+`core.has_permission('procurement.approve')` for `GOODS`,
+`procurement.approve_funds` for `FUNDS`. This is the answer to §3.3's finding
+that "nothing in `apps/ops` checks who may post" — a user without the
+permission sees a 403 from Postgres, not from a Python bridge that may or may
+not have received the right environment variable.
+
+## Migration order (Phase 2)
+
+```
+0001_core_types.sql          enums used across schemas
+0002_core_identity.sql       users, roles, permissions, user_roles + RLS + has_permission()
+0003_core_audit.sql          audit_log, outbox, settings + RLS
+0004_core_numbers.sql        doc_numbers + next_doc_number()
+0005_core_files.sql          attachments, attachment_links + RLS + storage bucket
+0006_procure_reference.sql   vendors, uom, uom_conversions, categories, items, projects + RLS
+0007_procure_pr.sql          pr_documents, pr_lines, revisions, approvals + RLS
+0008_procure_rounds.sql      payment_rounds, round_lines, settlements + RLS
+0009_procure_po.sql          purchase_orders, po_lines, amendments, schedule, credits, docs + RLS
+0010_procure_receipts.sql    receipts + RLS
+0011_acct_accounts.sql       accounts, transaction_types, + RLS + seed the five accounts
+0012_acct_ledger.sql         transactions, transaction_lines, transaction_docs + RLS
+0013_acct_allocations.sql    payment_allocations + v_allocations_public + grants
+0014_acct_review.sql         review_queue, bank_statements, statement_lines + RLS
+0015_views.sql               every v_* above
+0016_seams.sql               post_transaction(), allocate_payment(), audit triggers on those two only
+```
+
+Additive migrations may be applied by the agent after a dry run. **Destructive
+DDL asks first** — carried over from the `CLAUDE.md` convention that has held
+since 2026-07-21.

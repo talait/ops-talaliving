@@ -1,0 +1,309 @@
+# 05 — Workplan, day by day (Phase 1)
+
+Two weeks, D1–D14. **The whole workflow as a working frontend on demo data,
+live on Vercel from day one.** No database, no backend, nothing that needs a
+PC. Every day can be driven from the Claude app on a phone.
+
+Each day lists the **prompt to send**. Copy it as-is. Every prompt ends the
+same way, because that is what keeps the plan alive.
+
+| Day | Date | Milestone | Ships to the URL |
+|---|---|---|---|
+| D1 | Thu 10 Sep | M1 demo layer + Vercel live | ✓ |
+| D2 | Fri 11 Sep | M2 demo session + permissions | ✓ |
+| D3 | Sat 12 Sep | M3 vendors, items, projects | ✓ |
+| D4 | Sun 13 Sep | M4 PR list, create, drawer | ✓ |
+| D5 | Mon 14 Sep | M5 approval chain + trail | ✓ |
+| D6 | Tue 15 Sep | M6 payment rounds | ✓ |
+| D7 | Wed 16 Sep | M7 checkpoint — walk Flow B with the team | — |
+| D8 | Thu 17 Sep | M8 ledger | ✓ |
+| D9 | Fri 18 Sep | M9 review queue | ✓ |
+| D10 | Sat 19 Sep | M10 evidence | ✓ |
+| D11 | Sun 20 Sep | M11 PO + receiving | ✓ |
+| D12 | Mon 21 Sep | M12 meeting board, cashflow, dashboard | ✓ |
+| D13 | Tue 22 Sep | M13 polish, phone, demo reset | ✓ |
+| D14 | Wed 23 Sep | M14 walkthrough + findings → Phase 2 schema | — |
+
+---
+
+## The demo layer, once, on D1
+
+Everything after D1 depends on getting this right, so it gets its own section.
+
+```
+src/demo/
+  fixtures/            vendors.ts items.ts pr.ts transactions.ts users.ts …
+  store.ts             the reducer: every state transition in one place
+  provider.tsx         React context + localStorage persistence + reset
+  api/
+    identity.ts        implements 03-api.md /identity
+    procurement.ts     implements 03-api.md /procurement
+    accounting.ts      implements 03-api.md /accounting
+    documents.ts       implements 03-api.md /documents
+  derive.ts            the views: coverage, line status, balances, PO axes
+```
+
+Rules for it:
+
+1. **Same shape as the real API.** Async functions returning the
+   `{ data, meta }` / `{ error: { code, message, outcome }, meta }` envelope
+   from `03-api.md`. A screen calls `procurement.approveLine(...)` and handles
+   403 / 409 / 422 today, so nothing changes when the call becomes a fetch.
+2. **Types in `src/services/*/contracts.ts`**, cut to `02-database.md`. In
+   Phase 2 these are replaced by generated database types, and the names must
+   already match.
+3. **Refusals are real.** The demo layer actually refuses: approving above
+   requested returns 422, approving a step that is not your role returns 403,
+   a double submit returns 409 `duplicate`. Otherwise the demo teaches the UI
+   to be optimistic, and the real API breaks it.
+4. **Derived state is derived on read** — `derive.ts` computes coverage,
+   the nine-value line status, balances, and the two PO axes from the stored
+   rows. Never a stored status field (A3). This is also where the rules get
+   written down in code for the first time, so it is the most valuable file
+   in Phase 1.
+5. **Latency simulated**, 150–400 ms, so pending states and disabled buttons
+   get exercised.
+6. **Persisted in `localStorage`, per browser.** Everyone who opens the URL
+   gets their own sandbox. A "Reset demo data" item in the topbar restores
+   the fixtures.
+7. **Fixtures look like the real business** — Indonesian vendor names, real
+   unit vocabulary, rupiah amounts of a plausible size, the five real account
+   names. A demo with `Vendor A` and `Rp 100` teaches nothing.
+
+---
+
+## D1 — Thu 10 Sep · M1 demo layer + live on Vercel
+
+The goal of day one is a URL. Everything else on day one serves that.
+
+- `src/services/*/contracts.ts` — types for identity, procurement,
+  accounting, documents, cut to `02-database.md`
+- `src/demo/` as above, with fixtures rich enough to be worth looking at:
+  ~12 vendors, ~40 items, 6 PR documents across every status, 2 POs,
+  ~30 transactions, 5 accounts
+- `derive.ts` with coverage and the nine-value ladder
+- deploy to Vercel, note the URL in `06-decisions.md`
+
+> Read `docs/plan/README.md` and `05-workplan.md`. Do M1: build
+> `src/services/*/contracts.ts` from `02-database.md` and the whole
+> `src/demo/` layer described in `05-workplan.md`, implementing the envelope
+> and refusal codes from `03-api.md`. Make the fixtures realistic. Deploy to
+> Vercel and give me the URL. Update the milestone board and commit.
+
+## D2 — Fri 11 Sep · M2 demo session + permissions
+
+The existing dev role dropdown stops being a crutch and becomes the point:
+in a demo, switching role is how you show that permissions work.
+
+- session from the demo identity API, not from local state
+- topbar role switcher labelled as a demo control, with the role's permission
+  list visible
+- `/masuk` and `/tanpa-akses` in the existing design system
+- a role with no modules lands on `/tanpa-akses`, and the menu is genuinely
+  empty rather than disabled
+
+> Read `docs/plan/README.md`. Do M2: wire `src/store/session.tsx` to the demo
+> identity API, make the topbar role switcher an explicit demo control that
+> shows the current role's permissions, and add `/masuk` and `/tanpa-akses`.
+> Prove that an unpermitted menu item is not rendered at all. Update the board
+> and commit.
+
+## D3 — Sat 12 Sep · M3 reference data
+
+`/procurement/supplier` and an item catalog screen, both real.
+
+Rules that must be visible in the result: a new vendor typed by a human is
+always accepted and is born uncurated; uncurated things are shown and marked
+but do not appear in dropdowns; `standard_price` is never auto-written, and
+`last_price` only moves forward in time.
+
+> Read `docs/plan/README.md`. Do M3: the vendor and item screens against the
+> demo procurement API, using the existing table, drawer and combobox. Show
+> uncurated rows, marked, never hidden. Append what this taught you to
+> `docs/plan/findings.md`. Update the board and commit.
+
+## D4 — Sun 13 Sep · M4 PR list, create, drawer
+
+- `/procurement/pr` — filter bar, table, row → drawer
+- `/procurement/pr/baru` — multi-line create, the one place people type for
+  ten minutes, so it is a full page and not a drawer
+- item combobox showing last price and unit; vendor type-ahead that accepts
+  a name it has never seen; running total
+- add `<Loaded>`, `<SourceBadge>`, `<StatusPill>`, `<MoneyInput>` from
+  `04-frontend.md`
+
+> Read `docs/plan/README.md` and `04-frontend.md`. Do M4: the PR list, the
+> multi-line create page, and the line drawer. Only the components listed in
+> `04-frontend.md`. Check it at phone width. Append to `findings.md`. Update
+> the board and commit.
+
+## D5 — Mon 14 Sep · M5 approval chain
+
+The IT gate, then goods approval, then the trail that shows both.
+
+- `/procurement/persetujuan` — the queue for whoever is signed in
+- per line: APPROVED · HOLD · REJECTED; an editable approved amount that
+  **cannot exceed requested**; a mandatory reason on HOLD and REJECTED
+- `<ApprovalTrail>` — who, when, through which door, append-only
+- `<RefusalToast>` — approving someone else's step gives a readable refusal,
+  not "Forbidden"
+
+> Read `docs/plan/README.md`. Do M5: the approval queue and the approval
+> trail. The demo API must actually refuse — 422 above requested, 403 for a
+> step that is not your role, 409 on a repeat. Approval and payment never
+> share a card. Append to `findings.md`. Update the board and commit.
+
+## D6 — Tue 15 Sep · M6 payment rounds
+
+- `/procurement/ronde` — the single OPEN round: requested, paying-account
+  balances, TO TRANSFER, remaining after payment
+- approve round · record transfer · **close round**, with the list of what
+  closing releases
+- prove on screen that a TRANSFERRED round makes no line PAID
+
+> Read `docs/plan/README.md`. Do M6: the payment round screen and the four
+> state transitions. Recording a transfer must not change any line to PAID —
+> money reaching the accounting account is not a vendor being paid. Closing
+> shows exactly what is still owed. Append to `findings.md`. Update the board
+> and commit.
+
+## D7 — Wed 16 Sep · M7 checkpoint — no new features
+
+Open the URL on a phone. Walk **Flow B** from `00-context.md` end to end:
+request → IT gate → goods approval → round → transfer → receiving. Do it with
+whoever will actually use it.
+
+Write `docs/plan/checkpoints/2026-09-16.md`: what worked, what confused
+someone, what the screen could not answer, what we now know about the rules
+that we did not know on D1. Fix what is cheap; add the rest to the board.
+
+> Read `docs/plan/README.md`. Do M7: walk Flow B end to end on the deployed
+> demo and write `docs/plan/checkpoints/2026-09-16.md` with what worked, what
+> is wrong, and what it revealed about the business rules. Fix anything cheap
+> now and add the rest to the board as new rows. Update the board and commit.
+
+## D8 — Thu 17 Sep · M8 ledger
+
+- `/accounting/ledger` — filter bar, table, drawer with lines, evidence,
+  allocations, and the path to the PR and PO
+- VOID with a mandatory reason; mark COMPLETED (§10.1 item 15 — never built
+  in the old web app, built here)
+- the five accounts with their exact spellings
+
+> Read `docs/plan/README.md`. Do M8: the ledger list and drawer against the
+> demo accounting API. Void sets the amount to zero with a reason and keeps
+> the row — never a delete. Append to `findings.md`. Update the board and
+> commit.
+
+## D9 — Fri 18 Sep · M9 review queue — the money screen
+
+Build it exactly as drawn in `04-frontend.md`. It gets the most care because
+it is where money is decided.
+
+- three buttons: Confirm & post · Attach to existing · Reject
+- `Others` branches to notes before anything else is touched
+- advisory duplicate banners that point at Attach and never block
+- "— not on a PR —" always offered, never the accidental default
+- human-added rows marked as human-added
+
+> Read `docs/plan/README.md` and `04-frontend.md`. Do M9: the review screen at
+> `/accounting/verifikasi` with all three buttons and the advisory banners.
+> Attach must create no money. Append to `findings.md`. Update the board and
+> commit.
+
+## D10 — Sat 19 Sep · M10 evidence
+
+- upload in the demo layer: file → object URL + a fake sha256, so duplicate
+  detection is demonstrable
+- `<EvidenceStrip>`, lightbox, drag to upload, camera capture on a phone
+- `/accounting/bukti` — browse by entity, month, type
+- one document reaching several ledger rows, and every row that funded a line
+  showing its receiving photo
+
+> Read `docs/plan/README.md`. Do M10: the documents demo API and the evidence
+> screens. Show a single document attached to several transactions, and show
+> a receiving photo reaching every ledger row that funded its line. Test
+> upload from a phone-sized viewport. Append to `findings.md`. Update the
+> board and commit.
+
+## D11 — Sun 20 Sep · M11 PO + receiving
+
+- `/procurement/po` — list and drawer with **two separate progress bars**,
+  payment and delivery, never merged; exposure stated in words
+- DRAFT → ISSUED when the first PR line pointing at it is approved
+- one DP and one FINAL guard, with the refusal naming the first one
+- `/procurement/penerimaan` — pick a live line, qty, condition, **photo
+  required**; a problem condition leaves the line open and says who was told
+
+> Read `docs/plan/README.md`. Do M11: the PO screens and receiving. Payment
+> state and delivery state are separate on screen and in the data. A problem
+> condition never auto-closes a line. Append to `findings.md`. Update the
+> board and commit.
+
+## D12 — Mon 21 Sep · M12 boards
+
+- `/procurement/rapat` — four columns: ✅ lunas · ⏳ disetujui belum bayar ·
+  ⚠️ dibayar belum disetujui · • belum keduanya
+- `/accounting/cashflow` — five balances, movement chart, tie-out
+- the dashboard rewired from its sample constants to the demo store
+
+> Read `docs/plan/README.md`. Do M12: the meeting board, cashflow, and the
+> dashboard on demo data. A number that cannot be computed shows `—` and a
+> source badge, never a substitute. Append to `findings.md`. Update the board
+> and commit.
+
+## D13 — Tue 22 Sep · M13 polish
+
+- every table at phone width; drawer full-screen with a pinned action bar
+- empty states, loading states, failure states — all three, everywhere
+- "Reset demo data", and a small "DEMO — data is not real" marker that cannot
+  be mistaken for production
+- a guided tour: a `?tour=flow-b` parameter that walks the screens in order
+
+> Read `docs/plan/README.md` and `04-frontend.md`. Do M13: phone polish,
+> the three states on every screen, demo reset, the demo marker, and the
+> guided tour. Update the board and commit.
+
+## D14 — Wed 23 Sep · M14 the payoff
+
+Not code. This is where Phase 1 pays for itself.
+
+1. Record a walkthrough of the whole workflow on the deployed URL
+2. Consolidate `findings.md` into **the schema we actually need** — every
+   place the demo revealed a missing field, a missing state, a rule nobody had
+   written down, or a screen that could not answer a question
+3. Rewrite `02-database.md` against those findings. It was written before we
+   walked anything; by D14 we will know better
+4. Answer or re-default everything in `06-decisions.md` that the walk settled
+5. Schedule Phase 2
+
+> Read `docs/plan/README.md` and every entry in `docs/plan/findings.md`. Do
+> M14: consolidate the findings, rewrite `02-database.md` to match what we
+> learned, update `06-decisions.md` with everything the walkthrough settled,
+> and propose the Phase 2 milestone list with dates. Update the board and
+> commit.
+
+---
+
+## Deployment
+
+Vercel, from this branch, on every push. Preview deployments per PR — which
+means **a link to look at from the phone before merging**, which is the whole
+review mechanism for the next fortnight.
+
+- Framework preset: Next.js. No environment variables in Phase 1 — there are
+  no secrets, because there is no backend.
+- `dev-ops.talaliving.com` can point at the Vercel deployment as a custom
+  domain whenever you want it. That is a DNS record, not a tunnel, and it
+  needs no PC. Ask when you want it; it is not on the critical path.
+- Phase 2 decides whether the real thing stays on Vercel or moves to the
+  office PC — that is a Phase 2 question and this plan does not pre-empt it.
+
+## Definition of done, per milestone
+
+1. the screen works, on the deployed URL, at phone width
+2. every refusal path is demonstrable — not just the happy one
+3. derived state is derived, never stored
+4. what it taught us is appended to `findings.md`
+5. the milestone board is updated **in the same commit**
+6. anything decided along the way is appended to `06-decisions.md`

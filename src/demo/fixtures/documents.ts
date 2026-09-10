@@ -29,6 +29,13 @@ export const ATTACHMENTS: Attachment[] = [
   { id: "att_15", storage_path: "demo/2026-08/bukti-transfer-ronde-0822.jpg", filename: "bukti-transfer-ronde-0822.jpg", sha256: "aa7712ff0093", mime: "image/jpeg", bytes: 388_120, uploaded_by: "usr_geryle", uploaded_at: "2026-08-20T09:12:00+08:00", source: "chat", duplicate_suspect: false },
   { id: "att_16", storage_path: "demo/2026-08/bukti-transfer-ronde-0831.jpg", filename: "bukti-transfer-ronde-0831.jpg", sha256: "b18823cc0071", mime: "image/jpeg", bytes: 402_995, uploaded_by: "usr_geryle", uploaded_at: "2026-08-29T08:40:00+08:00", source: "chat", duplicate_suspect: false },
   { id: "att_17", storage_path: "demo/2026-09/bukti-transfer-topup-271.jpg", filename: "bukti-transfer-topup-271.jpg", sha256: "cd3391ab7724", mime: "image/jpeg", bytes: 431_770, uploaded_by: "usr_geryle", uploaded_at: "2026-09-10T08:20:00+08:00", source: "chat", duplicate_suspect: false },
+  { id: "att_18", storage_path: "demo/2026-07/hadi-dp-po0630.pdf", filename: "hadi-dp-po0630.pdf", sha256: "aa01bb22cc31", mime: "application/pdf", bytes: 122_004, uploaded_by: "usr_putri", uploaded_at: "2026-07-01T16:05:00+08:00", source: "web", duplicate_suspect: false },
+  { id: "att_19", storage_path: "demo/2026-07/hadi-progres2-po0630.pdf", filename: "hadi-progres2-po0630.pdf", sha256: "bb02cc33dd42", mime: "application/pdf", bytes: 118_223, uploaded_by: "usr_putri", uploaded_at: "2026-07-24T16:05:00+08:00", source: "web", duplicate_suspect: false },
+  { id: "att_20", storage_path: "demo/2026-07/hadi-pelunasan-po0630.pdf", filename: "hadi-pelunasan-po0630.pdf", sha256: "cc03dd44ee53", mime: "application/pdf", bytes: 119_884, uploaded_by: "usr_putri", uploaded_at: "2026-07-31T16:05:00+08:00", source: "web", duplicate_suspect: false },
+  { id: "att_21", storage_path: "demo/2026-08/hadi-progres1-po0725.pdf", filename: "hadi-progres1-po0725.pdf", sha256: "dd04ee55ff64", mime: "application/pdf", bytes: 121_337, uploaded_by: "usr_putri", uploaded_at: "2026-08-10T16:05:00+08:00", source: "web", duplicate_suspect: false },
+  { id: "att_22", storage_path: "demo/2026-08/hadi-split-3-order.pdf", filename: "hadi-split-3-order.pdf", sha256: "ee05ff66aa75", mime: "application/pdf", bytes: 130_551, uploaded_by: "usr_putri", uploaded_at: "2026-08-19T16:05:00+08:00", source: "web", duplicate_suspect: false },
+  { id: "att_23", storage_path: "demo/2026-07/tanda-terima-hadi-0708.jpg", filename: "tanda-terima-hadi-0708.jpg", sha256: "ff06aa77bb86", mime: "image/jpeg", bytes: 884_120, uploaded_by: "usr_made", uploaded_at: "2026-07-08T10:40:00+08:00", source: "chat", duplicate_suspect: false },
+  { id: "att_24", storage_path: "demo/2026-08/tanda-terima-hadi-0802.jpg", filename: "tanda-terima-hadi-0802.jpg", sha256: "aa07bb88cc97", mime: "image/jpeg", bytes: 792_665, uploaded_by: "usr_made", uploaded_at: "2026-08-02T09:20:00+08:00", source: "chat", duplicate_suspect: false },
   { id: "att_14", storage_path: "demo/2026-09/nota-rak-besi.jpg", filename: "nota-rak-besi.jpg", sha256: "2290ffcc7710", mime: "image/jpeg", bytes: 555_310, uploaded_by: "usr_made", uploaded_at: "2026-09-02T18:30:00+08:00", source: "chat", duplicate_suspect: false },
 ];
 
@@ -52,6 +59,14 @@ export const ATTACHMENT_LINKS: AttachmentLink[] = [
   { id: "lnk_13", attachment_id: "att_06", entity: "pr_line", entity_no: "pr-26-08-27_01-L02", kind: "Payment Proof", linked_by: "usr_anggun", linked_at: "2026-08-29T16:32:00+08:00" },
   /* The proof sits on the transaction that received the money, which is where
      the ledger reads it from — the round points at the same file. */
+  { id: "lnk_20", attachment_id: "att_18", entity: "transaction", entity_no: "trx-26-07-01_001", kind: "Payment Proof", linked_by: "usr_putri", linked_at: "2026-07-01T16:06:00+08:00" },
+  { id: "lnk_21", attachment_id: "att_19", entity: "transaction", entity_no: "trx-26-07-24_001", kind: "Payment Proof", linked_by: "usr_putri", linked_at: "2026-07-24T16:06:00+08:00" },
+  { id: "lnk_22", attachment_id: "att_20", entity: "transaction", entity_no: "trx-26-07-31_001", kind: "Payment Proof", linked_by: "usr_putri", linked_at: "2026-07-31T16:06:00+08:00" },
+  { id: "lnk_23", attachment_id: "att_21", entity: "transaction", entity_no: "trx-26-08-10_001", kind: "Payment Proof", linked_by: "usr_putri", linked_at: "2026-08-10T16:06:00+08:00" },
+  { id: "lnk_24", attachment_id: "att_22", entity: "transaction", entity_no: "trx-26-08-19_002", kind: "Payment Proof", linked_by: "usr_putri", linked_at: "2026-08-19T16:06:00+08:00" },
+  /* The tanda terima, filed against the receiving report it belongs to. */
+  { id: "lnk_25", attachment_id: "att_23", entity: "receipt", entity_no: "rcv-26-07-08_01", kind: "Receiving Item", linked_by: "usr_made", linked_at: "2026-07-08T10:41:00+08:00" },
+  { id: "lnk_26", attachment_id: "att_24", entity: "receipt", entity_no: "rcv-26-08-02_01", kind: "Receiving Item", linked_by: "usr_made", linked_at: "2026-08-02T09:21:00+08:00" },
   { id: "lnk_14", attachment_id: "att_15", entity: "transaction", entity_no: "trx-26-08-20_001", kind: "Payment Proof", linked_by: "usr_putri", linked_at: "2026-08-20T09:20:00+08:00" },
   { id: "lnk_15", attachment_id: "att_16", entity: "transaction", entity_no: "trx-26-08-29_001", kind: "Payment Proof", linked_by: "usr_putri", linked_at: "2026-08-29T08:50:00+08:00" },
 ];

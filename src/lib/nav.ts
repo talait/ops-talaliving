@@ -6,7 +6,7 @@ import {
   FolderKanban, Hammer, Truck, Wrench, Stamp,
   PencilRuler, ListTree, CalendarClock,
   Cpu, ScrollText, Activity, UserCog, KeyRound,
-  Settings, FlaskConical, MessagesSquare, type LucideIcon,
+  Settings, FlaskConical, MessagesSquare, Route, type LucideIcon,
 } from "lucide-react";
 
 /** Menu sebagai DATA, bukan JSX.
@@ -58,6 +58,7 @@ export const NAV: NavSection[] = [
       { label: "Requests", href: "/procurement/pr", icon: ClipboardList, permission: "procurement.read", badge: "core" },
       { label: "Meeting board", href: "/procurement/meeting", icon: Users, permission: "procurement.read" },
       { label: "Payment rounds", href: "/procurement/rounds", icon: HandCoins, permission: "procurement.read" },
+      { label: "Purchase Journey", href: "/procurement/journey", icon: Route, permission: "procurement.read", badge: "new" },
       { label: "Purchase Order", href: "/procurement/po", icon: FileText, permission: "procurement.read" },
       { label: "Receiving Report", href: "/procurement/penerimaan", icon: PackageCheck, permission: "procurement.read" },
       { label: "Suppliers", href: "/procurement/supplier", icon: Truck, permission: "procurement.read" },

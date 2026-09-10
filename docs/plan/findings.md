@@ -1093,3 +1093,40 @@ The weekly count sits at the top for a reason worth restating: **it measures
 the main road, not this screen.** A queue that grows means people are going
 around the front door.
 
+## F27 — a hand-drawn screen found two real errors in the model
+
+M11 came in as a picture rather than a paragraph: a vendor block with orders,
+payments and deliveries in one place. Building it to match found two things
+the model had wrong, both invisible until the numbers sat next to each other.
+
+**An over-delivery was being counted as value received.** HADI GLASS shipped
+47 sheets against an order of 45, and the journey said Rp 425.000 was billable
+— for goods nobody had asked for. The sketch's own note is the rule: *the two
+extra sheets are a small vendor credit, not applied to any order here.*
+`value_received` is now capped at what was ordered, and the excess is priced,
+named and shown apart (D98). Without the cap, any supplier could raise an
+invoice by shipping more than the order.
+
+**A draft PO was billing its deposit.** CV SUMBER KAYU JATI had a Rp 111 juta
+order still in draft, and the screen offered Rp 33,3 juta as billable, because
+the deposit was 30% of a contract that nobody had issued. A deposit is earned
+*on issue* — that is what a deposit is (D99). One flag on the formula, and the
+line now reads "still contracted, and nothing is billable until more arrives".
+
+Neither error existed in the old sheet, because the old sheet could not
+compute either number. That is the argument for building the screen the owner
+drew rather than the one the schema suggested: the layout put contract, paid,
+received and billable in the same eye-line, and two of them disagreed.
+
+**The vendor is the unit** (D97). One transfer on 19 August closed three
+orders — Rp 12.680.000 to one, Rp 850.000 to another, Rp 280.000 rounding off
+a third. Read order by order, each looks like a payment that never completed.
+Recorded as three allocations against one transaction, and displayed as one
+payment row naming all three, both facts survive: the bank moved money once,
+the vendor closed three orders.
+
+And the smallest thing on the screen is the one that will be used most: each
+delivery says whether its *tanda terima* is on file. Six of the eight
+shipments in the demo do not have one — which is exactly the state a real
+month is in, and the first thing anybody will chase.
+

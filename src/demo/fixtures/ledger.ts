@@ -56,6 +56,13 @@ const TRX_SEEDS: TrxSeed[] = [
   ["trx-26-09-08_002", "2026-09-08", "acc_bca271", "OUT", 3_680_000, "SUPPLIERS", "vnd_12", "prj_25009", "KAYU SUNGKAI PAPAN 2CM, 20 lembar", "POSTED"],
   ["trx-26-09-09_001", "2026-09-09", "acc_bni325", "OUT", 31_200_000, "RECCURING - PAYROLL", null, null, "Weekly payroll W37", "COMPLETED"],
   ["trx-26-09-09_002", "2026-09-09", "acc_petty", "OUT", 96_000, "OFFICE", null, null, "Refreshments, production meeting", "COMPLETED"],
+  /* HADI GLASS, five payments across three orders — including one transfer on
+   * 19 August that closes three of them at once (D97). */
+  ["trx-26-07-01_001", "2026-07-01", "acc_bca271", "OUT", 9_562_500, "SUPPLIERS", "vnd_13", "prj_25007", "HADI GLASS — DP 50% po-26-06-30_01", "COMPLETED"],
+  ["trx-26-07-24_001", "2026-07-24", "acc_bca271", "OUT", 15_847_500, "SUPPLIERS", "vnd_13", "prj_25007", "HADI GLASS — progress 2, po-26-06-30_01", "COMPLETED"],
+  ["trx-26-07-31_001", "2026-07-31", "acc_bca271", "OUT", 4_915_000, "SUPPLIERS", "vnd_13", "prj_25007", "HADI GLASS — balance, po-26-06-30_01 closed", "COMPLETED"],
+  ["trx-26-08-10_001", "2026-08-10", "acc_bca271", "OUT", 12_750_000, "SUPPLIERS", "vnd_13", "prj_25007", "HADI GLASS — progress 1, po-26-07-25_01", "COMPLETED"],
+  ["trx-26-08-19_002", "2026-08-19", "acc_bca271", "OUT", 13_810_000, "SUPPLIERS", "vnd_13", "prj_25007", "HADI GLASS — one transfer, three orders", "COMPLETED"],
 ];
 
 export const TRANSACTIONS: Transaction[] = TRX_SEEDS.map(
@@ -114,6 +121,16 @@ export const PAYMENT_ALLOCATIONS: PaymentAllocation[] = [
    * is real, so the coverage is real, so the board shows it — which is the
    * point (A6: warn, never hide). */
   { id: "alc_06", trx_id: trxIdByNo("trx-26-08-22_001"), pr_line_no: "pr-26-08-27_01-L03", po_no: null, amount: 95_000, method: "cash", superseded_by: null, allocated_by: "usr_anggun", allocated_at: "2026-08-22T17:00:00+08:00" },
+  /* The split: one transfer, three orders. Recording it as three allocations
+   * against one transaction is the only way both facts survive — the bank saw
+   * one payment, the vendor closed three orders (D97). */
+  { id: "alc_10", trx_id: trxIdByNo("trx-26-07-01_001"), pr_line_no: null, po_no: "po-26-06-30_01", amount: 9_562_500, method: "transfer", superseded_by: null, allocated_by: "usr_putri", allocated_at: "2026-07-01T16:00:00+08:00" },
+  { id: "alc_11", trx_id: trxIdByNo("trx-26-07-24_001"), pr_line_no: null, po_no: "po-26-06-30_01", amount: 15_847_500, method: "transfer", superseded_by: null, allocated_by: "usr_putri", allocated_at: "2026-07-24T16:00:00+08:00" },
+  { id: "alc_12", trx_id: trxIdByNo("trx-26-07-31_001"), pr_line_no: null, po_no: "po-26-06-30_01", amount: 4_915_000, method: "transfer", superseded_by: null, allocated_by: "usr_putri", allocated_at: "2026-07-31T16:00:00+08:00" },
+  { id: "alc_13", trx_id: trxIdByNo("trx-26-08-10_001"), pr_line_no: null, po_no: "po-26-07-25_01", amount: 12_750_000, method: "transfer", superseded_by: null, allocated_by: "usr_putri", allocated_at: "2026-08-10T16:00:00+08:00" },
+  { id: "alc_14", trx_id: trxIdByNo("trx-26-08-19_002"), pr_line_no: null, po_no: "po-26-07-25_01", amount: 12_680_000, method: "transfer", superseded_by: null, allocated_by: "usr_putri", allocated_at: "2026-08-19T16:00:00+08:00" },
+  { id: "alc_15", trx_id: trxIdByNo("trx-26-08-19_002"), pr_line_no: null, po_no: "po-26-08-19_01", amount: 850_000, method: "transfer", superseded_by: null, allocated_by: "usr_putri", allocated_at: "2026-08-19T16:01:00+08:00" },
+  { id: "alc_16", trx_id: trxIdByNo("trx-26-08-19_002"), pr_line_no: null, po_no: "po-26-06-30_01", amount: 280_000, method: "transfer", superseded_by: null, allocated_by: "usr_putri", allocated_at: "2026-08-19T16:02:00+08:00" },
   { id: "alc_05", trx_id: trxIdByNo("trx-26-08-29_003"), pr_line_no: "pr-26-08-27_01-L02", po_no: null, amount: 350_000, method: "cash", superseded_by: null, allocated_by: "usr_anggun", allocated_at: "2026-08-29T16:22:00+08:00" },
 ];
 

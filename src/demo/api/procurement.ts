@@ -4,7 +4,7 @@ import type {
   Vendor, Item, Uom, Project, ItemCategory,
   PrDocument, PrLine, PrLineView, PaymentRound, RoundSummary,
   PurchaseOrder, PoLine, PoStatusView, Receipt, ReceiptCondition, PrCategory, UomCode,
-  VendorView, ItemView, VarianceReason, PrApproval,
+  VendorView, ItemView, VarianceReason, PrApproval, VendorJourney,
   ApprovalRequestView, ApprovalBatchView,
 } from "@/services/procurement/contracts";
 import type { PrLine as PrLineRow } from "@/services/procurement/contracts";
@@ -14,7 +14,7 @@ import { getState, apply, newId, nextDocNumber, writeAudit, writeOutbox } from "
 import {
   prLineView, approvalQueue, lineCoverage, roundSummary, poStatus, isApproved,
   boughtCategories, itemsBoughtFrom, itemSources, purchaseFacts, openLines,
-  pendingRequest, byTime,
+  pendingRequest, byTime, vendorJourney,
   varianceOf, currentApproval,
 } from "../derive";
 import {
@@ -1099,6 +1099,31 @@ export async function closeRound(roundNo: string, idempotencyKey?: string): Prom
   const result: CloseRoundResult = { round: roundView(round.id)!, still_owed: stillOwed };
   remember(SERVICE, `closeRound:${roundNo}`, idempotencyKey, result);
   return ok(SERVICE, result);
+}
+
+/** Everything one vendor has going with us: orders, what arrived, what was
+ *  paid, and what they could invoice next (D97). */
+export async function getVendorJourney(vendorId: string): Promise<Result<VendorJourney>> {
+  await latency();
+  const state = getState();
+  if (!state.vendors.some((v) => v.id === vendorId)) {
+    return notFound(SERVICE, "vendor_not_found", `Vendor ${vendorId} not found.`);
+  }
+  return ok(SERVICE, vendorJourney(state, vendorId));
+}
+
+/** The vendors with orders, worst-unpaid first — the list the journey opens
+ *  from. Vendors we have never issued a PO to are not here: this is about
+ *  contracts, not about the address book. */
+export async function listVendorJourneys(): Promise<Result<VendorJourney[]>> {
+  await latency();
+  const state = getState();
+  const ids = [...new Set(
+    state.purchase_orders.filter((p) => p.status !== "CANCELLED").map((p) => p.vendor_id),
+  )];
+  return ok(SERVICE, ids
+    .map((id) => vendorJourney(state, id))
+    .sort((a, b) => b.billable_now - a.billable_now || b.outstanding - a.outstanding));
 }
 
 /* ------------------------------------------------------------------ */

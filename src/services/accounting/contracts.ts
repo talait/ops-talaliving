@@ -247,6 +247,24 @@ export interface TransactionDetail extends TransactionView {
   allocations: AllocationView[];
 }
 
+/** One payment to a vendor, and what it settled.
+ *
+ *  `applies_to` is a list because one transfer really does close three orders,
+ *  and recording it as three payments would say the bank moved money three
+ *  times. The bank saw one payment; the vendor closed three orders; both are
+ *  true and both are kept (D97).
+ */
+export interface VendorPayment {
+  trx_no: string;
+  trx_date: string;
+  amount: number;
+  description: string;
+  status: TrxStatus;
+  applies_to: { po_no: string; amount: number }[];
+  proof_attachment_id: string | null;
+  proof_filename: string | null;
+}
+
 export interface InboxHealth {
   week_start: string;
   arrived: number;

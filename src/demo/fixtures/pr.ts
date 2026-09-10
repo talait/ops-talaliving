@@ -244,6 +244,17 @@ export const PAYMENT_ROUND_LINES: PaymentRoundLine[] = [
 export const RECEIPTS: Receipt[] = [
   { id: "rcp_01", receipt_no: "rcv-26-08-25_01", line_id: "prl_0101", po_line_id: null, qty_received: 500, condition: "GOOD", received_by: "usr_made", received_at: "2026-08-25T13:30:00+08:00", qc_by: "usr_made", note: null },
   { id: "rcp_02", receipt_no: "rcv-26-08-26_01", line_id: "prl_0102", po_line_id: null, qty_received: 180, condition: "GOOD", received_by: "usr_made", received_at: "2026-08-26T10:05:00+08:00", qc_by: "usr_made", note: "Remaining 120 pcs to follow; vendor out of stock." },
+  /* 47 of 45 arrived: two sheets more than ordered. Counted as what arrived,
+   * flagged as OVER, and left as a vendor credit rather than quietly folded
+   * into another order (D98). */
+  { id: "rcp_10", receipt_no: "rcv-26-07-08_01", line_id: null, po_line_id: "pol_0301", qty_received: 47, condition: "GOOD", received_by: "usr_made", received_at: "2026-07-08T10:15:00+08:00", qc_by: "usr_made", note: "47 lembar arrived against 45 ordered." },
+  { id: "rcp_11", receipt_no: "rcv-26-07-08_02", line_id: null, po_line_id: "pol_0302", qty_received: 41, condition: "GOOD", received_by: "usr_made", received_at: "2026-07-08T10:30:00+08:00", qc_by: "usr_made", note: null },
+  { id: "rcp_12", receipt_no: "rcv-26-08-02_01", line_id: null, po_line_id: "pol_0401", qty_received: 20, condition: "GOOD", received_by: "usr_made", received_at: "2026-08-02T09:00:00+08:00", qc_by: "usr_made", note: "Shipment 1 of 4." },
+  { id: "rcp_13", receipt_no: "rcv-26-08-06_01", line_id: null, po_line_id: "pol_0401", qty_received: 12, condition: "GOOD", received_by: "usr_made", received_at: "2026-08-06T09:00:00+08:00", qc_by: "usr_made", note: "Shipment 2 of 4." },
+  { id: "rcp_14", receipt_no: "rcv-26-08-11_01", line_id: null, po_line_id: "pol_0401", qty_received: 8, condition: "GOOD", received_by: "usr_made", received_at: "2026-08-11T09:00:00+08:00", qc_by: "usr_made", note: "Shipment 3 of 4." },
+  { id: "rcp_15", receipt_no: "rcv-26-08-14_01", line_id: null, po_line_id: "pol_0401", qty_received: 6, condition: "GOOD", received_by: "usr_made", received_at: "2026-08-14T09:00:00+08:00", qc_by: "usr_made", note: "Shipment 4 of 4." },
+  { id: "rcp_16", receipt_no: "rcv-26-08-05_01", line_id: null, po_line_id: "pol_0402", qty_received: 11, condition: "GOOD", received_by: "usr_made", received_at: "2026-08-05T09:00:00+08:00", qc_by: "usr_made", note: "Shipment 1 of 2." },
+  { id: "rcp_17", receipt_no: "rcv-26-08-12_01", line_id: null, po_line_id: "pol_0402", qty_received: 10, condition: "GOOD", received_by: "usr_made", received_at: "2026-08-12T09:00:00+08:00", qc_by: "usr_made", note: "Shipment 2 of 2." },
   { id: "rcp_03", receipt_no: "rcv-26-09-02_01", line_id: null, po_line_id: "pol_0101", qty_received: 120, condition: "GOOD", received_by: "usr_made", received_at: "2026-09-02T09:40:00+08:00", qc_by: "usr_made", note: null },
   { id: "rcp_04", receipt_no: "rcv-26-09-06_01", line_id: null, po_line_id: "pol_0102", qty_received: 150, condition: "GOOD", received_by: "usr_made", received_at: "2026-09-06T11:15:00+08:00", qc_by: "usr_made", note: "First delivery of 400 lembar." },
 ];
@@ -253,18 +264,33 @@ export const RECEIPTS: Receipt[] = [
  * collapsed into one bar (A1). */
 export const PURCHASE_ORDERS: PurchaseOrder[] = [
   { id: "po_02", po_no: "po-26-09-09_01", vendor_id: "vnd_01", status: "DRAFT", created_at: "2026-09-09T15:00:00+08:00", issued_at: null, issued_by: null, note: "Q4 teak contract — waiting on the deposit PR." },
+  { id: "po_05", po_no: "po-26-08-19_01", vendor_id: "vnd_13", status: "ISSUED", created_at: "2026-08-19T09:00:00+08:00", issued_at: "2026-08-19T10:20:00+08:00", issued_by: "usr_evin", note: "Paid off the vendor's 19 August payment before the goods themselves showed up." },
+  { id: "po_04", po_no: "po-26-07-25_01", vendor_id: "vnd_13", status: "ISSUED", created_at: "2026-07-25T09:00:00+08:00", issued_at: "2026-07-25T11:00:00+08:00", issued_by: "usr_evin", note: "No separate deposit — billed as two progress payments." },
+  { id: "po_03", po_no: "po-26-06-30_01", vendor_id: "vnd_13", status: "ISSUED", created_at: "2026-06-30T08:30:00+08:00", issued_at: "2026-07-01T09:00:00+08:00", issued_by: "usr_evin", note: "50% deposit on issue. The two extra AA-04B sheets are a small vendor credit, not applied to any order here." },
   { id: "po_01", po_no: "po-26-08-14_01", vendor_id: "vnd_08", status: "ISSUED", created_at: "2026-08-14T10:00:00+08:00", issued_at: "2026-08-19T09:12:00+08:00", issued_by: "usr_evin", note: "HPL and veneer for BABY ISLAND, 30/70 terms." },
 ];
 
+/* HADI GLASS: three orders across two months, the shape the purchase journey
+ * exists to show (D97). po_03 carries a 50% deposit and an over-delivery of
+ * two sheets; po_05's shipment has not arrived at all. */
 export const PO_LINES: PoLine[] = [
   { id: "pol_0101", po_id: "po_01", line_no: 1, item_id: itemIdByCode("ITM-0010"), description: "HPL TACO TH 133 GLOSSY", qty: 120, uom: "lembar", unit_price: 248_000, line_total: 29_760_000, superseded_by: null },
   { id: "pol_0102", po_id: "po_01", line_no: 2, item_id: itemIdByCode("ITM-0011"), description: "VENEER JATI 0.6MM", qty: 400, uom: "lembar", unit_price: 89_500, line_total: 35_800_000, superseded_by: null },
+  { id: "pol_0301", po_id: "po_03", line_no: 1, item_id: null, description: "AA-04B — 1780×860×5mm sandblast, persegi panjang", qty: 45, uom: "lembar", unit_price: 425_000, line_total: 19_125_000, superseded_by: null },
+  { id: "pol_0302", po_id: "po_03", line_no: 2, item_id: null, description: "AA-04A — 1000×860×5mm sandblast", qty: 41, uom: "lembar", unit_price: 280_000, line_total: 11_480_000, superseded_by: null },
+  { id: "pol_0401", po_id: "po_04", line_no: 1, item_id: null, description: "AA-04B — 1780×860×5mm sandblast, persegi panjang", qty: 46, uom: "lembar", unit_price: 425_000, line_total: 19_550_000, superseded_by: null },
+  { id: "pol_0402", po_id: "po_04", line_no: 2, item_id: null, description: "AA-04A — 1000×860×5mm sandblast", qty: 21, uom: "lembar", unit_price: 280_000, line_total: 5_880_000, superseded_by: null },
+  { id: "pol_0501", po_id: "po_05", line_no: 1, item_id: null, description: "AA-04B — 1780×860×5mm sandblast, persegi panjang", qty: 2, uom: "lembar", unit_price: 425_000, line_total: 850_000, superseded_by: null },
   { id: "pol_0201", po_id: "po_02", line_no: 1, item_id: itemIdByCode("ITM-0001"), description: "KAYU JATI SORTIMEN A", qty: 6, uom: "m3", unit_price: 18_500_000, line_total: 111_000_000, superseded_by: null },
 ];
 
 export const PO_SCHEDULE: PoScheduleTerm[] = [
   { id: "pos_01", po_id: "po_01", term_no: "po-26-08-14_01-M01", kind: "DP", basis: "percent", basis_value: 30, due_rule: "on_issue", due_date: null },
   { id: "pos_02", po_id: "po_01", term_no: "po-26-08-14_01-M02", kind: "FINAL", basis: "percent", basis_value: 70, due_rule: "on_delivery", due_date: null },
+  { id: "pos_05", po_id: "po_03", term_no: "po-26-06-30_01-M01", kind: "DP", basis: "percent", basis_value: 50, due_rule: "on_issue", due_date: null },
+  { id: "pos_06", po_id: "po_03", term_no: "po-26-06-30_01-M02", kind: "FINAL", basis: "percent", basis_value: 50, due_rule: "on_delivery", due_date: null },
+  { id: "pos_07", po_id: "po_04", term_no: "po-26-07-25_01-M01", kind: "PROGRESS", basis: "percent", basis_value: 100, due_rule: "on_delivery", due_date: null },
+  { id: "pos_08", po_id: "po_05", term_no: "po-26-08-19_01-M01", kind: "FINAL", basis: "percent", basis_value: 100, due_rule: "on_delivery", due_date: null },
   { id: "pos_03", po_id: "po_02", term_no: "po-26-09-09_01-M01", kind: "DP", basis: "percent", basis_value: 30, due_rule: "on_issue", due_date: null },
   { id: "pos_04", po_id: "po_02", term_no: "po-26-09-09_01-M02", kind: "FINAL", basis: "percent", basis_value: 70, due_rule: "date", due_date: "2026-11-30" },
 ];

@@ -3,6 +3,7 @@ import { ok, invalid, notFound, type Result } from "@/services/_shared/envelope"
 import type {
   Account, AccountBalance, Transaction, TransactionView, TransactionTypeCode,
   IncomingMoney, TransactionDetail, AllocationView, TransactionLine, TransactionType,
+  VendorPayment,
   Direction, PaymentAllocation, EvidenceInboxRow, InboxHealth, AllocMethod,
 } from "@/services/accounting/contracts";
 import { LOCALE } from "@/lib/format";
@@ -508,6 +509,40 @@ export async function listInboxAll(): Promise<Result<EvidenceInboxRow[]>> {
   return ok(SERVICE, [...getState().evidence_inbox].sort(
     (a, b) => b.reported_at.localeCompare(a.reported_at),
   ));
+}
+
+/** Every payment made to one vendor, newest first, with what each one closed.
+ *
+ *  Read from the ledger rather than from procurement's side, because a payment
+ *  is a ledger fact — and because the proof lives on the transaction (D85).
+ *  The purchase journey screen puts this beside the orders; neither service
+ *  reaches into the other (ADR-004).
+ */
+export async function paymentsForVendor(vendorId: string): Promise<Result<VendorPayment[]>> {
+  await latency();
+  const state = getState();
+  const rows = state.transactions
+    .filter((t) => t.vendor_id === vendorId && t.direction === "OUT")
+    .map((t) => {
+      const link = state.attachment_links.find(
+        (l) => l.entity === "transaction" && l.entity_no === t.trx_no && l.kind === "Payment Proof",
+      );
+      const att = link ? state.attachments.find((a) => a.id === link.attachment_id) : undefined;
+      return {
+        trx_no: t.trx_no,
+        trx_date: t.trx_date,
+        amount: t.amount_idr,
+        description: t.description,
+        status: t.status,
+        applies_to: state.payment_allocations
+          .filter((a) => a.trx_id === t.id && a.superseded_by === null && a.po_no)
+          .map((a) => ({ po_no: a.po_no as string, amount: a.amount })),
+        proof_attachment_id: att?.id ?? null,
+        proof_filename: att?.filename ?? null,
+      };
+    })
+    .sort((a, b) => a.trx_date.localeCompare(b.trx_date) || a.trx_no.localeCompare(b.trx_no));
+  return ok(SERVICE, rows);
 }
 
 /* ------------------------------------------------------------------ */

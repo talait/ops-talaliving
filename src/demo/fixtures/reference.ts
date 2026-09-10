@@ -225,6 +225,14 @@ export const VENDORS: Vendor[] = [
   /* The three below are uncurated: recorded because money moved, and nobody has
    * filled in who to call. That gap is the point — an empty PIC on a vendor we
    * keep buying from is a question the screen should be able to raise. */
+  /* The vendor the purchase journey was designed around: three orders, a
+   * deposit, an over-delivery, a shipment that has not arrived, and one
+   * transfer that closes three orders at once (D97). */
+  { id: "vnd_13", code: "V-0013", name: "HADI GLASS", aka: ["HADI KACA"], is_curated: true,
+    phone: "0361-778220", address: "Jl. Cokroaminoto 88, Denpasar",
+    pic_name: "Pak Hadi", pic_phone: "0812-3600-8821",
+    bank_account: "BCA 771-0088-221", bank_account_secondary: null,
+    npwp: null, supplied_categories: ["finishing"] },
   { id: "vnd_10", code: "V-0010", name: "UD SINAR ABADI", aka: [], is_curated: false,
     phone: null, address: null, pic_name: null, pic_phone: null,
     bank_account: null, bank_account_secondary: null, npwp: null, supplied_categories: [] },

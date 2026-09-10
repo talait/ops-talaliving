@@ -15,13 +15,14 @@ import type {
   PrLine, PrApproval, LineStatus, LineCoverage, PrLineView,
   PoStatusView, RoundSummary, PaymentRound,
   PurchaseFact, CategoryCount, VendorItemSummary, ItemSource, MeetingState,
-  VarianceView, LineNote, ApprovalRequest,
+  VarianceView, LineNote, ApprovalRequest, PoJourney, PoLineJourney, VendorJourney,
 } from "@/services/procurement/contracts";
 import { COUNTING_CONDITIONS, PROBLEM_CONDITIONS } from "@/services/procurement/contracts";
 import type {
   Transaction, AccountBalance, TransactionView, InboxHealth,
 } from "@/services/accounting/contracts";
 import type { DocKind } from "@/services/documents/contracts";
+import { LOCALE } from "@/lib/format";
 
 /** One definition, read from settings — never a literal repeated in three
  *  files, which is how `john-lau` ended up with three different tolerances. */
@@ -346,6 +347,145 @@ export function approvalQueue(state: DemoState): PrLineView[] {
 }
 
 /* ------------------------------------------------------------------ */
+/* The vendor journey — both axes, one block (D97)                     */
+/* ------------------------------------------------------------------ */
+
+/** What a vendor could honestly invoice today.
+ *
+ *  Two things are earned at different moments. A **deposit** is earned when
+ *  the order is issued — that is what a deposit is. Everything else is earned
+ *  as goods arrive, in proportion to their value. So:
+ *
+ *      earned = contract × dp%  +  value_received × (1 − dp%)
+ *      billable now = earned − already paid, floored at zero
+ *
+ *  The floor matters: paying ahead of delivery is a real thing that happens,
+ *  and it is reported as exposure on the order rather than as a negative
+ *  number here. This figure has one job — *what is safe to send money for
+ *  next* — and a negative answer to that question is not a smaller number, it
+ *  is a different conversation (D99).
+ */
+function billableNow(
+  contract: number, valueReceived: number, paid: number, dpPercent: number | null,
+  issued: boolean,
+): number {
+  /* A deposit is earned when the order is issued — that is what a deposit is.
+   * A draft PO is a document nobody has sent, so nothing on it is billable,
+   * however large the contract (D99). */
+  const dp = issued ? (dpPercent ?? 0) / 100 : 0;
+  const earned = issued ? contract * dp + valueReceived * (1 - dp) : 0;
+  return Math.max(Math.round(earned - paid), 0);
+}
+
+export function poJourney(state: DemoState, poId: string): PoJourney {
+  const po = state.purchase_orders.find((p) => p.id === poId)!;
+  const status = poStatus(state, poId);
+  const dpTerm = state.po_schedule.find(
+    (t) => t.po_id === poId && t.kind === "DP" && t.basis === "percent",
+  );
+
+  const lines: PoLineJourney[] = state.po_lines
+    .filter((l) => l.po_id === poId && l.superseded_by === null)
+    .map((l) => {
+      const rows = state.receipts.filter((r) => r.po_line_id === l.id);
+      const received = rows
+        .filter((r) => COUNTING_CONDITIONS.includes(r.condition))
+        .reduce((sum, r) => sum + r.qty_received, 0);
+      const problem = rows.some((r) => PROBLEM_CONDITIONS.includes(r.condition));
+      const over = Math.max(received - l.qty, 0);
+      return {
+        po_line_id: l.id,
+        description: l.description,
+        qty: l.qty,
+        uom: l.uom,
+        unit_price: l.unit_price,
+        line_total: l.line_total,
+        received,
+        over,
+        condition: problem ? "PROBLEM"
+          : received === 0 ? "NOT ARRIVED"
+            : over > 0 ? "OVER"
+              : received < l.qty ? "PARTIAL" : "GOOD",
+        receipts: rows.map((r) => ({
+          receipt_no: r.receipt_no,
+          qty: r.qty_received,
+          condition: r.condition,
+          at: r.received_at,
+          by: state.users.find((u) => u.id === r.received_by)?.full_name ?? "—",
+          documents: state.attachment_links.filter(
+            (a) => a.entity === "receipt" && a.entity_no === r.receipt_no,
+          ).length,
+        })),
+      };
+    });
+
+  return {
+    po_no: po.po_no,
+    status: po.status,
+    issued_at: po.issued_at,
+    note: po.note,
+    dp_percent: dpTerm?.basis_value ?? null,
+    contract_value: status.contract_value,
+    paid: status.paid_to_date,
+    value_received: status.value_received,
+    billable_now: billableNow(
+      status.contract_value, status.value_received, status.paid_to_date,
+      dpTerm?.basis_value ?? null, !!po.issued_at,
+    ),
+    /* What the vendor over-delivered, priced. Not billable and not ours to
+     * spend — it is a credit sitting with them (D98). */
+    credit: lines.reduce((sum, l) => sum + l.over * l.unit_price, 0),
+    payment_state: status.payment_state,
+    delivery_state: status.delivery_state,
+    lines,
+  };
+}
+
+export function vendorJourney(state: DemoState, vendorId: string): VendorJourney {
+  const vendor = state.vendors.find((v) => v.id === vendorId);
+  const pos = state.purchase_orders
+    .filter((p) => p.vendor_id === vendorId && p.status !== "CANCELLED")
+    .map((p) => poJourney(state, p.id))
+    .sort((a, b) => a.po_no.localeCompare(b.po_no));
+
+  const contract_value = pos.reduce((s, p) => s + p.contract_value, 0);
+  const paid = pos.reduce((s, p) => s + p.paid, 0);
+  const value_received = pos.reduce((s, p) => s + p.value_received, 0);
+  const billable_now = pos.reduce((s, p) => s + p.billable_now, 0);
+  const credit = pos.reduce((s, p) => s + p.credit, 0);
+  const outstanding = Math.max(contract_value - paid, 0);
+
+  /* One sentence rather than four numbers to compare — the reader is standing
+   * in front of a supplier, not reading a report. */
+  const headline = billable_now > 0
+    ? `${formatShort(billable_now)} can be invoiced now — goods have arrived that nobody has paid for`
+    : outstanding > 0
+      ? `${formatShort(outstanding)} still contracted, and nothing is billable until more arrives`
+      : "Fully settled — every order paid against what has arrived";
+
+  return {
+    vendor_id: vendorId,
+    vendor_name: vendor?.name ?? "—",
+    orders: pos.length,
+    contract_value,
+    paid,
+    outstanding,
+    value_received,
+    billable_now,
+    credit,
+    headline,
+    pos,
+  };
+}
+
+/** Rp 12,7 jt — for a sentence, not a column. */
+function formatShort(n: number): string {
+  if (n >= 1_000_000_000) return `Rp ${(n / 1_000_000_000).toFixed(1)} B`;
+  if (n >= 1_000_000) return `Rp ${(n / 1_000_000).toFixed(1)} M`;
+  return `Rp ${n.toLocaleString(LOCALE)}`;
+}
+
+/* ------------------------------------------------------------------ */
 /* Money                                                               */
 /* ------------------------------------------------------------------ */
 
@@ -431,7 +571,12 @@ export function poStatus(state: DemoState, poId: string): PoStatusView {
     const qty = state.receipts
       .filter((r) => r.po_line_id === l.id && COUNTING_CONDITIONS.includes(r.condition))
       .reduce((s, r) => s + r.qty_received, 0);
-    return sum + qty * l.unit_price;
+    /* Capped at what was ordered. A vendor who ships two sheets more than the
+     * order has given us a credit, not sold us more — we owe for what we
+     * asked for, and the extra is theirs to apply to a later order (D98).
+     * Counting it here would quietly turn an unasked-for delivery into money
+     * they can invoice. */
+    return sum + Math.min(qty, l.qty) * l.unit_price;
   }, 0);
 
   const fullyDelivered = lines.length > 0 && lines.every((l) => {

@@ -468,6 +468,78 @@ export interface PoStatusView {
   delivery_state: PoDeliveryState;
 }
 
+/** One PO line, as the vendor journey reads it: what was ordered, what has
+ *  arrived, and in what condition. */
+export interface PoLineJourney {
+  po_line_id: string;
+  description: string;
+  qty: number;
+  uom: UomCode;
+  unit_price: number;
+  line_total: number;
+  received: number;
+  /** received − ordered when the vendor sent more than was asked for. Kept
+   *  visible rather than trimmed: two extra sheets are a credit, not a
+   *  rounding error (D98). */
+  over: number;
+  condition: "GOOD" | "OVER" | "NOT ARRIVED" | "PARTIAL" | "PROBLEM";
+  receipts: {
+    receipt_no: string;
+    qty: number;
+    condition: ReceiptCondition;
+    at: string;
+    by: string;
+    documents: number;
+  }[];
+}
+
+/** One order, with both axes: what was paid and what arrived, never merged. */
+export interface PoJourney {
+  po_no: string;
+  status: PoStatus;
+  issued_at: string | null;
+  note: string | null;
+  dp_percent: number | null;
+  contract_value: number;
+  paid: number;
+  value_received: number;
+  /** What could honestly be invoiced today: the deposit share once the order
+   *  is issued, plus the delivered share of everything else, minus what has
+   *  already been paid. Never negative — an overpayment is a different
+   *  conversation, and this number's only job is "what is safe to ask for
+   *  next" (D99). */
+  billable_now: number;
+  /** Priced over-delivery: what the vendor sent beyond the order. A credit
+   *  with them, never billable and never ours to spend (D98). */
+  credit: number;
+  payment_state: PoPaymentState;
+  delivery_state: PoDeliveryState;
+  lines: PoLineJourney[];
+}
+
+/** Everything one vendor has going with us, in one block.
+ *
+ *  The question this answers is the one nobody could answer from the sheet:
+ *  *where are we with this supplier* — how much is contracted, how much has
+ *  been paid, what has actually arrived, and what they could invoice next. A
+ *  vendor with three open orders and one transfer covering all three cannot be
+ *  read order by order (D97).
+ */
+export interface VendorJourney {
+  vendor_id: string;
+  vendor_name: string;
+  orders: number;
+  contract_value: number;
+  paid: number;
+  outstanding: number;
+  value_received: number;
+  billable_now: number;
+  credit: number;
+  /** One sentence a person can act on, rather than four numbers to compare. */
+  headline: string;
+  pos: PoJourney[];
+}
+
 export interface RoundSummary {
   round_id: string;
   round_no: string;

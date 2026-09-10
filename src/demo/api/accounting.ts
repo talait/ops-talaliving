@@ -2,6 +2,7 @@
 import { ok, invalid, notFound, type Result } from "@/services/_shared/envelope";
 import type {
   Account, AccountBalance, Transaction, TransactionView, TransactionTypeCode,
+  IncomingMoney,
   Direction, PaymentAllocation, EvidenceInboxRow, InboxHealth, AllocMethod,
 } from "@/services/accounting/contracts";
 import { LOCALE } from "@/lib/format";
@@ -296,6 +297,140 @@ export async function resolveInbox(
   const updated = getState().evidence_inbox.find((r) => r.ref_id === input.ref_id)!;
   remember(SERVICE, endpoint, idempotencyKey, updated);
   return ok(SERVICE, updated);
+}
+
+/* ------------------------------------------------------------------ */
+/* Money coming IN — the second road (D81)                             */
+/* ------------------------------------------------------------------ */
+
+/** Money already booked into a paying account, with whatever proof is on it.
+ *
+ *  The round screen reads this rather than asking somebody to retype an
+ *  amount that is already in the ledger. Filtered to IN rows on the account
+ *  that pays suppliers, newest first.
+ */
+export async function listIncoming(
+  opts: { account_code?: string } = {},
+): Promise<Result<IncomingMoney[]>> {
+  await latency();
+  const state = getState();
+  const code = opts.account_code ?? "BCA 271";
+  const rows = state.transactions
+    .filter((t) => t.direction === "IN" && t.status !== "VOID")
+    .filter((t) => state.accounts.find((a) => a.id === t.account_id)?.code === code)
+    .map((t) => {
+      const link = state.attachment_links.find(
+        (l) => l.entity === "transaction" && l.entity_no === t.trx_no && l.kind === "Payment Proof",
+      );
+      const att = link ? state.attachments.find((a) => a.id === link.attachment_id) : undefined;
+      return {
+        trx_no: t.trx_no,
+        trx_date: t.trx_date,
+        account_code: code,
+        amount_idr: t.amount_idr,
+        description: t.description,
+        proof_attachment_id: att?.id ?? null,
+        proof_filename: att?.filename ?? null,
+      };
+    })
+    .sort((a, b) => b.trx_date.localeCompare(a.trx_date) || b.trx_no.localeCompare(a.trx_no));
+  return ok(SERVICE, rows);
+}
+
+/** Rows waiting in the inbox that are money coming IN.
+ *
+ *  Almost everything in that inbox is somebody who bought first. A transfer
+ *  proof dropped in chat by leadership is the other direction, and it is
+ *  waiting for a different act by a different person — booking it, not
+ *  matching it to a purchase. */
+export async function listIncomingReview(): Promise<Result<EvidenceInboxRow[]>> {
+  await latency();
+  return ok(SERVICE, getState().evidence_inbox.filter(
+    (r) => r.status === "PENDING" && r.money_direction === "IN",
+  ));
+}
+
+/** Book a chat-uploaded transfer proof as money in.
+ *
+ *  One act: the IN transaction, the document linked to it, and the inbox row
+ *  closed with a pointer to what it produced. The amount is confirmed by a
+ *  person rather than taken from the extraction — the reading is a proposal,
+ *  never a posting (A13).
+ */
+export async function confirmIncoming(
+  input: { ref_id: string; account_id: string; trx_date: string; amount_idr: number; description?: string },
+  idempotencyKey?: string,
+): Promise<Result<IncomingMoney>> {
+  await latency();
+  const endpoint = `confirmIncoming:${input.ref_id}`;
+  const cached = replayed<IncomingMoney>(SERVICE, endpoint, idempotencyKey);
+  if (cached) return cached;
+
+  const denied = requireAuthority(SERVICE, "post_ledger");
+  if (denied) return denied;
+
+  const state = getState();
+  const row = state.evidence_inbox.find((r) => r.ref_id === input.ref_id);
+  if (!row) return notFound(SERVICE, "inbox_row_not_found", `Row ${input.ref_id} not found.`);
+  if (row.status !== "PENDING") {
+    return conflict(SERVICE, "already_resolved", `This row is already ${row.status} — nothing changed.`);
+  }
+  if (input.amount_idr <= 0) {
+    return invalid(SERVICE, "amount_positive", "Amount must be greater than zero.", { field: "amount_idr" });
+  }
+
+  const sourceRef = `inbox-in:${input.ref_id}`;
+  const existing = state.transactions.find((t) => t.source_ref === sourceRef);
+  if (existing) {
+    return conflict(SERVICE, "already_posted", `Already booked as ${existing.trx_no} — nothing changed.`, { trx_no: existing.trx_no });
+  }
+
+  const user = actingUser();
+  let trxNo = "";
+  apply((draft) => {
+    trxNo = nextDocNumber(draft, "trx");
+    const trxId = newId("trx");
+    draft.transactions.unshift({
+      id: trxId, trx_no: trxNo, trx_date: input.trx_date,
+      account_id: input.account_id, direction: "IN", amount_idr: input.amount_idr,
+      type_code: "CASHFLOW", vendor_id: null, project_id: null,
+      description: input.description?.trim() || row.extracted.note || "Money in, confirmed from chat",
+      remark: null, status: "POSTED", source_ref: sourceRef,
+      posted_by: user.id, posted_at: new Date().toISOString(), void_reason: null,
+    });
+    /* The proof follows the money onto the ledger row, so the transaction can
+       be read on its own without going back to the inbox. */
+    draft.attachment_links.push({
+      id: newId("lnk"), attachment_id: row.attachment_id,
+      entity: "transaction", entity_no: trxNo, kind: "Payment Proof",
+      linked_by: user.id, linked_at: new Date().toISOString(),
+    });
+    const r = draft.evidence_inbox.find((x) => x.ref_id === input.ref_id)!;
+    r.status = "CONFIRMED";
+    r.produced_trx_id = trxId;
+    writeAudit(draft, {
+      service: SERVICE, entity: "evidence_inbox", entity_no: input.ref_id,
+      action: "confirm_incoming", outcome: "ok", reason: trxNo,
+    });
+    writeOutbox(draft, {
+      service: SERVICE, event_type: "accounting.transaction.posted",
+      payload: { trx_no: trxNo, amount: input.amount_idr, direction: "IN" },
+    });
+  });
+
+  const state2 = getState();
+  const att = state2.attachments.find((a) => a.id === row.attachment_id);
+  const view: IncomingMoney = {
+    trx_no: trxNo,
+    trx_date: input.trx_date,
+    account_code: state2.accounts.find((a) => a.id === input.account_id)?.code ?? "",
+    amount_idr: input.amount_idr,
+    description: state2.transactions.find((t) => t.trx_no === trxNo)!.description,
+    proof_attachment_id: row.attachment_id,
+    proof_filename: att?.filename ?? null,
+  };
+  remember(SERVICE, endpoint, idempotencyKey, view);
+  return ok(SERVICE, view);
 }
 
 /** Used by the PR line drawer: how much of this line has money against it. */

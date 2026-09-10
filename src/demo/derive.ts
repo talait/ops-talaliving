@@ -481,6 +481,7 @@ export function roundSummary(state: DemoState, roundId: string): RoundSummary {
     requested_total,
     transferred_amount: round?.transferred_amount ?? null,
     transferred_trx_no: round?.transferred_trx_no ?? null,
+    transferred_proof_id: round?.transferred_proof_id ?? null,
     paying_balance,
     /* Never negative, and a shortfall never blocks approval — the balance is
      * information, not a gate. */

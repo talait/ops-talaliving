@@ -915,7 +915,8 @@ export async function syncRound(): Promise<Result<RoundView>> {
       draft.payment_rounds.unshift({
         id: roundId, round_no: nextDocNumber(draft, "pay"), status: "OPEN",
         opened_at: new Date().toISOString(), approved_by: null, approved_at: null,
-        transferred_amount: null, transferred_trx_no: null, closed_by: null, closed_at: null,
+        transferred_amount: null, transferred_trx_no: null, transferred_proof_id: null,
+        closed_by: null, closed_at: null,
       });
     }
     for (const line of eligible) {
@@ -985,7 +986,9 @@ export async function approveRound(roundNo: string, idempotencyKey?: string): Pr
  *  `approve_funds`.
  */
 export async function transferRound(
-  roundNo: string, input: { amount: number; trx_no: string }, idempotencyKey?: string,
+  roundNo: string,
+  input: { amount: number; trx_no: string; proof_attachment_id: string },
+  idempotencyKey?: string,
 ): Promise<Result<RoundView>> {
   await latency();
   const cached = replayed<RoundView>(SERVICE, `transferRound:${roundNo}`, idempotencyKey);
@@ -999,12 +1002,23 @@ export async function transferRound(
   if (round.status !== "APPROVED") {
     return conflict(SERVICE, "round_not_approved", `Round ${roundNo} is ${round.status}.`);
   }
+  /* No proof, no transfer (D80). "Transferred" is a claim about the bank, and
+   * the old sheet's version of that claim was a tick somebody typed. The same
+   * rule already applies to receiving — no photo, no receipt (A15). */
+  if (!input.proof_attachment_id) {
+    return invalid(
+      SERVICE, "evidence_required",
+      "A round is funded when there is proof it was funded. Attach the transfer receipt, or point at the money already booked in.",
+      { field: "proof_attachment_id" },
+    );
+  }
 
   apply((draft) => {
     const r = draft.payment_rounds.find((x) => x.id === round.id)!;
     r.status = "TRANSFERRED";
     r.transferred_amount = input.amount;
     r.transferred_trx_no = input.trx_no;
+    r.transferred_proof_id = input.proof_attachment_id;
     writeAudit(draft, { service: SERVICE, entity: "payment_round", entity_no: roundNo, action: "transfer", outcome: "ok", reason: null });
   });
   const view = roundView(round.id)!;

@@ -144,7 +144,7 @@ Rounds:
 | POST | `/rounds/sync` | roll every approved-and-still-owed line into the single OPEN round. Idempotent; safe to call on every page load |
 | GET | `/rounds/{round_no}` | requested, balances, TO TRANSFER, funded-by |
 | POST | `/rounds/{round_no}/approve` | `procurement.approve_funds`. Freezes the numbers |
-| POST | `/rounds/{round_no}/transfer` | records amount + transaction. **Does not make any line PAID** (A10) |
+| POST | `/rounds/{round_no}/transfer` | records amount + transaction + **the proof**. `post_ledger`, not `approve_funds` (D78) — the funds decision was approving the round. **422 without `proof_attachment_id`** (D80): a round is funded when there is proof it was funded. **Does not make any line PAID** (A10) |
 | POST | `/rounds/{round_no}/close` | the step everyone forgets. Response lists what is still owed and is being released |
 
 PO and receiving:
@@ -171,6 +171,9 @@ PO and receiving:
 | POST | `/allocations/{id}/supersede` | corrections are new rows |
 | POST | `/transactions/from-line` | **paying a request line is one act** (D53): writes the transaction, the allocation to the line, and the document link, with the PR line number in the ledger description. Requires the `post_ledger` authority. `source_ref = pr-line:<line_no>:<date>:<amount>`, so a retry is `duplicate` — never a second payment. **422** when the line does not exist, **409** when it was removed or the same payment is already posted |
 | GET | `/review` | the PENDING queue |
+| GET | `/review?direction=in` | the same queue, filtered to money coming IN — a transfer proof leadership dropped in chat, waiting to be booked (D81) |
+| POST | `/review/{ref_id}/confirm-in` | book one as an IN transaction: writes the row, files the photo against it, closes the inbox row with `produced_trx_id`. The amount is confirmed by a person, never taken from the extraction (A13). `post_ledger` |
+| GET | `/incoming` | money already booked into a paying account, with the proof on each row — what the payment-round screen offers instead of asking somebody to retype an amount the ledger already holds |
 | POST | `/review/{ref_id}/confirm` | → a transaction. `Others` goes to notes, not the ledger |
 | POST | `/review/{ref_id}/attach` | → links to existing transactions, creates no money |
 | POST | `/review/{ref_id}/reject` | recorded, never discarded |

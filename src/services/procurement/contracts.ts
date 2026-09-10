@@ -351,6 +351,10 @@ export interface PaymentRound {
   approved_at: string | null;
   transferred_amount: number | null;
   transferred_trx_no: string | null;
+  /** The proof that the money moved. A round cannot be marked funded without
+   *  one (D80): "transferred" is a claim about the bank, and a claim about the
+   *  bank with nothing behind it is the same empty stamp the old sheet had. */
+  transferred_proof_id: string | null;
   closed_by: string | null;
   closed_at: string | null;
 }
@@ -459,6 +463,7 @@ export interface RoundSummary {
    *  transfer is recorded — and a funded round still pays nobody (A10). */
   transferred_amount: number | null;
   transferred_trx_no: string | null;
+  transferred_proof_id: string | null;
   paying_balance: number;
   to_transfer: number;
   remaining_after_payment: number;

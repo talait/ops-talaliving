@@ -353,6 +353,7 @@ erDiagram
         text transferred_trx_no
         uuid closed_by FK
         timestamptz closed_at
+        uuid transferred_proof_id FK "no proof, no transfer"
     }
     payment_round_lines {
         uuid id PK
@@ -416,6 +417,26 @@ erDiagram
         timestamptz recorded_at
     }
 ```
+
+**`payment_rounds.transferred_proof_id` — no proof, no transfer** (D80). A
+round reaches TRANSFERRED only with a document behind it. "Transferred" is a
+claim about the bank, and the sheet's version of that claim was a tick
+somebody typed — which is exactly how a round could read funded while the
+money was still sitting in the leadership account. The same rule already
+governs receiving: no photo, no receipt (A15).
+
+The proof also lives where it belongs, on the transaction that received the
+money (`attachment_links`, `entity: transaction`, kind `Payment Proof`), so
+the ledger row reads correctly on its own. The round holds the id; the
+filename is the documents service's business.
+
+**`evidence_inbox.money_direction` — the second road in** (D81). Almost
+everything in that inbox is somebody who bought first: money going OUT. A
+transfer proof dropped in chat by leadership is money coming IN, and it is
+resolved by a different person for a different reason — booked as a receipt
+into BCA 271 rather than matched to a purchase. Confirming one writes the IN
+transaction, files the same photo against it, and closes the inbox row with a
+pointer to what it produced.
 
 **`line_notes` — leadership's two optional fields** (D64). `instructions` is
 something the requester is expected to DO; `remark` is for the record. They

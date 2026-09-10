@@ -153,6 +153,27 @@ export interface EvidenceInboxRow {
   produced_trx_id: string | null;
   produced_pr_line_no: string | null;
   similar_trx_nos: string[];
+  /** Which way the money went, when that is known from the document itself.
+   *  Almost everything here is money going OUT — somebody bought first. A
+   *  transfer proof from leadership is the other direction, and it is worth
+   *  telling apart because the two are resolved by different people for
+   *  different reasons (D81). */
+  money_direction?: Direction | null;
+}
+
+/** Money already booked into a paying account, with whatever proof is on it.
+ *
+ *  The payment-round screen reads this instead of asking somebody to retype an
+ *  amount the ledger already holds. `proof_attachment_id` is what a round
+ *  needs before it can call itself funded (D80). */
+export interface IncomingMoney {
+  trx_no: string;
+  trx_date: string;
+  account_code: string;
+  amount_idr: number;
+  description: string;
+  proof_attachment_id: string | null;
+  proof_filename: string | null;
 }
 
 export interface BankStatement {

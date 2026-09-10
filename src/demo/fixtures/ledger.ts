@@ -122,6 +122,16 @@ export const PAYMENT_ALLOCATIONS: PaymentAllocation[] = [
  * resolved to a note, one that produced a transaction. If this list grows,
  * people are routing around the normal road. */
 export const EVIDENCE_INBOX: EvidenceInboxRow[] = [
+  /* The other direction: leadership transferred money INTO BCA 271 and
+   * dropped the proof in chat. Nobody has booked it yet, so the round it was
+   * meant to fund cannot be marked funded — which is the point (D80, D81). */
+  {
+    id: "inb_05", ref_id: "upl_26-09-10_03~x0", origin: "chat", status: "PENDING",
+    attachment_id: "att_17", reported_by: "usr_geryle", reported_at: "2026-09-10T08:22:00+08:00",
+    extracted: { vendor_name: null, document_date: "2026-09-10", amount_idr: 60_000_000, doc_type: "Payment Proof", confidence: 93, note: "Transfer BCA 064 → BCA 271, funding the September round." },
+    produced_trx_id: null, produced_pr_line_no: null, similar_trx_nos: [],
+    money_direction: "IN",
+  },
   {
     id: "inb_01", ref_id: "upl_26-09-09_01~x0", origin: "chat", status: "PENDING",
     attachment_id: "att_10", reported_by: "usr_made", reported_at: "2026-09-09T17:22:00+08:00",

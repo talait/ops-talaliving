@@ -860,3 +860,44 @@ Three things the build settled:
 Closing still answers with what it released: two items, Rp 13.430.000, back in
 the queue rather than quietly settled.
 
+## F21 — "transferred" was still a tick somebody typed
+
+M6 shipped with the round's own claim unproved: `Rp 60.000.000 transferred ·
+trx-26-09-10_004`, and behind it nothing. The owner caught it immediately, and
+he is right — that is the sheet's mistake wearing a new font. Every other
+claim in this system already has to show its evidence: no photo, no receipt;
+no document, no ledger row. Funding a round was the one place left where a
+number could assert itself.
+
+So a round cannot reach TRANSFERRED without an attachment (D80). The refusal
+is a 422 with a sentence rather than a red field: *a round is funded when
+there is proof it was funded*.
+
+**And the proof arrives two ways, because the money does** (D81):
+
+1. **We transferred it.** Somebody in accounting makes the transfer and
+   uploads the receipt on the round. Both ledger legs are written, the file is
+   filed against the receiving row, and the round points at it.
+2. **Leadership transferred it from a phone** and dropped the photo in the
+   chat thread — which is what actually happens most weeks. The file lands in
+   the review queue as *money coming in*, waits there, and is booked by
+   whoever writes the ledger. The round then funds itself from a transaction
+   that is already in the books rather than from a second, invented copy of
+   the same money.
+
+The second road needed one new field and no new concept: `money_direction` on
+the inbox row. Everything in that queue used to be somebody who bought first —
+money going OUT, matched to a purchase. A transfer proof is the other
+direction and is resolved by a different person for a different reason, and
+without the field the two would have sat in one undifferentiated pile.
+
+What did **not** change is the rule underneath: the reading is a proposal,
+never a posting. The chat upload carries an amount, and booking it is still a
+person agreeing with that amount (A13). The demo makes that visible by showing
+the extraction's confidence next to the button.
+
+One consequence worth stating: the round now points at the same file the
+ledger row does, not a copy. The proof lives on the transaction that received
+the money, where it can be read on its own; the round keeps only the id, and
+asks the documents service what the file is called.
+

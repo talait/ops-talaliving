@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import {
-  Wallet, RefreshCw, Check, Lock, ArrowRightLeft, AlertTriangle, History,
+  Wallet, RefreshCw, Check, Lock, ArrowRightLeft, AlertTriangle, History, FileText,
 } from "lucide-react";
 import { Badge, Button, Card, CardHeader, EmptyState, PageHeader } from "@/components/ui/primitives";
 import { DataTable, type Column } from "@/components/ui/data-table";
@@ -10,7 +10,7 @@ import { Loaded, SourceBadge, useLoad } from "@/components/ui/loaded";
 import { StatusPill } from "@/components/ui/status-pill";
 import { formatIDR, formatNumber } from "@/lib/format";
 import { cn } from "@/lib/cn";
-import { procurement } from "@/demo/api";
+import { documents, procurement } from "@/demo/api";
 import type { PrLineView, RoundStatus } from "@/services/procurement/contracts";
 import { useToast } from "@/store/toast";
 import { useSession } from "@/store/session";
@@ -279,11 +279,11 @@ export default function RoundsPage() {
                   )}
 
                   {live.transferred_amount != null && (
-                    <p className="flex items-center gap-2 px-4 py-2.5 text-[13px] text-slate-600">
-                      <ArrowRightLeft className="h-3.5 w-3.5 text-slate-400" />
-                      {formatIDR(live.transferred_amount)} transferred ·{" "}
-                      <span className="font-mono text-[12px]">{live.transferred_trx_no}</span>
-                    </p>
+                    <TransferredLine
+                      amount={live.transferred_amount}
+                      trxNo={live.transferred_trx_no}
+                      proofId={live.transferred_proof_id}
+                    />
                   )}
 
                   <DataTable
@@ -345,6 +345,11 @@ export default function RoundsPage() {
                           <div className="whitespace-nowrap">
                             <p className="tabular-nums text-slate-700">{formatIDR(r.transferred_amount)}</p>
                             <p className="font-mono text-[10px] text-slate-400">{r.transferred_trx_no}</p>
+                            {/* Every funded round has one, because it could not
+                                have been funded without it (D80). */}
+                            {r.transferred_proof_id && (
+                              <p className="text-[10px] text-violet-700">proof on file</p>
+                            )}
                           </div>
                         )
                         : <span className="text-slate-300">never funded</span>,
@@ -361,5 +366,39 @@ export default function RoundsPage() {
         }}
       </Loaded>
     </div>
+  );
+}
+
+/** What was transferred, and the document that proves it.
+ *
+ *  The filename is fetched rather than stored on the round: the round keeps
+ *  the attachment id, and what that file is called is the documents service's
+ *  business (ADR-004).
+ */
+function TransferredLine({
+  amount, trxNo, proofId,
+}: {
+  amount: number;
+  trxNo: string | null;
+  proofId: string | null;
+}) {
+  const [attachments] = useLoad(() => documents.listAttachments(), []);
+  const proof = attachments.status === "ready"
+    ? attachments.data.find((a) => a.id === proofId)
+    : undefined;
+
+  return (
+    <p className="flex flex-wrap items-center gap-2 px-4 py-2.5 text-[13px] text-slate-600">
+      <ArrowRightLeft className="h-3.5 w-3.5 text-slate-400" />
+      {formatIDR(amount)} transferred · <span className="font-mono text-[12px]">{trxNo}</span>
+      {proof ? (
+        <span className="flex items-center gap-1.5 rounded bg-violet-50 px-2 py-0.5 text-[12px] text-violet-800">
+          <FileText className="h-3.5 w-3.5" />
+          {proof.filename}
+        </span>
+      ) : (
+        <span className="text-[12px] text-amber-700">proof not found</span>
+      )}
+    </p>
   );
 }

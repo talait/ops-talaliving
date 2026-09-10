@@ -1,14 +1,14 @@
 "use client";
 
-import { useState } from "react";
-import { MessagesSquare, Check, X, Bot, CheckCheck, Landmark } from "lucide-react";
+import { useRef, useState } from "react";
+import { MessagesSquare, Check, X, Bot, CheckCheck, Landmark, Upload } from "lucide-react";
 import { Badge, Button, Card, CardHeader, EmptyState, PageHeader } from "@/components/ui/primitives";
 import { Loaded, SourceBadge, useLoad } from "@/components/ui/loaded";
 import { MoneyInput } from "@/components/ui/money-input";
 import { NumberInput } from "@/components/ui/number-input";
 import { formatIDR, formatNumber } from "@/lib/format";
 import { cn } from "@/lib/cn";
-import { procurement, accounting } from "@/demo/api";
+import { procurement, accounting, documents } from "@/demo/api";
 import type { ApprovalBatchView, ApprovalRequestView } from "@/services/procurement/contracts";
 import { useDemo } from "@/demo/provider";
 import { useToast } from "@/store/toast";
@@ -66,6 +66,8 @@ export default function ChatSimulatorPage() {
           this route exists.
         </p>
       </div>
+
+      <SendProof asEmail={asEmail} />
 
       <Card>
         <CardHeader
@@ -322,5 +324,84 @@ function ChatItem({
         </Button>
       </div>
     </li>
+  );
+}
+
+/** Leadership dropping a transfer receipt into the chat.
+ *
+ *  This is how the money usually announces itself: the transfer is made from
+ *  a phone, and the proof lands in a chat thread rather than in anybody's
+ *  ledger. Nothing is booked by this — it joins the queue of things waiting
+ *  for somebody in accounting to agree with the number (D81, A13).
+ */
+function SendProof({ asEmail }: { asEmail: string }) {
+  const { toast } = useToast();
+  const [amount, setAmount] = useState(0);
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [file, setFile] = useState<File | null>(null);
+
+  async function send() {
+    if (!file) { toast("warning", "No file", "A transfer proof is a document, not a number."); return; }
+    setBusy(true);
+    const res = await documents.uploadToInbox({
+      filename: file.name,
+      mime: file.type || "image/jpeg",
+      bytes: file.size,
+      origin: "chat",
+      money_direction: "IN",
+      amount_idr: amount || null,
+      note: note.trim() || `Transfer into BCA 271, sent by ${asEmail}`,
+    });
+    setBusy(false);
+    if (res.error) { toast("critical", "Not sent", res.error.message); return; }
+    toast(
+      "success",
+      "Sent to accounting",
+      "It is waiting to be booked — nothing has reached the ledger yet.",
+    );
+    setFile(null); setAmount(0); setNote("");
+  }
+
+  return (
+    <div className="mb-5 rounded-xl border border-slate-200 bg-white px-4 py-3.5 shadow-card">
+      <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
+        <Upload className="h-3.5 w-3.5" /> Send a transfer proof
+      </p>
+      <p className="mt-1 text-[12px] text-slate-500">
+        The other half of the round: leadership makes the transfer from a phone and
+        drops the receipt here. It joins the queue on the payment-round screen and
+        is booked by whoever writes the ledger — sending it books nothing.
+      </p>
+      <div className="mt-3 grid gap-3 sm:grid-cols-4">
+        <div>
+          <label htmlFor="sp-amount" className="block text-xs text-slate-500">Amount</label>
+          <MoneyInput id="sp-amount" size="sm" value={amount} onChange={setAmount} className="mt-1" />
+        </div>
+        <div className="sm:col-span-2">
+          <label htmlFor="sp-note" className="block text-xs text-slate-500">Note</label>
+          <input
+            id="sp-note"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="e.g. Top-up BCA 271 for this week's round"
+            className="mt-1 h-8 w-full rounded-lg border border-slate-200 px-2 text-[13px] focus:border-brand-400 focus:outline-none"
+          />
+        </div>
+        <div className="flex items-end gap-2">
+          <input
+            ref={fileRef} id="sp-file" type="file" className="hidden"
+            onChange={(e) => { setFile(e.target.files?.[0] ?? null); e.target.value = ""; }}
+          />
+          <Button variant="outline" size="sm" icon={Upload} onClick={() => fileRef.current?.click()}>
+            <span className="max-w-[120px] truncate">{file ? file.name : "Choose"}</span>
+          </Button>
+          <Button size="sm" disabled={busy || !file} onClick={send}>
+            {busy ? "Sending…" : "Send"}
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }

@@ -23,6 +23,12 @@ export const ATTACHMENTS: Attachment[] = [
   { id: "att_11", storage_path: "demo/2026-09/nota-sinar-abadi.jpg", filename: "nota-sinar-abadi.jpg", sha256: "b0027fc31184", mime: "image/jpeg", bytes: 611_447, uploaded_by: "usr_andi", uploaded_at: "2026-09-10T08:05:00+08:00", source: "chat", duplicate_suspect: false },
   { id: "att_12", storage_path: "demo/2026-09/struk-konsumsi.jpg", filename: "struk-konsumsi.jpg", sha256: "df9911aa0034", mime: "image/jpeg", bytes: 180_223, uploaded_by: "usr_anggun", uploaded_at: "2026-09-10T09:40:00+08:00", source: "web", duplicate_suspect: true },
   { id: "att_13", storage_path: "demo/2026-09/dokumen-pribadi.jpg", filename: "dokumen-pribadi.jpg", sha256: "4471bb2200fe", mime: "image/jpeg", bytes: 402_881, uploaded_by: "usr_shared", uploaded_at: "2026-09-07T20:10:00+08:00", source: "chat", duplicate_suspect: false },
+  /* Transfer proofs: leadership funding the accounting account. Two already
+   * booked against past rounds, one still sitting in chat waiting for somebody
+   * to confirm it — which is the second road into the ledger (D81). */
+  { id: "att_15", storage_path: "demo/2026-08/bukti-transfer-ronde-0822.jpg", filename: "bukti-transfer-ronde-0822.jpg", sha256: "aa7712ff0093", mime: "image/jpeg", bytes: 388_120, uploaded_by: "usr_geryle", uploaded_at: "2026-08-20T09:12:00+08:00", source: "chat", duplicate_suspect: false },
+  { id: "att_16", storage_path: "demo/2026-08/bukti-transfer-ronde-0831.jpg", filename: "bukti-transfer-ronde-0831.jpg", sha256: "b18823cc0071", mime: "image/jpeg", bytes: 402_995, uploaded_by: "usr_geryle", uploaded_at: "2026-08-29T08:40:00+08:00", source: "chat", duplicate_suspect: false },
+  { id: "att_17", storage_path: "demo/2026-09/bukti-transfer-topup-271.jpg", filename: "bukti-transfer-topup-271.jpg", sha256: "cd3391ab7724", mime: "image/jpeg", bytes: 431_770, uploaded_by: "usr_geryle", uploaded_at: "2026-09-10T08:20:00+08:00", source: "chat", duplicate_suspect: false },
   { id: "att_14", storage_path: "demo/2026-09/nota-rak-besi.jpg", filename: "nota-rak-besi.jpg", sha256: "2290ffcc7710", mime: "image/jpeg", bytes: 555_310, uploaded_by: "usr_made", uploaded_at: "2026-09-02T18:30:00+08:00", source: "chat", duplicate_suspect: false },
 ];
 
@@ -44,6 +50,10 @@ export const ATTACHMENT_LINKS: AttachmentLink[] = [
   { id: "lnk_11", attachment_id: "att_09", entity: "po", entity_no: "po-26-08-14_01", kind: "Receiving Item", linked_by: "usr_made", linked_at: "2026-09-06T11:21:00+08:00" },
   { id: "lnk_12", attachment_id: "att_02", entity: "pr_line", entity_no: "pr-26-08-18_01-L01", kind: "Payment Proof", linked_by: "usr_putri", linked_at: "2026-08-20T16:09:30+08:00" },
   { id: "lnk_13", attachment_id: "att_06", entity: "pr_line", entity_no: "pr-26-08-27_01-L02", kind: "Payment Proof", linked_by: "usr_anggun", linked_at: "2026-08-29T16:32:00+08:00" },
+  /* The proof sits on the transaction that received the money, which is where
+     the ledger reads it from — the round points at the same file. */
+  { id: "lnk_14", attachment_id: "att_15", entity: "transaction", entity_no: "trx-26-08-20_001", kind: "Payment Proof", linked_by: "usr_putri", linked_at: "2026-08-20T09:20:00+08:00" },
+  { id: "lnk_15", attachment_id: "att_16", entity: "transaction", entity_no: "trx-26-08-29_001", kind: "Payment Proof", linked_by: "usr_putri", linked_at: "2026-08-29T08:50:00+08:00" },
 ];
 
 /** Referenced so the import is used and the ledger fixture stays the source of

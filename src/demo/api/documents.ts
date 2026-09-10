@@ -60,6 +60,69 @@ export async function upload(
   return ok(SERVICE, result);
 }
 
+/** A document arriving with no record to attach it to — the exception road.
+ *
+ *  Somebody photographs a transfer receipt in chat before anything about it
+ *  exists in the system. There is nothing to link it to yet, so it goes to the
+ *  inbox and waits for a person to say what it is (ADR-010, D81). Uploading
+ *  here books nothing and settles nothing; it puts the file where somebody
+ *  will see it.
+ */
+export async function uploadToInbox(
+  input: {
+    filename: string;
+    mime: string;
+    bytes: number;
+    origin: "chat" | "web";
+    money_direction?: "IN" | "OUT" | null;
+    amount_idr?: number | null;
+    note?: string | null;
+  },
+  idempotencyKey?: string,
+): Promise<Result<AttachmentView>> {
+  const uploaded = await upload(
+    { filename: input.filename, mime: input.mime, bytes: input.bytes },
+    idempotencyKey,
+  );
+  if (uploaded.error) return uploaded;
+
+  const user = actingUser();
+  const now = new Date();
+  apply((draft) => {
+    const att = draft.attachments.find((a) => a.id === uploaded.data.id);
+    if (att) att.source = input.origin;
+    draft.evidence_inbox.unshift({
+      id: newId("inb"),
+      ref_id: `upl_${now.toISOString().slice(2, 10)}_${draft.evidence_inbox.length + 1}~x0`,
+      origin: input.origin, status: "PENDING",
+      attachment_id: uploaded.data.id,
+      reported_by: user.id, reported_at: now.toISOString(),
+      /* Whatever the sender typed is an extraction like any other: a reading,
+         never a posting. Somebody still has to agree with the number (A13). */
+      extracted: {
+        vendor_name: null,
+        document_date: now.toISOString().slice(0, 10),
+        amount_idr: input.amount_idr ?? null,
+        doc_type: "Payment Proof",
+        confidence: null,
+        note: input.note ?? null,
+      },
+      produced_trx_id: null, produced_pr_line_no: null, similar_trx_nos: [],
+      money_direction: input.money_direction ?? null,
+    });
+    writeAudit(draft, {
+      service: SERVICE, entity: "attachment", entity_no: input.filename,
+      action: "upload_to_inbox", outcome: "ok", reason: input.origin,
+    });
+    writeOutbox(draft, {
+      service: SERVICE, event_type: "documents.inbox.received",
+      payload: { filename: input.filename, origin: input.origin, direction: input.money_direction ?? null },
+    });
+  });
+
+  return ok(SERVICE, uploaded.data);
+}
+
 /** Attach from the record. The parent is already known, so this asks only for
  *  the document kind — vendor, amount and line come from where you were
  *  standing when you tapped. */

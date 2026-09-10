@@ -1,43 +1,83 @@
 "use client";
 
-import React, { createContext, useContext, useMemo, useState } from "react";
-import { ROLE_DEFINITIONS, hasPermission, type RoleId } from "@/lib/roles";
+import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { identity } from "@/demo/api";
+import { hasPermission, type ModuleGrant, type ModuleName, type ModuleLevel } from "@/lib/roles";
+import type { Session, Authority } from "@/services/identity/contracts";
 
-/** Sesi dan izin.
+/** The session.
  *
- *  KERANGKA: peran diambil dari state lokal, bukan dari server. Saat backend
- *  siap, ganti isi provider ini dengan pemanggilan /auth/me dan penyimpanan
- *  token — seluruh aplikasi memakai `can()` dan tidak perlu ikut berubah.
+ *  Reads from the identity service — `identity.me()` today, `GET
+ *  /api/v1/identity/me` in Phase 2 — and exposes the two halves of access
+ *  separately, because they are separate (D24):
  *
- *  `can()` di sini hanya menyembunyikan menu dan tombol. Penegakan yang
- *  sebenarnya ada di backend; frontend tidak boleh jadi satu-satunya penjaga,
- *  karena siapa pun bisa memanggil API tanpa lewat halaman ini.
+ *    can(code)          — may I open this screen, do this ordinary thing?
+ *    hasAuthority(a)    — may I take this decision?
+ *
+ *  `can()` hides menus and controls. It is NOT the guard: in Phase 2 the guard
+ *  is RLS in Postgres, and a request that should be refused is refused even if
+ *  every layer above it has a bug. Hiding a control the caller may not use is
+ *  courtesy; refusing the call is safety.
  */
 interface SessionValue {
-  user: { name: string; email: string; role: RoleId } | null;
+  session: Session | null;
+  /** False until the browser's own sandbox has loaded. The shell waits rather
+   *  than rendering a menu it is about to change (see `AppLayout`). */
+  ready: boolean;
   can: (permission?: string) => boolean;
-  setRole: (role: RoleId) => void;
+  hasAuthority: (authority: Authority) => boolean;
+  hasAnyModule: boolean;
+  refresh: () => Promise<void>;
+  /** Demo controls. Both disappear in Phase 2 with the rest of the demo layer. */
+  actAs: (userId: string) => Promise<void>;
+  setModules: (grants: ModuleGrant[]) => Promise<void>;
+  setAuthorities: (authorities: Authority[]) => Promise<void>;
 }
 
 const SessionContext = createContext<SessionValue | null>(null);
 
 export function SessionProvider({ children }: { children: React.ReactNode }) {
-  const [role, setRole] = useState<RoleId>("super_admin");
+  const [session, setSession] = useState<Session | null>(null);
+  const [ready, setReady] = useState(false);
 
-  const value = useMemo<SessionValue>(() => {
-    const definition = ROLE_DEFINITIONS[role];
-    return {
-      user: { name: "Demo User", email: "demo@talaliving.com", role },
-      can: (permission?: string) => hasPermission(definition.permissions, permission),
-      setRole,
-    };
-  }, [role]);
+  const refresh = useCallback(async () => {
+    const res = await identity.me();
+    if (res.data) setSession(res.data);
+    setReady(true);
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const value: SessionValue = {
+    session,
+    ready,
+    can: (permission) => hasPermission(session?.permissions ?? [], permission),
+    hasAuthority: (authority) => (session?.authorities ?? []).includes(authority),
+    hasAnyModule: (session?.modules.length ?? 0) > 0,
+    refresh,
+    actAs: async (userId) => {
+      const res = await identity.actAs(userId);
+      if (res.data) setSession(res.data);
+    },
+    setModules: async (grants) => {
+      if (!session) return;
+      const res = await identity.setModules(session.user.id, grants as { module: ModuleName; level: ModuleLevel }[]);
+      if (res.data) setSession(res.data);
+    },
+    setAuthorities: async (authorities) => {
+      if (!session) return;
+      const res = await identity.setAuthorities(session.user.id, authorities);
+      if (res.data) setSession(res.data);
+    },
+  };
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }
 
 export function useSession(): SessionValue {
   const ctx = useContext(SessionContext);
-  if (!ctx) throw new Error("useSession harus dipakai di dalam SessionProvider.");
+  if (!ctx) throw new Error("useSession must be used inside a SessionProvider.");
   return ctx;
 }

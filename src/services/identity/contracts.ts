@@ -8,14 +8,23 @@
  *  fixtures can be read by a human.
  */
 
-/** Access is two separate things (D22–D24). Modules say which screens open. */
+/** Access is two separate things (D22–D24). Modules say which screens open.
+ *
+ *  This union is the definition; `src/lib/roles.ts` types its catalogue against
+ *  it, so the two cannot drift without a compile error. In Phase 2 it becomes a
+ *  Postgres enum and this file is generated from it. */
 export type ModuleName =
-  | "procurement"
-  | "accounting"
+  | "dashboard"
   | "hrd"
+  | "payroll"
+  | "procurement"
   | "inventory"
+  | "accounting"
+  | "marketing"
+  | "project"
   | "production"
-  | "it";
+  | "it"
+  | "settings";
 
 export type ModuleLevel = "read" | "write" | "admin";
 
@@ -29,13 +38,23 @@ export type Authority =
   | "resolve_inbox";
 
 export const MODULES: ModuleName[] = [
-  "procurement",
-  "accounting",
-  "hrd",
-  "inventory",
-  "production",
-  "it",
+  "dashboard", "hrd", "payroll", "procurement", "inventory", "accounting",
+  "marketing", "project", "production", "it", "settings",
 ];
+
+export const MODULE_LABEL: Record<ModuleName, string> = {
+  dashboard: "Dashboard",
+  hrd: "HR",
+  payroll: "Payroll",
+  procurement: "Procurement",
+  inventory: "Inventory",
+  accounting: "Accounting",
+  marketing: "Marketing",
+  project: "Projects",
+  production: "Production",
+  it: "IT",
+  settings: "Settings",
+};
 
 export const AUTHORITIES: Authority[] = [
   "approve_goods",
@@ -75,27 +94,6 @@ export interface Session extends UserAccess {
   permissions: string[];
 }
 
-export function grantsPermission(
-  modules: ModuleGrant[],
-  code: string | undefined,
-): boolean {
-  if (!code) return true;
-  const [mod, action] = code.split(".");
-  const grant = modules.find((m) => m.module === mod);
-  if (!grant) return false;
-  if (grant.level === "admin") return true;
-  if (grant.level === "write") return action !== "manage_users" && action !== "manage_roles";
-  return action === "read";
-}
-
-export function expandPermissions(modules: ModuleGrant[]): string[] {
-  const out: string[] = [];
-  for (const g of modules) {
-    out.push(`${g.module}.read`);
-    if (g.level === "write" || g.level === "admin") {
-      out.push(`${g.module}.create`, `${g.module}.update`);
-    }
-    if (g.level === "admin") out.push(`${g.module}.manage_users`, `${g.module}.manage_roles`);
-  }
-  return out;
-}
+/* Permission expansion lives in `src/lib/roles.ts`, which owns the catalogue
+ * of what each module actually offers. Keeping it there means the list a human
+ * reviews and the list the code expands are the same list. */

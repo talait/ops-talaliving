@@ -1,8 +1,9 @@
 /** Implements `/api/v1/identity` from `03-api.md`. */
 import { ok, notFound, type Result } from "@/services/_shared/envelope";
-import {
-  expandPermissions, type Session, type Authority, type ModuleName, type ModuleLevel,
+import type {
+  Session, Authority, ModuleName, ModuleLevel,
 } from "@/services/identity/contracts";
+import { expandPermissions } from "@/lib/roles";
 import { getState, apply, writeAudit } from "../store";
 import type { DemoUser } from "../state";
 import { latency, actingUser } from "./_kit";

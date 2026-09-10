@@ -53,7 +53,7 @@ Update the row, the date, and the note **in the same commit** as the work.
 |---|---|---|---|---|---|
 | M0 | Plan and design documents | D1 | DONE | 2026-09-10 | this document set |
 | M1 | Demo data layer + contracts | D1 | DONE | 2026-09-11 | deployed. Preview builds on every push to this branch |
-| M2 | Demo session: multi-module grants + four authorities | D2 | TODO | — | D22–D24; needs the grant picker |
+| M2 | Demo session: multi-module grants + four authorities | D2 | DONE | 2026-09-11 | grant picker; menu filtering verified in a browser |
 | M3 | Reference data: vendors, items, projects | D3 | TODO | — | |
 | M4 | PR: list, multi-line create, detail drawer | D4 | TODO | — | |
 | M5 | PR: the standing approval queue (CEO), approval trail | D5 | TODO | — | D19–D21 |

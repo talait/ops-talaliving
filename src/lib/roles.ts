@@ -1,23 +1,41 @@
-/** Peran dan izin.
+/** The access catalogue.
  *
- *  Katalog izin dan definisi peran hidup DI KODE, bukan sebagai data yang
- *  diketik manusia. Alasannya: database produksi baru bisa di-bootstrap ulang
- *  dari nol tanpa ada yang menebak peran apa saja yang seharusnya ada, dan
- *  penambahan modul otomatis terlihat di sini sebagai perubahan yang bisa
- *  di-review — bukan sebagai baris yang diam-diam disisipkan ke tabel.
+ *  Access is TWO things, and conflating them is the bug this model exists to
+ *  avoid (D24):
  *
- *  Backend memegang salinan yang sama di `backend/app/core/permissions.py`.
- *  Keduanya HARUS sejalan; backend yang berhak menolak, frontend hanya
- *  menyembunyikan menu.
+ *  1. **Module grants** — which screens open, and how far you can go inside
+ *     them. A user holds several: procurement + accounting + HR is normal
+ *     (D23). Levels are `read` < `write` < `admin`.
+ *
+ *  2. **Authorities** — the handful of named decisions. Granted on their own,
+ *     never implied by a module level. `approve_goods` belongs to the CEO
+ *     alone (D19) whether or not anyone else can open Procurement.
+ *
+ *  Why they are separate: in `john-lau` the confirm button showed for anyone
+ *  with `finance`, `director` or `it_admin`, and the bridge then refused it
+ *  based on an environment variable the screen could not read. The user saw an
+ *  enabled button and got a 403. Here the screen and the guard read the same
+ *  grant.
+ *
+ *  This file is the SEED SOURCE, deliberately in code rather than as rows a
+ *  human types: a fresh database can be bootstrapped without anyone guessing
+ *  what should exist, and adding a module shows up as a reviewable diff. In
+ *  Phase 2 it generates the migration; the database is what enforces.
  */
+import type { ModuleName, ModuleLevel, Authority } from "@/services/identity/contracts";
 
-export const PERMISSION_CATALOG = {
+export { MODULES, MODULE_LABEL, AUTHORITIES, AUTHORITY_LABEL } from "@/services/identity/contracts";
+export type { ModuleName, ModuleLevel, Authority } from "@/services/identity/contracts";
+
+/** What each module offers. **Access verbs only** — approving, posting and
+ *  resolving are authorities and appear nowhere in this catalogue. */
+export const PERMISSION_CATALOG: Record<ModuleName, readonly string[]> = {
   dashboard: ["read"],
-  hrd: ["read", "create", "update", "approve"],
-  payroll: ["read", "run", "approve"],
-  procurement: ["read", "create", "update", "approve"],
+  hrd: ["read", "create", "update"],
+  payroll: ["read", "run"],
+  procurement: ["read", "create", "update"],
   inventory: ["read", "create", "update", "adjust"],
-  accounting: ["read", "create", "update", "post", "close"],
+  accounting: ["read", "create", "update"],
   marketing: ["read", "create", "update"],
   project: ["read", "create", "update", "handover"],
   production: ["read", "create", "update", "schedule"],
@@ -25,73 +43,68 @@ export const PERMISSION_CATALOG = {
   settings: ["read", "update"],
 } as const;
 
-export type PermissionModule = keyof typeof PERMISSION_CATALOG;
+/** Reserved for `admin`. Everything else a module offers comes with `write`. */
+const ADMIN_ONLY = new Set(["manage_users", "manage_roles"]);
 
-/** Semua kode izin, mis. "procurement.approve". */
-export const ALL_PERMISSIONS: string[] = Object.entries(PERMISSION_CATALOG).flatMap(
-  ([mod, actions]) => (actions as readonly string[]).map((a) => `${mod}.${a}`),
-);
+export const LEVELS: ModuleLevel[] = ["read", "write", "admin"];
 
-export interface RoleDefinition {
-  name: string;
-  description: string;
-  /** "*" berarti seluruh izin. */
-  permissions: string[] | "*";
-}
-
-/** Peran awal. Sengaja sedikit — peran yang terlalu rinci sejak awal selalu
- *  berakhir jadi peran yang tidak dipakai siapa pun. Tambah saat ada orang
- *  nyata yang tidak muat di salah satunya. */
-export const ROLE_DEFINITIONS: Record<string, RoleDefinition> = {
-  super_admin: {
-    name: "Super Admin",
-    description: "Full access, including user and role management.",
-    permissions: "*",
-  },
-  direksi: {
-    name: "Directors",
-    description: "Reads every module and approves large spend.",
-    permissions: [
-      ...ALL_PERMISSIONS.filter((p) => p.endsWith(".read")),
-      "procurement.approve", "payroll.approve", "accounting.post", "project.handover",
-    ],
-  },
-  hrd: {
-    name: "HR",
-    description: "Employee records, attendance, leave and payroll.",
-    permissions: ["dashboard.read", "hrd.read", "hrd.create", "hrd.update", "hrd.approve", "payroll.read", "payroll.run"],
-  },
-  procurement: {
-    name: "Procurement",
-    description: "Purchase requests and orders, goods receiving.",
-    permissions: ["dashboard.read", "procurement.read", "procurement.create", "procurement.update", "inventory.read", "inventory.create"],
-  },
-  accounting: {
-    name: "Accounting",
-    description: "Ledger, cash flow, budget and purchase verification.",
-    permissions: ["dashboard.read", "accounting.read", "accounting.create", "accounting.update", "accounting.post", "procurement.read", "payroll.read"],
-  },
-  marketing: {
-    name: "Marketing",
-    description: "CRM, campaigns and sales.",
-    permissions: ["dashboard.read", "marketing.read", "marketing.create", "marketing.update", "project.read"],
-  },
-  produksi: {
-    name: "Production",
-    description: "Design, bill of materials, production planning and schedule.",
-    permissions: ["dashboard.read", "production.read", "production.create", "production.update", "production.schedule", "inventory.read", "project.read"],
-  },
-  gudang: {
-    name: "Warehouse",
-    description: "Material stock, receiving and adjustments.",
-    permissions: ["dashboard.read", "inventory.read", "inventory.create", "inventory.update", "inventory.adjust", "procurement.read"],
-  },
+export const LEVEL_LABEL: Record<ModuleLevel, string> = {
+  read: "Read",
+  write: "Read & edit",
+  admin: "Full",
 };
 
-export type RoleId = keyof typeof ROLE_DEFINITIONS;
+export interface ModuleGrant {
+  module: ModuleName;
+  level: ModuleLevel;
+}
 
-export function hasPermission(rolePermissions: string[] | "*", code?: string): boolean {
+/** The flattened union a screen's `can()` reads. Derived on every call, never
+ *  stored — the same rule the database follows for status (A3). */
+export function expandPermissions(grants: readonly ModuleGrant[]): string[] {
+  const out = new Set<string>();
+  for (const g of grants) {
+    const actions = PERMISSION_CATALOG[g.module] ?? [];
+    for (const action of actions) {
+      if (action === "read") { out.add(`${g.module}.read`); continue; }
+      if (ADMIN_ONLY.has(action)) {
+        if (g.level === "admin") out.add(`${g.module}.${action}`);
+        continue;
+      }
+      if (g.level === "write" || g.level === "admin") out.add(`${g.module}.${action}`);
+    }
+  }
+  return [...out];
+}
+
+export function hasPermission(permissions: readonly string[], code?: string): boolean {
   if (!code) return true;
-  if (rolePermissions === "*") return true;
-  return rolePermissions.includes(code);
+  return permissions.includes(code);
+}
+
+/** What a grant unlocks, in words, for the grant picker.
+ *
+ *  Derived from `expandPermissions` rather than described separately, so the
+ *  sentence a person reads and the permissions they actually get cannot say
+ *  different things. Written for the person choosing, not the developer.
+ */
+const VERB_LABEL: Record<string, string> = {
+  create: "create",
+  update: "edit",
+  adjust: "adjust stock",
+  schedule: "schedule",
+  run: "run payroll",
+  handover: "hand over",
+  manage_users: "manage users",
+  manage_roles: "manage roles",
+};
+
+export function describeGrant(module: ModuleName, level: ModuleLevel): string {
+  const verbs = expandPermissions([{ module, level }])
+    .map((p) => p.slice(p.indexOf(".") + 1))
+    .filter((a) => a !== "read")
+    .map((a) => VERB_LABEL[a] ?? a);
+  if (verbs.length === 0) return "View only";
+  if (verbs.length === 1) return `View and ${verbs[0]}`;
+  return `View, ${verbs.slice(0, -1).join(", ")} and ${verbs[verbs.length - 1]}`;
 }

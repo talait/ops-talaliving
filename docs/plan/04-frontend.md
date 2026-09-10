@@ -31,7 +31,7 @@ number of components that have to be added.
 |---|---|---|---|
 | **Replace the role dropdown with a grant picker** | `src/components/layout/topbar.tsx` | access is now several module grants plus four separate authorities (D23, D24), so a single-choice dropdown cannot express it. In Phase 1 it becomes a demo control that toggles modules and authorities and shows what each unlocks — which demonstrates permissions far better than a dropdown did. **Deleted in Phase 2** with the rest of the demo layer | M2 / P2 |
 | Session from the demo identity API | `src/store/session.tsx` | the provider keeps its shape, so `can()` callers do not change when it becomes `/api/v1/identity/me` | M2 |
-| Sign-in and no-access pages | new `/masuk`, `/tanpa-akses` | an account with no module lands on a page that says so, rather than bouncing | M2 |
+| Sign-in and no-access pages | new `/signin`, `/no-access` (D38) | an account with no module lands on a page that says so, rather than bouncing | M2 |
 | Brand values | `src/lib/brand.ts`, `tailwind.config.ts` | still placeholders. When the real colour arrives, derive the **whole** 50–950 scale, and update `BRAND` in `charts.tsx` and `themeColor` in `layout.tsx` | owner |
 | Sample dashboard data | `src/app/(app)/dashboard/page.tsx` | its hardcoded constants are replaced by reads from the demo store — the same call shape the real API will use | M12 |
 

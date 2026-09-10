@@ -268,3 +268,56 @@ card title already says what the axis measures.
 design system carried the language change without a single layout change,
 because nothing had been sized to a particular string. The work was in the
 copy, and in deciding which strings were copy at all.
+
+## F6 · 2026-09-11 · M2 — the access model, and a CSS trap
+
+**What the screen could not answer, and had to.** The old model could not
+express the owner's answer to Q3 at all: `src/store/session.tsx` held a single
+`RoleId`, and a user holds several module grants. Replacing it was not a
+refactor, it was the model changing shape.
+
+**1. The permission catalogue contradicted D24 and nobody had noticed.**
+`PERMISSION_CATALOG` carried `procurement.approve`, `accounting.post` and
+`accounting.close` — decision verbs sitting inside module levels. Left there,
+a procurement *admin* would gain `approve` for free, which is precisely the
+fusion the authority split exists to prevent. They are gone from the catalogue
+entirely: **module levels grant access verbs; authorities grant decisions.**
+That sentence was already written in `02-database.md`; this is what it means
+in code.
+
+**2. The nav was already the real module list.** The module union had six
+entries; the navigation has ten sections and `PERMISSION_CATALOG` had eleven
+keys — and those eleven were exactly right. The screens had known the answer
+since before any of this was designed. The union now matches, and TypeScript
+keeps them together.
+
+**3. Grant descriptions are derived, not written.** The picker explains what a
+level unlocks by running `expandPermissions` and turning the verbs into
+English, rather than describing it in prose beside the list. The first draft
+did it in prose and immediately said "Create, edit, update" for Procurement —
+one hand-written sentence, already disagreeing with itself. Small instance of
+the rule that makes the whole plan work.
+
+**4. The shell must wait for the session.** The original skeleton left a note
+saying so and it was right: rendering a menu and then taking half of it away
+looks broken. `AppLayout` shows a spinner until `ready`, which also removes any
+hydration mismatch, since the server has no per-visitor state to render.
+
+**5. A CSS trap worth remembering, because it will recur.** The grant picker
+opened as a drawer that rendered its header and nothing else. The cause was not
+the drawer: the topbar has `backdrop-blur-md`, and **a `backdrop-filter` makes
+an element a containing block for `position: fixed` descendants**. The overlay
+was being clipped to the header's 64px box instead of covering the viewport.
+The fix is placement — the drawer is a sibling of `<header>`, never a child.
+Any future overlay mounted from the topbar hits this.
+
+**What surprised us.** Turning a module off does not merely hide a menu entry;
+the section disappears, and there are **zero** `/accounting/*` links left in the
+DOM. That was already the design (`nav.ts` filters before rendering), but
+seeing it verified — count the links, get nought — is a different kind of
+confidence from reading the component.
+
+**Still open.** `no-access` currently offers "grant myself read access", which
+no real system should. It is a demo affordance and goes with the demo layer;
+in Phase 2 granting access is somebody else's decision and rightly not
+self-serve.

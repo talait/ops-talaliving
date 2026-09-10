@@ -15,34 +15,46 @@ export const USERS: DemoUser[] = [
   {
     id: "usr_evin", email: "evin@talaliving.com", full_name: "Evin Jonathan", is_active: true,
     modules: [
+      { module: "dashboard", level: "read" },
       { module: "procurement", level: "write" },
       { module: "accounting", level: "read" },
       { module: "production", level: "read" },
       { module: "inventory", level: "read" },
+      { module: "project", level: "read" },
+      { module: "settings", level: "read" },
     ],
     authorities: ["approve_goods"],
   },
   {
     id: "usr_putri", email: "putri@talaliving.com", full_name: "Putri Handayani", is_active: true,
     modules: [
+      { module: "dashboard", level: "read" },
       { module: "accounting", level: "write" },
       { module: "procurement", level: "write" },
+      { module: "settings", level: "read" },
     ],
     authorities: ["approve_funds", "post_ledger", "resolve_inbox"],
   },
   {
     id: "usr_anggun", email: "anggun@talaliving.com", full_name: "Anggun Lestari", is_active: true,
-    modules: [{ module: "accounting", level: "write" }],
+    modules: [
+      { module: "dashboard", level: "read" },
+      { module: "accounting", level: "write" },
+    ],
     authorities: ["post_ledger", "resolve_inbox"],
   },
   {
     id: "usr_geryle", email: "geryle@talaliving.com", full_name: "Geryle Tanoto", is_active: true,
-    modules: [{ module: "procurement", level: "read" }],
+    modules: [
+      { module: "dashboard", level: "read" },
+      { module: "procurement", level: "read" },
+    ],
     authorities: ["approve_funds"],
   },
   {
     id: "usr_andi", email: "andi@talaliving.com", full_name: "Andi Prasetyo", is_active: true,
     modules: [
+      { module: "dashboard", level: "read" },
       { module: "procurement", level: "write" },
       { module: "inventory", level: "read" },
     ],
@@ -51,6 +63,7 @@ export const USERS: DemoUser[] = [
   {
     id: "usr_made", email: "made@talaliving.com", full_name: "Made Suparta", is_active: true,
     modules: [
+      { module: "dashboard", level: "read" },
       { module: "inventory", level: "write" },
       { module: "procurement", level: "read" },
     ],
@@ -59,12 +72,17 @@ export const USERS: DemoUser[] = [
   {
     id: "usr_shared", email: "it@talaliving.com", full_name: "IT / Shared", is_active: true,
     modules: [
-      { module: "procurement", level: "admin" },
-      { module: "accounting", level: "admin" },
+      { module: "dashboard", level: "read" },
       { module: "hrd", level: "admin" },
+      { module: "payroll", level: "admin" },
+      { module: "procurement", level: "admin" },
       { module: "inventory", level: "admin" },
+      { module: "accounting", level: "admin" },
+      { module: "marketing", level: "admin" },
+      { module: "project", level: "admin" },
       { module: "production", level: "admin" },
       { module: "it", level: "admin" },
+      { module: "settings", level: "admin" },
     ],
     authorities: ["approve_goods", "approve_funds", "post_ledger", "resolve_inbox"],
   },

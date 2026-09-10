@@ -1297,3 +1297,53 @@ One small thing the tour found on its way past: the walk's **Next** button
 collided with the ledger's own pagination **Next**. Two controls with the same
 name on one screen is a real defect for anybody reading by keyboard or screen
 reader, not a test artifact. Renamed to *Next step* / *Previous step*.
+
+---
+
+## D14 — what thirty-two findings add up to
+
+Read end to end, the findings sort into four kinds, and the proportions are
+the argument for having built the frontend first.
+
+**Six were about the business, not the software.** An approval attributed to
+whoever opened the laptop (F16). Over-delivery counted as value received
+(F27). A deposit billed on an order nobody had sent (F27). A fixture claiming
+client money in a business funded by its owner (F29). Payroll written as
+monthly when it is weekly, hiding four runs a year (F31). Rp 156,9 juta of
+obligations with no date on them (F30). None of these was a bug. Every one of
+them would have been a migration.
+
+**Nine were rules nobody had written down** until a screen had to display
+something: what makes a line PAID, what a round marked TRANSFERRED does and
+does not mean, when a variance needs an explanation, which document proves
+what, what happens to a rejected file.
+
+**Eleven were ordinary defects** — a cap in the wrong direction, timestamps
+sorted as text, a stale snapshot beating the fixtures, two copies of one
+component drifting apart. Cheap here, expensive after a migration.
+
+**Six were about how the work is read** rather than what it does: a list read
+twice is not the same screen (F18), below-or-beside was the wrong question
+(F28), the pages nobody argues about are the pages nobody checks (F32).
+
+### The three that would have hurt most
+
+1. **F29 — the business model in a fixture.** A demo row said *"client
+   payment"*. This business receives no client money into these accounts; it
+   is funded by its owner. A schema built on the other assumption is wrong at
+   the root, and it survived three weeks because nobody read the fixture
+   aloud.
+2. **F16 — the approval identity.** Every approval was being attributed to the
+   wrong person, and no line of code was wrong. Only a real meeting, on a real
+   laptop that was not the CEO's, could produce it.
+3. **F27 — two errors found by a hand-drawn picture.** The owner sketched a
+   screen; building the sketch exposed that value-received and billable-now
+   were both computed wrongly. The drawing was the specification and the test
+   at once.
+
+### The method, stated once
+
+Build the screen that has to show a number somebody can check against
+reality. The purchase tracker and the payment calendar produced four of the
+six business findings; the screens that mostly list and filter produced almost
+none. **A screen that cannot be wrong cannot teach you anything.**

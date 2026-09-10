@@ -70,7 +70,7 @@ Update the row, the date, and the note **in the same commit** as the work.
 | M12b | Payment calendar: 12 months, projected against actual, with due dates | D12 | DONE | 2026-09-11 | `/accounting/calendar` — one estimate per line with the day it is due (D109), *not in the plan* reconciles it to the ledger (D111), and the verdict names the month the money runs out |
 | M12c | Calendar: weekly / monthly / one-off, and a month opened day by day | D12 | DONE | 2026-09-11 | three shapes per line, `amount` per occurrence (D113); a month expands into its dated movements with the first day it goes under and the lowest point (D115). Counting paydays moved the failure from December to **November** |
 | M13 | Polish: phone, empty states, refusals, demo reset, guided tour | D13 | DONE | 2026-09-11 | every screen checked at 390px (no horizontal scroll anywhere, drawers full-screen with a pinned action bar); every table carries an empty state that says what to do; the guided walk is `?tour=flow-b` (D117); the dashboard now reads the demo store instead of the shell's sample data (D118) |
-| M14 | **Walkthrough + findings → the schema we actually need** | D14 | TODO | — | the payoff |
+| M14 | **Walkthrough + findings → the schema we actually need** | D14 | DONE | 2026-09-11 | `checkpoints/2026-09-23.md` is the walk; `02-database.md` gains **What the walk changed** — fourteen schema changes a working screen forced, none of them visible on D1. Phase 2 proposed below with dates |
 
 **Deployment.** Vercel builds from GitHub directly, not from a developer's
 machine, so nothing in this repo has to hold a Vercel credential.
@@ -89,17 +89,23 @@ Consequences, so nothing is a surprise later:
   by default. The link can be shared with the team as-is.
 - Reversible in one setting, whenever `main` should take over again.
 
-### Phase 2 — the backend (not scheduled yet)
+### Phase 2 — the backend (proposed on D14, awaiting the owner's go)
 
-| # | Milestone | Status | Note |
-|---|---|---|---|
-| P1 | Supabase project + `core` schema + RLS | TODO | starts only after M14 is signed off |
-| P2 | Identity service, real session | TODO | |
-| P3 | Procurement service | TODO | |
-| P4 | Accounting service | TODO | |
-| P5 | Documents service on Storage | TODO | |
-| P6 | Import from `john-lau`, one way | TODO | |
-| P7 | Serve at `dev-ops.talaliving.com` | TODO | Vercel custom domain, or the office PC |
+| # | Milestone | Proposed | Status | Note |
+|---|---|---|---|---|
+| P1 | Supabase project + `core` schema + RLS | Thu 24 Sep | TODO | starts only after M14 is signed off. `core.app_user`, audit with `detail jsonb`, `next_doc_number()`, attachments and the one link table. RLS in the same migration that creates each table (ADR-002) |
+| P2 | Identity service, real session | Fri 25 Sep | TODO | Supabase Auth behind the same `identity` contract the demo already uses. The eleven module grants and four authorities become rows, not constants |
+| P3 | `procure` schema + procurement service | Mon 28 – Tue 29 Sep | TODO | PR chain, PO with `expected_date` (§1 of the D14 schema), receipts with `qc_by`, the approval-request table carrying the answerer's identity (§4), variances as rows (§5) |
+| P4 | `acct` schema + accounting service | Wed 30 Sep – Thu 1 Oct | TODO | ledger with the evidenced-row constraint trigger (§8), allocations against a line **or** an order (§11), the exception inbox's five roads (§7), `transfer_group` (§2), the three calendar tables |
+| P5 | The views, one by one, against the demo's numbers | Fri 2 Oct | TODO | `derive.ts` is the specification: every function there becomes a view with the same name, and the demo's figures are the test data. If `v_cash_plan` does not also say *November*, one of the two is wrong |
+| P6 | Documents service on Storage | Mon 5 Oct | TODO | signed URLs, the same `attachment_link` road, camera capture unchanged |
+| P7 | Import from `john-lau`, one way | Tue 6 – Wed 7 Oct | TODO | vendors, items, projects, open PRs and the ledger. One way, never back. Unclassified types (`EJO`, `PACKING`) carried as-is, never folded into `OTHERS` (Q10) |
+| P8 | Cut over and serve at `dev-ops.talaliving.com` | Thu 8 Oct | TODO | Vercel custom domain or the office PC — a Phase 2 decision, deliberately not pre-empted here |
+
+**The ordering rule.** P5 comes *after* both schemas and before the import on
+purpose: the views are where Phase 1's real output lives, and checking them
+against figures somebody has already read on a screen is the cheapest
+verification available to this project. Every other order loses that.
 
 ---
 

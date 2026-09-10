@@ -1,14 +1,19 @@
 # 02 — Database
 
-> **Phase note — nothing here is built yet.** This is the *target* schema.
-> In Phase 1 it has exactly one job: it is the shape the demo types in
+> **Status: revised on D14** against everything walking the workflow taught us
+> (`findings.md`, F1–F32). Nothing here is built yet — it is the *target*
+> schema, and in Phase 1 it has one job: to be the shape the demo types in
 > `src/services/*/contracts.ts` are cut to, so column names, enums and
 > relationships are already right when Phase 2 starts.
 >
-> **This document is expected to be wrong in places, and gets rewritten on
-> D14** against what walking the workflow teaches us (`findings.md`). That is
-> the point of doing the frontend first — a guess costs an edit here instead
-> of a migration later. Do not treat it as settled.
+> The section **"What the walk changed"** below is the payoff of doing the
+> frontend first. Every entry in it is a schema change that a *working screen*
+> forced — not one of them was visible on D1, when this document was written
+> from the old system and a conversation. Each cost an edit here instead of a
+> migration later.
+>
+> What follows that section is the detailed reference, kept current as the demo
+> was built. Where the two disagree, the D14 section wins.
 
 New Supabase project (Phase 2). One database, one schema per service. Every table
 ships with RLS in the migration that creates it (ADR-002).
@@ -44,6 +49,261 @@ core.has_permission(permission_code text) returns boolean
 seeded with `payment_tolerance_idr = 1000`, `statement_tolerance_idr = 0`,
 `approval_tolerance = 0.01`, `office_timezone = 'Asia/Makassar'`.
 Views read it. Nothing hardcodes a tolerance ever again (D3).
+
+---
+
+## What the walk changed — the schema we actually need
+
+Fourteen changes, each forced by a screen somebody used rather than by a
+design meeting. The finding that produced each one is named, so the reasoning
+survives the person.
+
+### 1. A payment term needs an expected date, not only a rule (F30)
+
+`po_schedule` fires on an event — `on_issue`, `on_delivery` — which is correct
+as a *rule* and useless as a *date*. Of eight terms in the demo, exactly one
+carries a date, so **Rp 156.892.000 of real supplier obligations cannot be
+placed in any month** and the payment calendar has to state them as a footnote.
+
+```sql
+alter table procure.po_schedule
+  add column expected_date date;      -- when we think it lands
+comment on column procure.po_schedule.expected_date is
+  'Distinct from due_rule: the rule says what makes it due, this says when we
+   expect that to happen. Nullable — an honest unknown, never a guess that
+   makes a cash plan look complete.';
+```
+
+### 2. Two ledger rows can be one movement (F29)
+
+Money leaving BCA 064 and money arriving in BCA 271 are the same transfer.
+Nothing in the data says so, so the liquidation report has to *match* them on
+amount and date — and a match is not a fact. It also means a report cannot
+safely tell an internal move from real money in, which is how a month looks
+like it earned Rp 344 juta when it earned nothing.
+
+```sql
+create table acct.transfer_group (
+  id          uuid primary key default gen_random_uuid(),
+  moved_on    date not null,
+  amount_idr  bigint not null check (amount_idr > 0),
+  note        text,
+  created_at  timestamptz not null default now(),
+  created_by  uuid not null references core.app_user(id)
+);
+alter table acct.transaction
+  add column transfer_group_id uuid references acct.transfer_group(id);
+create index on acct.transaction (transfer_group_id);
+```
+
+A group holds exactly two rows in practice, and the view that reports "money
+in" excludes any row that belongs to one. No trigger enforces the pair: a
+half-recorded transfer is a real state (somebody posted one leg and went to
+lunch), and refusing it would lose the leg we do have.
+
+### 3. The calendar is three tables, and none of them stores a projection
+
+Written up in full further down. The rule worth repeating here: there is **no
+`cash_plan` table**. The plan is a view over the components and the ledger,
+because a stored projection is a number that disagrees with the ledger the
+moment anybody posts (A3).
+
+### 4. An approval carries the identity of whoever answered it (F16)
+
+The meeting laptop is not the CEO's, so an approval recorded as "the session
+user" records the wrong person — and no line of code was wrong when it did.
+
+```sql
+create table procure.approval_request (
+  id            uuid primary key default gen_random_uuid(),
+  batch_id      uuid not null references procure.approval_batch(id),
+  line_id       uuid not null references procure.pr_line(id),
+  token         text not null unique,        -- random, not derivable (D72)
+  sent_to       text not null,               -- the address asked
+  sent_at       timestamptz not null default now(),
+  answered_at   timestamptz,
+  answered_by   uuid references core.app_user(id),
+  answered_via  procure.answer_channel,      -- 'app' | 'chat'
+  unique (batch_id, line_id)
+);
+```
+
+The token is random because a predictable one is an approval anybody can
+forge. `answered_by` is the identity written onto `pr_approval`, never the
+session that happened to be open.
+
+### 5. A variance is a row, not a note (F13)
+
+"Why is the paid amount not the approved amount?" is a question about
+patterns, not events, and it cannot be answered by free text.
+
+```sql
+create type procure.variance_cause as enum
+  ('price moved', 'quantity changed', 'input error', 'staff error', 'other');
+
+create table procure.line_variance (
+  id           uuid primary key default gen_random_uuid(),
+  line_id      uuid not null references procure.pr_line(id),
+  approved_idr bigint not null,
+  paid_idr     bigint not null,
+  cause        procure.variance_cause not null,
+  explanation  text not null,               -- required, always
+  explained_by uuid not null references core.app_user(id),
+  explained_at timestamptz not null default now()
+);
+```
+
+Cause is an enum so the question *"how often is it staff error?"* has an
+answer. Explanation is `not null` because a cause with no sentence behind it
+is a shrug in a dropdown.
+
+### 6. One road for evidence, and no second one (F25, D91–D92)
+
+`core.attachment_link` is the whole mechanism: one file, many records, from
+either end. What was **removed** matters as much: no `duplicate_of_event`, no
+slot naming, no candidate-line picker. Those existed to support a guess the
+system no longer has to make.
+
+```sql
+create table core.attachment_link (
+  id            uuid primary key default gen_random_uuid(),
+  attachment_id uuid not null references core.attachment(id),
+  entity        core.linkable not null,     -- 'transaction'|'pr_line'|'po'|'receipt'
+  entity_no     text not null,              -- the public identifier, never the uuid
+  kind          core.doc_kind not null,
+  linked_by     uuid not null references core.app_user(id),
+  linked_at     timestamptz not null default now(),
+  unique (attachment_id, entity, entity_no, kind)
+);
+```
+
+`entity_no` rather than a uuid on purpose: a link is written from a screen
+where the human-readable number is what is on the page, and it is what the
+audit row will quote back.
+
+### 7. The exception inbox has five roads and none of them delete (F26, D94)
+
+```sql
+create type acct.inbox_resolution as enum
+  ('written_retro', 'linked', 'posted', 'noted', 'rejected');
+
+alter table acct.evidence_inbox
+  add column resolution          acct.inbox_resolution,
+  add column resolution_reason   text,
+  add column produced_trx_id     uuid references acct.transaction(id),
+  add column produced_pr_line_no text,
+  add constraint inbox_reason_required check (
+    resolution not in ('noted', 'rejected') or resolution_reason is not null
+  );
+```
+
+`rejected` is the road that **never writes a ledger row** — asked directly,
+and the answer surprised the asker. Rejecting is how you say *no money of ours
+moved here*; the file stays so the decision can be read months later.
+
+### 8. A ledger row cannot exist without evidence or detail (F23, D84–D86)
+
+The screen refuses it. The database has to refuse it too, or the rule lives in
+one client and dies at the first integration.
+
+```sql
+create or replace function acct.assert_row_is_evidenced() returns trigger as $$
+begin
+  if not exists (
+    select 1 from core.attachment_link l
+    where l.entity = 'transaction' and l.entity_no = new.trx_no
+      and l.kind in ('Receipt / Invoice / Nota', 'Payment Proof', 'Receiving Item')
+  ) then
+    raise exception 'A ledger row needs at least one nota, transfer proof or photo';
+  end if;
+
+  if (select is_purchase from acct.transaction_type where code = new.type_code) then
+    if new.vendor_id is null then
+      raise exception 'A purchase has somebody it was bought from';
+    end if;
+    if not exists (
+      select 1 from acct.transaction_line tl
+      where tl.trx_id = new.id and tl.qty is not null and tl.unit_price is not null
+    ) then
+      raise exception 'A purchase needs what was bought, how many, at what price';
+    end if;
+  end if;
+  return new;
+end $$ language plpgsql;
+
+create constraint trigger transaction_evidenced
+  after insert or update on acct.transaction
+  deferrable initially deferred
+  for each row execute function acct.assert_row_is_evidenced();
+```
+
+**Deferrable** is the load-bearing word: the row, its lines and its evidence
+link are written in one transaction, and the check runs at commit.
+
+### 9. The audit row carries what changed, not only that something did (F10, D84)
+
+`core.audit_log.detail jsonb` — amount before and after, the account it moved
+to, the document that arrived with it. "Who and when" answers a compliance
+question; anomaly and fraud questions need *what*.
+
+### 10. Time is `timestamptz`, and order is never text (F17)
+
+The demo's fixtures carry `+08:00` and its live writes carry `Z`. Sorted as
+text, `09:05:00+08:00` lands after `06:45:00Z` although it happened three
+hours earlier — and "the current decision is the latest row" is how approval,
+notes and variances all work. In Postgres this is a column type, in the
+application it was one comparator used everywhere; both are the same rule.
+
+### 11. A payment can settle an order, not only a request (D106, D107)
+
+`payment_allocation` carries **both** `pr_line_no` and `po_no`, and either is
+enough to call the money *decided*. A PO payment with no PR behind it went
+through the order, not around it — the liquidation report was calling those
+undecided, and it was wrong.
+
+Related: a transaction type nobody has classified is treated as **expecting**
+a decision, not exempt from one. Defaulting the other way makes "type a
+category that does not exist yet" a way to spend money outside the check.
+
+### 12. Receiving takes two documents, a receiver and a checker (D101)
+
+Both halves answer different questions — the photo says what arrived, the
+signed *tanda terima* says we acknowledged it — and three weeks later the
+argument about forty-seven versus forty-five is settled by whichever exists.
+
+```sql
+alter table procure.receipt
+  add column qc_by uuid references core.app_user(id);
+```
+
+The two-document rule is a constraint trigger over `core.attachment_link`
+shaped exactly like §8: `Receiving Item` **and** `Delivery Note`, checked at
+commit.
+
+### 13. Over-delivery is a credit, and `value_received` is capped (F27, D98)
+
+Two sheets more than ordered are not value received; counting them turns an
+unasked-for delivery into money the vendor can invoice. The cap lives in
+`v_po_line_status`, and the excess is priced and named in `v_vendor_journey`.
+**No vendor-credit account** exists until somebody asks for one (Q23) — the
+balance is stated, never netted away.
+
+### 14. A deposit is earned on issue, not on draft (F27, D99)
+
+`billable_now` counts the deposit share only once the PO is `ISSUED`. A draft
+PO bills nothing however large its contract, which sounds obvious and was
+wrong in the first build: the owner's own sketch showed Rp 33,3 juta payable
+on an order nobody had sent.
+
+### What is deliberately absent
+
+| Not modelled | Why |
+|---|---|
+| BOM of any shape | never specified by the business; the standing instruction is *do not invent it* (Q5) |
+| A vendor-credit account | over-delivery is stated on the line, not netted into a balance nobody agreed (Q23, D98) |
+| Any stored projection | the cash plan, the balances, the statuses are all views. A stored number is one that can disagree with the ledger (A3) |
+| A spreadsheet concept anywhere | sheets are a one-way export, not a schema idea (D9) |
+| `DELETE`, anywhere | corrections are VOID or supersession (A5) |
 
 ---
 

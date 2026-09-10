@@ -3,8 +3,8 @@ import { ModulePlaceholder } from "@/components/module-placeholder";
 export default function Page() {
   return (
     <ModulePlaceholder
-      breadcrumb="HRD"
-      title="Berkas 201"
+      breadcrumb="HR"
+      title="Employee Files"
       permission="hrd.read"
     />
   );

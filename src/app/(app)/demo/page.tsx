@@ -73,26 +73,26 @@ export default function DemoDiagnosticsPage() {
       line_no: "pr-26-09-10_01-L01", approved: true, approved_amount: 99_000_000,
     });
     results.push({
-      name: "A8 — persetujuan di atas yang diminta",
+      name: "A8 — approving above the amount requested",
       expect: "422 approved_above_requested",
-      got: above.error ? `${above.error.status} ${above.error.code}` : "diterima",
+      got: above.error ? `${above.error.status} ${above.error.code}` : "accepted",
       pass: above.error?.status === 422 && above.error.code === "approved_above_requested",
     });
 
     await identity.actAs("usr_andi");
     const noAuth = await procurement.approveLine({ line_no: "pr-26-09-10_01-L01", approved: true });
     results.push({
-      name: "D19 — menyetujui tanpa authority approve_goods",
+      name: "D19 — approving without the approve_goods authority",
       expect: "403 authority_required",
-      got: noAuth.error ? `${noAuth.error.status} ${noAuth.error.code}` : "diterima",
+      got: noAuth.error ? `${noAuth.error.status} ${noAuth.error.code}` : "accepted",
       pass: noAuth.error?.status === 403 && noAuth.error.code === "authority_required",
     });
 
     const removePaid = await procurement.removeLine({ line_no: "pr-26-08-18_01-L01" });
     results.push({
-      name: "D29 — menghapus baris yang sudah menerima uang",
+      name: "D29 — removing a line that money has reached",
       expect: "409 money_already_allocated",
-      got: removePaid.error ? `${removePaid.error.status} ${removePaid.error.code}` : "diterima",
+      got: removePaid.error ? `${removePaid.error.status} ${removePaid.error.code}` : "accepted",
       pass: removePaid.error?.status === 409 && removePaid.error.code === "money_already_allocated",
     });
 
@@ -101,9 +101,9 @@ export default function DemoDiagnosticsPage() {
       trx_no: "trx-26-08-20_003", pr_line_no: "pr-26-08-27_01-L01", amount: 900_000_000,
     });
     results.push({
-      name: "A9 — alokasi melebihi yang dipindahkan transaksi",
+      name: "A9 — allocating more than the transaction moved",
       expect: "422 over_allocated",
-      got: over.error ? `${over.error.status} ${over.error.code}` : "diterima",
+      got: over.error ? `${over.error.status} ${over.error.code}` : "accepted",
       pass: over.error?.status === 422 && over.error.code === "over_allocated",
     });
 
@@ -111,9 +111,9 @@ export default function DemoDiagnosticsPage() {
     const first = await procurement.createVendor({ name: `UD PROBE ${Date.now()}` }, key);
     const second = await procurement.createVendor({ name: `UD PROBE ${Date.now()}` }, key);
     results.push({
-      name: "Idempotensi — kunci yang sama dikirim dua kali",
-      expect: "duplicate, tidak ada baris kedua",
-      got: `${second.meta.outcome}${isOk(first) && isOk(second) && first.data.id === second.data.id ? ", id sama" : ""}`,
+      name: "Idempotency — the same key sent twice",
+      expect: "duplicate, no second row",
+      got: `${second.meta.outcome}${isOk(first) && isOk(second) && first.data.id === second.data.id ? ", same id" : ""}`,
       pass: second.meta.outcome === "duplicate",
     });
 
@@ -121,9 +121,9 @@ export default function DemoDiagnosticsPage() {
       trx_no: "trx-26-08-20_003", pr_line_no: "pr-99-99-99_01-L01", amount: 1_000,
     });
     results.push({
-      name: "ADR-004 — alokasi ke baris PR yang tidak ada",
-      expect: "422 pr_line_not_found (divalidasi di seam)",
-      got: badLine.error ? `${badLine.error.status} ${badLine.error.code}` : "diterima",
+      name: "ADR-004 — allocating to a PR line that does not exist",
+      expect: "422 pr_line_not_found (validated at the seam)",
+      got: badLine.error ? `${badLine.error.status} ${badLine.error.code}` : "accepted",
       pass: badLine.error?.code === "pr_line_not_found",
     });
 
@@ -131,8 +131,8 @@ export default function DemoDiagnosticsPage() {
     setProbes(results);
     setRunning(false);
     const failed = results.filter((r) => !r.pass).length;
-    if (failed === 0) toast("success", "Semua penolakan berperilaku benar", `${results.length} pemeriksaan lolos.`);
-    else toast("critical", `${failed} pemeriksaan gagal`, "Lihat tabel di bawah.");
+    if (failed === 0) toast("success", "Every refusal behaved correctly", `${results.length} checks passed.`);
+    else toast("critical", `${failed} check(s) failed`, "See the table below.");
   }
 
   useEffect(() => {
@@ -141,78 +141,78 @@ export default function DemoDiagnosticsPage() {
   }, []);
 
   const lineColumns: Column<(typeof lines)[number]>[] = [
-    { key: "no", header: "Baris", render: (r) => <span className="font-mono text-xs font-semibold text-brand-700">{r.line_no_full}</span> },
-    { key: "desc", header: "Deskripsi", render: (r) => <span className="text-slate-700">{r.description}</span> },
-    { key: "total", header: "Diminta", align: "right", render: (r) => formatIDR(r.item_total) },
-    { key: "cov", header: "Tercakup", align: "right", render: (r) => <span className={r.coverage.covered > 0 ? "text-emerald-700" : "text-slate-400"}>{formatIDR(r.coverage.covered)}</span> },
+    { key: "no", header: "Line", render: (r) => <span className="font-mono text-xs font-semibold text-brand-700">{r.line_no_full}</span> },
+    { key: "desc", header: "Description", className: "max-w-[240px] truncate", render: (r) => <span className="text-slate-700">{r.description}</span> },
+    { key: "total", header: "Requested", align: "right", render: (r) => formatIDR(r.item_total) },
+    { key: "cov", header: "Covered", align: "right", render: (r) => <span className={r.coverage.covered > 0 ? "text-emerald-700" : "text-slate-400"}>{formatIDR(r.coverage.covered)}</span> },
     { key: "status", header: "Status", render: (r) => <Badge tone={STATUS_TONE[r.status]} dot>{r.status}</Badge> },
   ];
 
   const probeColumns: Column<Probe>[] = [
     {
       key: "name",
-      header: "Aturan",
+      header: "Rule",
       className: "whitespace-normal",
       render: (r) => (
         <div className="max-w-md">
           <p className="text-slate-700">{r.name}</p>
-          <p className="mt-0.5 font-mono text-[11px] text-slate-400">diharapkan {r.expect}</p>
+          <p className="mt-0.5 font-mono text-[11px] text-slate-400">expected {r.expect}</p>
         </div>
       ),
     },
-    { key: "got", header: "Hasil", render: (r) => <span className="font-mono text-xs text-slate-700">{r.got ?? "—"}</span> },
-    { key: "pass", header: "", align: "right", render: (r) => <Badge tone={r.pass ? "green" : "red"}>{r.pass ? "lolos" : "gagal"}</Badge> },
+    { key: "got", header: "Result", render: (r) => <span className="font-mono text-xs text-slate-700">{r.got ?? "—"}</span> },
+    { key: "pass", header: "", align: "right", render: (r) => <Badge tone={r.pass ? "green" : "red"}>{r.pass ? "pass" : "fail"}</Badge> },
   ];
 
   return (
     <div>
       <PageHeader
-        breadcrumb="M1 · Lapisan data contoh"
-        title="Diagnostik demo"
-        description="Halaman kerja, bukan halaman produk. Isinya: apa yang ada di store, apa yang dihitung derive.ts darinya, dan bukti bahwa penolakannya sungguhan."
+        breadcrumb="M1 · Demo data layer"
+        title="Demo diagnostics"
+        description="A working page, not a product page. What the store holds, what derive.ts computes from it, and proof that the refusals are real."
         actions={
           <>
-            <Button variant="outline" size="sm" icon={RotateCcw} onClick={() => { reset(); toast("info", "Data contoh dikembalikan", "Sandbox kembali ke kondisi awal."); }}>
-              Reset data contoh
+            <Button variant="outline" size="sm" icon={RotateCcw} onClick={() => { reset(); toast("info", "Demo data reset", "The sandbox is back to its starting state."); }}>
+              Reset demo data
             </Button>
             <Button size="sm" icon={ShieldAlert} onClick={runProbes} disabled={running}>
-              {running ? "Menguji…" : "Uji penolakan"}
+              {running ? "Testing…" : "Test refusals"}
             </Button>
           </>
         }
       />
 
       <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Baris PR" value={state.pr_lines.length} icon={ListChecks} hint={`${state.pr_documents.length} dokumen`} />
-        <StatCard label="Transaksi ledger" value={state.transactions.length} icon={Wallet} tone="green" hint={`${state.payment_allocations.length} alokasi`} />
-        <StatCard label="Berkas bukti" value={state.attachments.length} icon={FileStack} tone="violet" hint={`${state.attachment_links.length} tautan`} />
+        <StatCard label="PR lines" value={state.pr_lines.length} icon={ListChecks} hint={`${state.pr_documents.length} documents`} />
+        <StatCard label="Ledger rows" value={state.transactions.length} icon={Wallet} tone="green" hint={`${state.payment_allocations.length} allocations`} />
+        <StatCard label="Evidence files" value={state.attachments.length} icon={FileStack} tone="violet" hint={`${state.attachment_links.length} links`} />
         <StatCard
-          label="Dokumen tanpa induk"
+          label="Unparented documents"
           value={health.unresolved}
           icon={GitBranch}
           tone={health.unresolved > 5 ? "red" : "amber"}
-          hint="Jalur pengecualian — harus tetap kecil"
+          hint="The exception road — should stay small"
         />
       </div>
 
       <div className="mb-6 grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader
-            title="Penolakan yang sungguhan"
-            subtitle="Setiap baris adalah satu aturan mengikat, diuji lewat demo API — bukan dijelaskan."
+            title="The refusals are real"
+            subtitle="Each row is a binding rule, exercised against the demo API rather than described."
             icon={ShieldAlert}
           />
-          <DataTable columns={probeColumns} rows={probes} rowKey={(r) => r.name} dense empty="Menjalankan pemeriksaan…" />
+          <DataTable columns={probeColumns} rows={probes} rowKey={(r) => r.name} dense empty="Running checks…" />
         </Card>
 
         <Card>
-          <CardHeader title="Saldo per rekening" subtitle="Dihitung dari baris, bukan disimpan" icon={Wallet} />
+          <CardHeader title="Balance per account" subtitle="Computed from rows, never stored" icon={Wallet} />
           <div className="divide-y divide-slate-100">
             {balances.map((b) => (
               <div key={b.account_id} className="flex items-baseline justify-between px-5 py-3">
                 <div>
                   <p className="font-mono text-xs font-semibold text-slate-700">{b.code}</p>
-                  <p className="text-xs text-slate-400">{b.custody === "leadership" ? "kustodi pimpinan" : "kustodi akunting"}</p>
+                  <p className="text-xs text-slate-400">{b.custody === "leadership" ? "leadership custody" : "accounting custody"}</p>
                 </div>
                 <span className="text-sm font-semibold tabular-nums text-slate-800">{formatIDR(b.balance)}</span>
               </div>
@@ -223,8 +223,8 @@ export default function DemoDiagnosticsPage() {
 
       <Card className="mb-6">
         <CardHeader
-          title="Tangga status — kedelapan nilainya hadir di data contoh"
-          subtitle="Dihitung ulang setiap render oleh derive.ts. Tidak ada kolom status yang bisa berselisih dengannya."
+          title="The status ladder — all eight values appear in the fixtures"
+          subtitle="Recomputed on every render by derive.ts. There is no stored status column that could disagree with it."
           icon={Database}
           action={
             <div className="flex flex-wrap gap-1.5">
@@ -239,7 +239,7 @@ export default function DemoDiagnosticsPage() {
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
-          <CardHeader title="PO — dua sumbu, tidak pernah digabung" subtitle="Uang dan barang dihitung terpisah dan tetap terpisah" icon={GitBranch} />
+          <CardHeader title="PO — two axes, never collapsed" subtitle="Money and goods are computed apart and stay apart" icon={GitBranch} />
           <div className="divide-y divide-slate-100">
             {state.purchase_orders.map((po) => {
               const s = poStatus(state, po.id);
@@ -251,23 +251,23 @@ export default function DemoDiagnosticsPage() {
                   </div>
                   <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
                     <div>
-                      <p className="text-slate-400">Pembayaran</p>
+                      <p className="text-slate-400">Payment</p>
                       <p className="font-semibold text-slate-700">{s.payment_state}</p>
                       <p className="tabular-nums text-slate-500">{formatIDR(s.paid_to_date)} / {formatIDR(s.contract_value)}</p>
                     </div>
                     <div>
-                      <p className="text-slate-400">Pengiriman</p>
+                      <p className="text-slate-400">Delivery</p>
                       <p className="font-semibold text-slate-700">{s.delivery_state}</p>
-                      <p className="tabular-nums text-slate-500">diterima {formatIDR(s.value_received)}</p>
+                      <p className="tabular-nums text-slate-500">received {formatIDR(s.value_received)}</p>
                     </div>
                   </div>
                   <p className="mt-3 text-xs text-slate-500">
-                    Eksposur {formatIDR(s.exposure)} —{" "}
+                    Exposure {formatIDR(s.exposure)} —{" "}
                     {s.exposure > 0
-                      ? "kita menanggung risiko vendor."
+                      ? "we are carrying the vendor’s risk."
                       : s.exposure < 0
-                        ? "barang sudah datang melebihi yang dibayar; ini utang usaha."
-                        : "seimbang."}
+                        ? "goods have arrived beyond what was paid; this is a payable."
+                        : "balanced."}
                   </p>
                 </div>
               );
@@ -276,15 +276,15 @@ export default function DemoDiagnosticsPage() {
         </Card>
 
         <Card>
-          <CardHeader title="Sesi demo" subtitle="Akses modul dan authority terpisah — D22 sampai D24" icon={ShieldAlert} />
+          <CardHeader title="Demo session" subtitle="Module access and authority are separate grants — D22 to D24" icon={ShieldAlert} />
           <div className="space-y-4 px-5 py-4">
             <div>
-              <p className="text-xs text-slate-400">Bertindak sebagai</p>
+              <p className="text-xs text-slate-400">Acting as</p>
               <p className="text-sm font-semibold text-slate-800">{acting.full_name}</p>
               <p className="font-mono text-xs text-slate-500">{acting.email}</p>
             </div>
             <div>
-              <p className="mb-1.5 text-xs text-slate-400">Modul</p>
+              <p className="mb-1.5 text-xs text-slate-400">Modules</p>
               <div className="flex flex-wrap gap-1.5">
                 {acting.modules.map((m) => (
                   <Badge key={m.module} tone="slate">{m.module} · {m.level}</Badge>
@@ -292,10 +292,10 @@ export default function DemoDiagnosticsPage() {
               </div>
             </div>
             <div>
-              <p className="mb-1.5 text-xs text-slate-400">Authority</p>
+              <p className="mb-1.5 text-xs text-slate-400">Authorities</p>
               <div className="flex flex-wrap gap-1.5">
                 {acting.authorities.length === 0
-                  ? <span className="text-xs text-slate-400">tidak ada — hanya bisa mengajukan, tidak memutuskan</span>
+                  ? <span className="text-xs text-slate-400">none — can raise a request, cannot decide one</span>
                   : acting.authorities.map((a) => <Badge key={a} tone="brand">{a}</Badge>)}
               </div>
             </div>

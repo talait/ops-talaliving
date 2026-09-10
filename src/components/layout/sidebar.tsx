@@ -35,7 +35,7 @@ export function Sidebar({ mobileOpen, onClose }: { mobileOpen: boolean; onClose:
         <button
           onClick={onClose}
           className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg text-brand-200 hover:bg-white/10 lg:hidden"
-          aria-label="Tutup menu"
+          aria-label="Close menu"
         >
           <X className="h-5 w-5" />
         </button>

@@ -4,7 +4,7 @@ export default function Page() {
   return (
     <ModulePlaceholder
       breadcrumb="IT"
-      title="Peran & Izin"
+      title="Roles & Permissions"
       permission="it.manage_roles"
     />
   );

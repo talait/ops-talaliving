@@ -4,7 +4,7 @@ export default function Page() {
   return (
     <ModulePlaceholder
       breadcrumb="Inventory"
-      title="Papan & Sawn"
+      title="Sawn Boards"
       permission="inventory.read"
     />
   );

@@ -4,7 +4,7 @@ export default function Page() {
   return (
     <ModulePlaceholder
       breadcrumb="Procurement"
-      title="Supplier"
+      title="Suppliers"
       permission="procurement.read"
     />
   );

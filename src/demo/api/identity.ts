@@ -35,7 +35,7 @@ export async function listUsers(): Promise<Result<Session[]>> {
 export async function actAs(userId: string): Promise<Result<Session>> {
   await latency();
   const user = getState().users.find((u) => u.id === userId);
-  if (!user) return notFound(SERVICE, "user_not_found", "Pengguna tidak ditemukan.");
+  if (!user) return notFound(SERVICE, "user_not_found", "User not found.");
   apply((draft) => {
     draft.session_user_id = userId;
   });
@@ -60,7 +60,7 @@ export async function setModules(
       action: "modules.set", outcome: "ok", reason: null,
     });
   });
-  if (!updated) return notFound(SERVICE, "user_not_found", "Pengguna tidak ditemukan.");
+  if (!updated) return notFound(SERVICE, "user_not_found", "User not found.");
   return ok(SERVICE, toSession(updated));
 }
 
@@ -80,6 +80,6 @@ export async function setAuthorities(
       action: "authorities.set", outcome: "ok", reason: null,
     });
   });
-  if (!updated) return notFound(SERVICE, "user_not_found", "Pengguna tidak ditemukan.");
+  if (!updated) return notFound(SERVICE, "user_not_found", "User not found.");
   return ok(SERVICE, toSession(updated));
 }

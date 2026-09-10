@@ -4,7 +4,7 @@ import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Line, LineChart,
   Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
-import { formatIDRCompact, formatNumber } from "@/lib/format";
+import { formatCompact, formatIDRCompact, formatNumber } from "@/lib/format";
 
 const BRAND = "#35825a";  // brand-600 — samakan kalau warna merek diganti
 const GRID = "#e2e8f0";
@@ -48,8 +48,8 @@ export function AreaTrend({
           tick={{ fontSize: 11, fill: AXIS }}
           axisLine={false}
           tickLine={false}
-          width={54}
-          tickFormatter={(v) => (currency ? formatIDRCompact(Number(v)) : formatNumber(Number(v)))}
+          width={48}
+          tickFormatter={(v) => (currency ? formatCompact(Number(v)) : formatNumber(Number(v)))}
         />
         <Tooltip
           contentStyle={tooltipStyle}
@@ -83,8 +83,8 @@ export function BarSeries({
           tick={{ fontSize: 11, fill: AXIS }}
           axisLine={false}
           tickLine={false}
-          width={54}
-          tickFormatter={(v) => (currency ? formatIDRCompact(Number(v)) : formatNumber(Number(v)))}
+          width={48}
+          tickFormatter={(v) => (currency ? formatCompact(Number(v)) : formatNumber(Number(v)))}
         />
         <Tooltip
           cursor={{ fill: "#f4f6fa" }}
@@ -134,8 +134,8 @@ export function DualLine({
           tick={{ fontSize: 11, fill: AXIS }}
           axisLine={false}
           tickLine={false}
-          width={54}
-          tickFormatter={(v) => formatIDRCompact(Number(v))}
+          width={48}
+          tickFormatter={(v) => formatCompact(Number(v))}
         />
         <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => [formatIDRCompact(v), ""]} />
         <Line type="monotone" dataKey="pendapatan" stroke={BRAND} strokeWidth={2.5} dot={false} />

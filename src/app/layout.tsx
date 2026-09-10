@@ -8,7 +8,7 @@ import { DemoProvider } from "@/demo/provider";
 
 export const metadata: Metadata = {
   title: BRAND.documentTitle,
-  description: "Sistem manajemen internal manufaktur furnitur.",
+  description: "Internal operations system for furniture manufacturing.",
 };
 
 export const viewport: Viewport = {
@@ -19,7 +19,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="id">
+    <html lang="en">
       <body>
         <DemoProvider>
           <SessionProvider>

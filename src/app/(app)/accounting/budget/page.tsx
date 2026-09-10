@@ -4,7 +4,7 @@ export default function Page() {
   return (
     <ModulePlaceholder
       breadcrumb="Accounting"
-      title="Anggaran"
+      title="Budget"
       permission="accounting.read"
     />
   );

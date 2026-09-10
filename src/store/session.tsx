@@ -27,7 +27,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<SessionValue>(() => {
     const definition = ROLE_DEFINITIONS[role];
     return {
-      user: { name: "Pengguna Contoh", email: "contoh@perusahaan.co.id", role },
+      user: { name: "Demo User", email: "demo@talaliving.com", role },
       can: (permission?: string) => hasPermission(definition.permissions, permission),
       setRole,
     };

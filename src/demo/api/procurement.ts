@@ -6,6 +6,7 @@ import type {
   PurchaseOrder, PoLine, PoStatusView, Receipt, ReceiptCondition, PrCategory, UomCode,
 } from "@/services/procurement/contracts";
 import { PROBLEM_CONDITIONS } from "@/services/procurement/contracts";
+import { LOCALE } from "@/lib/format";
 import { getState, apply, newId, nextDocNumber, writeAudit, writeOutbox } from "../store";
 import {
   prLineView, approvalQueue, lineCoverage, roundSummary, poStatus, isApproved,
@@ -42,11 +43,11 @@ export async function createVendor(input: { name: string }, idempotencyKey?: str
   if (cached) return cached;
 
   const name = input.name.trim();
-  if (!name) return invalid(SERVICE, "name_required", "Nama vendor wajib diisi.", { field: "name" });
+  if (!name) return invalid(SERVICE, "name_required", "Vendor name is required.", { field: "name" });
 
   const existing = getState().vendors.find((v) => v.name.toLowerCase() === name.toLowerCase());
   if (existing) {
-    return conflict(SERVICE, "vendor_exists", `Vendor "${existing.name}" sudah ada — tidak ada yang berubah.`, { vendor_id: existing.id });
+    return conflict(SERVICE, "vendor_exists", `Vendor "${existing.name}" already exists — nothing changed.`, { vendor_id: existing.id });
   }
 
   const vendor: Vendor = {
@@ -130,7 +131,7 @@ export async function getPr(docNo: string): Promise<Result<PrDocumentView>> {
   await latency();
   const doc = getState().pr_documents.find((d) => d.doc_no === docNo);
   const view = doc ? docView(doc.id) : null;
-  if (!view) return notFound(SERVICE, "pr_not_found", `Dokumen ${docNo} tidak ditemukan.`);
+  if (!view) return notFound(SERVICE, "pr_not_found", `Document ${docNo} not found.`);
   return ok(SERVICE, view);
 }
 
@@ -153,7 +154,7 @@ export async function createPr(
   await latency();
   const cached = replayed<PrDocumentView>(SERVICE, "createPr", idempotencyKey);
   if (cached) return cached;
-  if (!input.lines.length) return invalid(SERVICE, "lines_required", "PR harus punya minimal satu baris.", { field: "lines" });
+  if (!input.lines.length) return invalid(SERVICE, "lines_required", "A purchase request needs at least one line.", { field: "lines" });
 
   const user = actingUser();
   let docNo = "";
@@ -191,9 +192,9 @@ export async function submitPr(docNo: string, idempotencyKey?: string): Promise<
   if (cached) return cached;
 
   const doc = getState().pr_documents.find((d) => d.doc_no === docNo);
-  if (!doc) return notFound(SERVICE, "pr_not_found", `Dokumen ${docNo} tidak ditemukan.`);
+  if (!doc) return notFound(SERVICE, "pr_not_found", `Document ${docNo} not found.`);
   if (doc.status !== "DRAFT") {
-    return conflict(SERVICE, "already_submitted", `${docNo} sudah diajukan — tidak ada yang berubah.`, { status: doc.status });
+    return conflict(SERVICE, "already_submitted", `${docNo} has already been submitted — nothing changed.`, { status: doc.status });
   }
 
   apply((draft) => {
@@ -242,16 +243,16 @@ export async function approveLine(
 
   const state = getState();
   const line = state.pr_lines.find((l) => l.line_no_full === input.line_no);
-  if (!line) return notFound(SERVICE, "line_not_found", `Baris ${input.line_no} tidak ditemukan.`);
+  if (!line) return notFound(SERVICE, "line_not_found", `Line ${input.line_no} not found.`);
   if (line.removed_at) {
-    return conflict(SERVICE, "line_removed", `Baris ${input.line_no} sudah dihapus dan tidak bisa disetujui.`);
+    return conflict(SERVICE, "line_removed", `Line ${input.line_no} has been removed and cannot be approved.`);
   }
 
   const amount = input.approved_amount ?? line.item_total;
   if (input.approved && amount > line.item_total) {
     return invalid(
       SERVICE, "approved_above_requested",
-      `Jumlah disetujui (${amount.toLocaleString("id-ID")}) melebihi yang diminta (${line.item_total.toLocaleString("id-ID")}). Persetujuan hanya bisa menurunkan.`,
+      `Approved amount (${amount.toLocaleString(LOCALE)}) exceeds the amount requested (${line.item_total.toLocaleString(LOCALE)}). Approval can only reduce.`,
       { field: "approved_amount", requested: line.item_total, attempted: amount },
     );
   }
@@ -260,7 +261,7 @@ export async function approveLine(
   if (already === input.approved) {
     return conflict(
       SERVICE, "already_decided",
-      `Baris ini sudah ${input.approved ? "disetujui" : "belum disetujui"} — tidak ada yang berubah.`,
+      `This line is already ${input.approved ? "approved" : "not approved"} — nothing changed.`,
     );
   }
 
@@ -303,16 +304,16 @@ export async function removeLine(
 
   const state = getState();
   const line = state.pr_lines.find((l) => l.line_no_full === input.line_no);
-  if (!line) return notFound(SERVICE, "line_not_found", `Baris ${input.line_no} tidak ditemukan.`);
+  if (!line) return notFound(SERVICE, "line_not_found", `Line ${input.line_no} not found.`);
   if (line.removed_at) {
-    return conflict(SERVICE, "already_removed", "Baris ini sudah dihapus — tidak ada yang berubah.");
+    return conflict(SERVICE, "already_removed", "This line has already been removed — nothing changed.");
   }
 
   const covered = lineCoverage(state, line).covered;
   if (covered > 0) {
     return conflict(
       SERVICE, "money_already_allocated",
-      `Baris ini sudah menerima ${covered.toLocaleString("id-ID")} rupiah. Yang berlaku sekarang adalah retur, kredit vendor, atau VOID transaksinya — bukan penghapusan.`,
+      `This line has already received Rp ${covered.toLocaleString(LOCALE)}. What applies now is a return, a vendor credit, or voiding the transaction — not removal.`,
       { covered },
     );
   }
@@ -369,7 +370,7 @@ export async function getRound(roundNo: string): Promise<Result<RoundView>> {
   await latency();
   const round = getState().payment_rounds.find((r) => r.round_no === roundNo);
   const view = round ? roundView(round.id) : null;
-  if (!view) return notFound(SERVICE, "round_not_found", `Ronde ${roundNo} tidak ditemukan.`);
+  if (!view) return notFound(SERVICE, "round_not_found", `Round ${roundNo} not found.`);
   return ok(SERVICE, view);
 }
 
@@ -435,9 +436,9 @@ export async function approveRound(roundNo: string, idempotencyKey?: string): Pr
   if (denied) return denied;
 
   const round = getState().payment_rounds.find((r) => r.round_no === roundNo);
-  if (!round) return notFound(SERVICE, "round_not_found", `Ronde ${roundNo} tidak ditemukan.`);
+  if (!round) return notFound(SERVICE, "round_not_found", `Round ${roundNo} not found.`);
   if (round.status !== "OPEN") {
-    return conflict(SERVICE, "round_not_open", `Ronde ${roundNo} sudah ${round.status} — tidak ada yang berubah.`);
+    return conflict(SERVICE, "round_not_open", `Round ${roundNo} is already ${round.status} — nothing changed.`);
   }
 
   const user = actingUser();
@@ -473,9 +474,9 @@ export async function transferRound(
   if (denied) return denied;
 
   const round = getState().payment_rounds.find((r) => r.round_no === roundNo);
-  if (!round) return notFound(SERVICE, "round_not_found", `Ronde ${roundNo} tidak ditemukan.`);
+  if (!round) return notFound(SERVICE, "round_not_found", `Round ${roundNo} not found.`);
   if (round.status !== "APPROVED") {
-    return conflict(SERVICE, "round_not_approved", `Ronde ${roundNo} berstatus ${round.status}.`);
+    return conflict(SERVICE, "round_not_approved", `Round ${roundNo} is ${round.status}.`);
   }
 
   apply((draft) => {
@@ -507,9 +508,9 @@ export async function closeRound(roundNo: string, idempotencyKey?: string): Prom
 
   const state = getState();
   const round = state.payment_rounds.find((r) => r.round_no === roundNo);
-  if (!round) return notFound(SERVICE, "round_not_found", `Ronde ${roundNo} tidak ditemukan.`);
+  if (!round) return notFound(SERVICE, "round_not_found", `Round ${roundNo} not found.`);
   if (round.status === "CLOSED") {
-    return conflict(SERVICE, "already_closed", `Ronde ${roundNo} sudah ditutup — tidak ada yang berubah.`);
+    return conflict(SERVICE, "already_closed", `Round ${roundNo} is already closed — nothing changed.`);
   }
 
   const stillOwed = state.payment_round_lines
@@ -527,7 +528,7 @@ export async function closeRound(roundNo: string, idempotencyKey?: string): Prom
     r.closed_at = new Date().toISOString();
     writeAudit(draft, {
       service: SERVICE, entity: "payment_round", entity_no: roundNo, action: "close",
-      outcome: "ok", reason: stillOwed.length ? `${stillOwed.length} baris masih terutang` : null,
+      outcome: "ok", reason: stillOwed.length ? `${stillOwed.length} line(s) still owed` : null,
     });
     writeOutbox(draft, { service: SERVICE, event_type: "procurement.round.closed", payload: { round_no: roundNo, still_owed: stillOwed.length } });
   });
@@ -562,7 +563,7 @@ export async function getPo(poNo: string): Promise<Result<PoView>> {
   await latency();
   const state = getState();
   const po = state.purchase_orders.find((p) => p.po_no === poNo);
-  if (!po) return notFound(SERVICE, "po_not_found", `PO ${poNo} tidak ditemukan.`);
+  if (!po) return notFound(SERVICE, "po_not_found", `PO ${poNo} not found.`);
   return ok(SERVICE, {
     ...po,
     status_view: poStatus(state, po.id),
@@ -590,15 +591,15 @@ export async function createReceipt(
   if (cached) return cached;
 
   if (!input.attachment_ids.length) {
-    return invalid(SERVICE, "photo_required", "Foto barang wajib dilampirkan.", { field: "attachment_ids" });
+    return invalid(SERVICE, "photo_required", "A photo of the goods is required.", { field: "attachment_ids" });
   }
   if (!input.line_no && !input.po_line_id) {
-    return invalid(SERVICE, "anchor_required", "Laporan penerimaan harus menunjuk baris PR atau baris PO.", { field: "line_no" });
+    return invalid(SERVICE, "anchor_required", "A receiving report must point at a PR line or a PO line.", { field: "line_no" });
   }
 
   const state = getState();
   const line = input.line_no ? state.pr_lines.find((l) => l.line_no_full === input.line_no) : null;
-  if (input.line_no && !line) return notFound(SERVICE, "line_not_found", `Baris ${input.line_no} tidak ditemukan.`);
+  if (input.line_no && !line) return notFound(SERVICE, "line_not_found", `Line ${input.line_no} not found.`);
 
   const user = actingUser();
   const receipt: Receipt = {
@@ -621,7 +622,7 @@ export async function createReceipt(
     }
     writeAudit(draft, {
       service: SERVICE, entity: "receipt", entity_no: receipt.receipt_no, action: "create",
-      outcome: "ok", reason: notified ? `kondisi ${input.condition} — baris tetap terbuka` : null,
+      outcome: "ok", reason: notified ? `condition ${input.condition} — line stays open` : null,
     });
     writeOutbox(draft, {
       service: SERVICE, event_type: "procurement.receipt.recorded",

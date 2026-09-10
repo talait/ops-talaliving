@@ -33,7 +33,7 @@ export async function upload(
   if (input.bytes > MAX_BYTES) {
     return invalid(
       SERVICE, "file_too_large",
-      `Berkas ${(input.bytes / 1024 / 1024).toFixed(1)} MB melebihi batas 15 MB.`,
+      `File is ${(input.bytes / 1024 / 1024).toFixed(1)} MB, over the 15 MB limit.`,
       { field: "bytes", limit: MAX_BYTES },
     );
   }
@@ -53,7 +53,7 @@ export async function upload(
   };
   apply((draft) => {
     draft.attachments.push(att);
-    writeAudit(draft, { service: SERVICE, entity: "attachment", entity_no: att.filename, action: "upload", outcome: "ok", reason: duplicate ? "byte identik pernah masuk" : null });
+    writeAudit(draft, { service: SERVICE, entity: "attachment", entity_no: att.filename, action: "upload", outcome: "ok", reason: duplicate ? "identical bytes seen before" : null });
   });
   const result = view(att);
   remember(SERVICE, "upload", idempotencyKey, result);
@@ -74,14 +74,14 @@ export async function link(
 
   const state = getState();
   if (!state.attachments.some((a) => a.id === input.attachment_id)) {
-    return notFound(SERVICE, "attachment_not_found", "Berkas tidak ditemukan.");
+    return notFound(SERVICE, "attachment_not_found", "File not found.");
   }
   const already = state.attachment_links.find(
     (l) => l.attachment_id === input.attachment_id && l.entity === input.entity
       && l.entity_no === input.entity_no && l.kind === input.kind,
   );
   if (already) {
-    return conflict(SERVICE, "already_linked", "Dokumen ini sudah tertaut di sana — tidak ada yang berubah.");
+    return conflict(SERVICE, "already_linked", "This document is already linked there — nothing changed.");
   }
 
   const user = actingUser();
@@ -105,7 +105,7 @@ export async function link(
 export async function unlink(linkId: string): Promise<Result<{ removed: string }>> {
   await latency();
   const existing = getState().attachment_links.find((l) => l.id === linkId);
-  if (!existing) return notFound(SERVICE, "link_not_found", "Tautan tidak ditemukan.");
+  if (!existing) return notFound(SERVICE, "link_not_found", "Link not found.");
   apply((draft) => {
     draft.attachment_links = draft.attachment_links.filter((l) => l.id !== linkId);
     writeAudit(draft, { service: SERVICE, entity: existing.entity, entity_no: existing.entity_no, action: "unlink", outcome: "ok", reason: null });

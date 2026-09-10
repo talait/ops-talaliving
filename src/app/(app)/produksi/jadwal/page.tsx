@@ -3,8 +3,8 @@ import { ModulePlaceholder } from "@/components/module-placeholder";
 export default function Page() {
   return (
     <ModulePlaceholder
-      breadcrumb="Produksi"
-      title="Rencana & Jadwal"
+      breadcrumb="Production"
+      title="Planning & Schedule"
       permission="production.schedule"
     />
   );

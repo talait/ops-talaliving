@@ -4,6 +4,7 @@ import type {
   Account, AccountBalance, Transaction, TransactionView, TransactionTypeCode,
   Direction, PaymentAllocation, EvidenceInboxRow, InboxHealth, AllocMethod,
 } from "@/services/accounting/contracts";
+import { LOCALE } from "@/lib/format";
 import { getState, apply, newId, nextDocNumber, writeAudit, writeOutbox } from "../store";
 import {
   accountBalances, transactionView, allocatedTotal, inboxHealth, lineCoverage,
@@ -44,7 +45,7 @@ export async function getTransaction(trxNo: string): Promise<Result<TransactionV
   await latency();
   const state = getState();
   const trx = state.transactions.find((t) => t.trx_no === trxNo);
-  if (!trx) return notFound(SERVICE, "transaction_not_found", `Transaksi ${trxNo} tidak ditemukan.`);
+  if (!trx) return notFound(SERVICE, "transaction_not_found", `Transaction ${trxNo} not found.`);
   return ok(SERVICE, transactionView(state, trx));
 }
 
@@ -81,17 +82,17 @@ export async function postTransaction(
   }
 
   if (input.amount_idr <= 0) {
-    return invalid(SERVICE, "amount_positive", "Jumlah harus lebih besar dari nol. Arah uang ada di kolom IN/OUT.", { field: "amount_idr" });
+    return invalid(SERVICE, "amount_positive", "Amount must be greater than zero. Direction lives in the IN/OUT column.", { field: "amount_idr" });
   }
   if (!input.description.trim()) {
-    return invalid(SERVICE, "description_required", "Keterangan wajib diisi.", { field: "description" });
+    return invalid(SERVICE, "description_required", "Description is required.", { field: "description" });
   }
 
   const existing = getState().transactions.find((t) => t.source_ref === input.source_ref);
   if (existing) {
     return conflict(
       SERVICE, "already_posted",
-      `Sudah dibukukan sebagai ${existing.trx_no} — tidak ada yang berubah.`,
+      `Already posted as ${existing.trx_no} — nothing changed.`,
       { trx_no: existing.trx_no },
     );
   }
@@ -130,13 +131,13 @@ export async function voidTransaction(
   const denied = requireAuthority(SERVICE, "post_ledger");
   if (denied) return denied;
   if (!reason.trim()) {
-    return invalid(SERVICE, "reason_required", "Alasan VOID wajib diisi.", { field: "reason" });
+    return invalid(SERVICE, "reason_required", "A reason is required to void.", { field: "reason" });
   }
 
   const trx = getState().transactions.find((t) => t.trx_no === trxNo);
-  if (!trx) return notFound(SERVICE, "transaction_not_found", `Transaksi ${trxNo} tidak ditemukan.`);
+  if (!trx) return notFound(SERVICE, "transaction_not_found", `Transaction ${trxNo} not found.`);
   if (trx.status === "VOID") {
-    return conflict(SERVICE, "already_void", `${trxNo} sudah VOID — tidak ada yang berubah.`);
+    return conflict(SERVICE, "already_void", `${trxNo} is already VOID — nothing changed.`);
   }
 
   apply((draft) => {
@@ -161,9 +162,9 @@ export async function markComplete(trxNo: string): Promise<Result<TransactionVie
   if (denied) return denied;
 
   const trx = getState().transactions.find((t) => t.trx_no === trxNo);
-  if (!trx) return notFound(SERVICE, "transaction_not_found", `Transaksi ${trxNo} tidak ditemukan.`);
+  if (!trx) return notFound(SERVICE, "transaction_not_found", `Transaction ${trxNo} not found.`);
   if (trx.status === "COMPLETED") {
-    return conflict(SERVICE, "already_complete", `${trxNo} sudah COMPLETED — tidak ada yang berubah.`);
+    return conflict(SERVICE, "already_complete", `${trxNo} is already COMPLETED — nothing changed.`);
   }
 
   apply((draft) => {
@@ -192,31 +193,31 @@ export async function allocate(
 
   const state = getState();
   const trx = state.transactions.find((t) => t.trx_no === input.trx_no);
-  if (!trx) return notFound(SERVICE, "transaction_not_found", `Transaksi ${input.trx_no} tidak ditemukan.`);
+  if (!trx) return notFound(SERVICE, "transaction_not_found", `Transaction ${input.trx_no} not found.`);
   if (trx.status === "VOID") {
-    return conflict(SERVICE, "transaction_void", `${input.trx_no} sudah VOID dan tidak bisa mendanai apa pun.`);
+    return conflict(SERVICE, "transaction_void", `${input.trx_no} is VOID and cannot fund anything.`);
   }
 
   const line = state.pr_lines.find((l) => l.line_no_full === input.pr_line_no);
   if (!line) {
     return invalid(
       SERVICE, "pr_line_not_found",
-      `Baris ${input.pr_line_no} tidak ada di procurement.`,
+      `Line ${input.pr_line_no} does not exist in procurement.`,
       { field: "pr_line_no", pr_line_no: input.pr_line_no },
     );
   }
   if (line.removed_at) {
-    return conflict(SERVICE, "line_removed", `Baris ${input.pr_line_no} sudah dihapus.`);
+    return conflict(SERVICE, "line_removed", `Line ${input.pr_line_no} has been removed.`);
   }
   if (input.amount <= 0) {
-    return invalid(SERVICE, "amount_positive", "Jumlah alokasi harus lebih besar dari nol.", { field: "amount" });
+    return invalid(SERVICE, "amount_positive", "Allocation amount must be greater than zero.", { field: "amount" });
   }
 
   const already = allocatedTotal(state, trx.id);
   if (already + input.amount > trx.amount_idr) {
     return invalid(
       SERVICE, "over_allocated",
-      `Transaksi ini hanya memindahkan ${trx.amount_idr.toLocaleString("id-ID")}; sudah dialokasikan ${already.toLocaleString("id-ID")}. Satu transaksi tidak pernah mendanai lebih dari yang ia pindahkan.`,
+      `This transaction only moved Rp ${trx.amount_idr.toLocaleString(LOCALE)}; Rp ${already.toLocaleString(LOCALE)} is already allocated. A transaction never funds more than it moved.`,
       { field: "amount", moved: trx.amount_idr, already, attempted: input.amount },
     );
   }
@@ -272,9 +273,9 @@ export async function resolveInbox(
   if (denied) return denied;
 
   const row = getState().evidence_inbox.find((r) => r.ref_id === input.ref_id);
-  if (!row) return notFound(SERVICE, "inbox_row_not_found", `Baris ${input.ref_id} tidak ditemukan.`);
+  if (!row) return notFound(SERVICE, "inbox_row_not_found", `Row ${input.ref_id} not found.`);
   if (row.status !== "PENDING") {
-    return conflict(SERVICE, "already_resolved", `Baris ini sudah ${row.status} — tidak ada yang berubah.`);
+    return conflict(SERVICE, "already_resolved", `This row is already ${row.status} — nothing changed.`);
   }
 
   const nextStatus = {
@@ -301,7 +302,7 @@ export async function coverageFor(lineNoFull: string): Promise<Result<ReturnType
   await latency();
   const state = getState();
   const line = state.pr_lines.find((l) => l.line_no_full === lineNoFull);
-  if (!line) return notFound(SERVICE, "line_not_found", `Baris ${lineNoFull} tidak ditemukan.`);
+  if (!line) return notFound(SERVICE, "line_not_found", `Line ${lineNoFull} not found.`);
   return ok(SERVICE, lineCoverage(state, line));
 }
 

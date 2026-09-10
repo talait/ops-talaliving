@@ -4,7 +4,7 @@ export default function Page() {
   return (
     <ModulePlaceholder
       breadcrumb="Inventory"
-      title="Penyesuaian Stok"
+      title="Stock Adjustments"
       permission="inventory.adjust"
     />
   );

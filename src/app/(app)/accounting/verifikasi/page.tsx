@@ -4,7 +4,7 @@ export default function Page() {
   return (
     <ModulePlaceholder
       breadcrumb="Accounting"
-      title="Verifikasi Pembelian"
+      title="Purchase Verification"
       permission="accounting.read"
     />
   );

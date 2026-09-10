@@ -47,6 +47,9 @@ gets had twice.
 | 31 | 2026-09-11 | **Approval metadata is timestamp, name and email**, captured from the session. Assume the CEO acts from his own account | owner, answering Q19 |
 | 32 | 2026-09-11 | **Attaching a payment proof to a line with no transaction offers to post one**, prefilled, on the same panel | owner, answering Q14 |
 | 33 | 2026-09-11 | **Chat approvals cover goods and receiving, not fund decisions.** Approving a round stays on the web | owner, answering Q16 |
+| 34 | 2026-09-11 | **The interface is English by default.** Multi-language later, not now | owner. Supersedes the earlier "English structure, Indonesian labels" mix (Q11) |
+| 35 | 2026-09-11 | **Domain vocabulary that is *data* stays verbatim** — account codes, transaction types, unit codes, status strings, id formats, vendor and item names | translating a stored value does not translate it, it breaks the match |
+| 36 | 2026-09-11 | **`en-US` number grouping**, set once as `LOCALE` in `src/lib/format.ts` | an English interface showing `Rp 18.900.000` is genuinely ambiguous — an English reader sees eighteen point nine. Mixing an English UI with Indonesian grouping is the one combination misreadable as a number a thousand times smaller. One line to change back |
 
 ---
 
@@ -62,10 +65,10 @@ them**: the demo can show two versions of a screen and let the owner point.
 | Q6 | May `shared@` post to the ledger? | **Yes** — the owner has stated `it@` is an alias of `shared@` and both are executors | low |
 | Q7 | How is `PAID_UNAPPROVED` handled — recover or write off? | **Neither automatically.** It is terminal, flagged to leadership, never deleted. The policy is the owner's | low |
 | Q8 | Which of `WAITING APPROVAL` / `WAITING FOR APPROVAL` is canonical? | **`WAITING FOR APPROVAL`**, the view's spelling. The other is a legacy sheet string | trivial now, annoying later |
+| Q21 | **When multi-language arrives, which languages and who chooses?** | **Not designed now.** `LOCALE` is a single constant that becomes a session value; UI strings are not yet extracted into a message catalogue, and doing that before there is a second language is work with no reader | low now, moderate once screens multiply |
 | Q20 | **Can the CEO still approve part of a line?** D28 makes the decision a checkbox, but the approved *amount* is a separate field. | **Yes — the amount starts at what was requested and may be reduced before checking.** That is how "approve two of the five you asked for" survives, and it keeps A8 (money can only shrink). Removing it entirely would be a real business change: accept in full, or remove | low to keep, higher to remove later |
 | Q15 | Who may resolve something in the exception inbox — anyone in `finance`, or a named few? | **`finance` and `it_admin`**, matching who may post today. The resolution is recorded with their name either way | low |
 | Q10 | What is transaction type `EJO` — 77 transactions, Rp529 M, unclassified? | **Carried as-is, unclassified, and shown**. Never quietly folded into `OTHERS` | low |
-| Q11 | Does the demo need an Indonesian UI, or is the current mix fine? | **The current mix**: Indonesian labels and stored vocabulary, basic English structure — the owner's 2026-08-27 direction. Screens where people *decide* get translated first | low |
 | Q13 | What is the app actually called, and what is the brand colour? | **Placeholders stay** (`MANUFAKTUR OS`, `#2f6b52`), isolated in `src/lib/brand.ts` and the `brand` scale. Changing the colour means deriving the whole 50–950 scale, plus `BRAND` in `charts.tsx` and `themeColor` in `layout.tsx` | trivial while it stays in one place |
 
 ## Answering one from a phone

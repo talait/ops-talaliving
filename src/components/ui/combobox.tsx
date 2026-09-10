@@ -19,7 +19,7 @@ export function Combobox({
   value,
   onChange,
   options,
-  placeholder = "Cari…",
+  placeholder = "Search…",
   emptyOptionLabel,
 }: {
   value: string;

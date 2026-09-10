@@ -34,7 +34,7 @@ export function Toaster() {
             <button
               onClick={() => dismissToast(t.id)}
               className="text-slate-400 hover:text-slate-600"
-              aria-label="Tutup notifikasi"
+              aria-label="Dismiss notification"
             >
               <X className="h-4 w-4" />
             </button>

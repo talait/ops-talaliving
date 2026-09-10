@@ -26,10 +26,10 @@ export function actingUser(state: DemoState = getState()): DemoUser {
 }
 
 const AUTHORITY_HOLDER: Record<Authority, string> = {
-  approve_goods: "CEO",
+  approve_goods: "the CEO",
   approve_funds: "Finance",
-  post_ledger: "Akunting",
-  resolve_inbox: "Akunting",
+  post_ledger: "Accounting",
+  resolve_inbox: "Accounting",
 };
 
 /** 403 with a message that names who *may* act. "Forbidden" tells a person
@@ -40,7 +40,7 @@ export function requireAuthority(service: ServiceName, authority: Authority) {
   return refused(
     service,
     "authority_required",
-    `Keputusan ini milik ${AUTHORITY_HOLDER[authority]} — dicatat, tidak dijalankan.`,
+    `This decision belongs to ${AUTHORITY_HOLDER[authority]} — logged, not applied.`,
     { required: authority, acting_as: user.email },
   );
 }
@@ -51,7 +51,7 @@ export function requireModule(service: ServiceName, module: string) {
   return refused(
     service,
     "module_required",
-    `Akun Anda tidak punya akses modul ${module}.`,
+    `Your account has no access to the ${module} module.`,
     { required: module, acting_as: user.email },
   );
 }

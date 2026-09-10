@@ -73,11 +73,11 @@ export const USERS: DemoUser[] = [
 /** The five accounts, spelled exactly. Three are held by accounting and pay
  *  vendors; two are held by leadership and never pay a vendor directly. */
 export const ACCOUNTS: Account[] = [
-  { id: "acc_petty", code: "PETTY CASH", name: "Kas Kecil Workshop", custody: "accounting", is_paying: true, currency: "IDR", opening_balance: 5_000_000, opened_on: "2026-01-01", is_active: true },
-  { id: "acc_bni325", code: "BNI 325", name: "BNI 325 — Operasional", custody: "accounting", is_paying: true, currency: "IDR", opening_balance: 42_000_000, opened_on: "2026-01-01", is_active: true },
-  { id: "acc_bca271", code: "BCA 271", name: "BCA 271 — Kustodi Akunting", custody: "accounting", is_paying: true, currency: "IDR", opening_balance: 118_000_000, opened_on: "2026-01-01", is_active: true },
-  { id: "acc_bca064", code: "BCA 064", name: "BCA 064 — Rekening Pimpinan", custody: "leadership", is_paying: false, currency: "IDR", opening_balance: 610_000_000, opened_on: "2026-01-01", is_active: true },
-  { id: "acc_bcausd", code: "BCA USD 081", name: "BCA USD 081 — Rekening Pimpinan", custody: "leadership", is_paying: false, currency: "USD", opening_balance: 0, opened_on: "2026-01-01", is_active: true },
+  { id: "acc_petty", code: "PETTY CASH", name: "Workshop petty cash", custody: "accounting", is_paying: true, currency: "IDR", opening_balance: 5_000_000, opened_on: "2026-01-01", is_active: true },
+  { id: "acc_bni325", code: "BNI 325", name: "BNI 325 — Operations", custody: "accounting", is_paying: true, currency: "IDR", opening_balance: 42_000_000, opened_on: "2026-01-01", is_active: true },
+  { id: "acc_bca271", code: "BCA 271", name: "BCA 271 — Accounting custody", custody: "accounting", is_paying: true, currency: "IDR", opening_balance: 118_000_000, opened_on: "2026-01-01", is_active: true },
+  { id: "acc_bca064", code: "BCA 064", name: "BCA 064 — Leadership account", custody: "leadership", is_paying: false, currency: "IDR", opening_balance: 610_000_000, opened_on: "2026-01-01", is_active: true },
+  { id: "acc_bcausd", code: "BCA USD 081", name: "BCA USD 081 — Leadership account", custody: "leadership", is_paying: false, currency: "USD", opening_balance: 0, opened_on: "2026-01-01", is_active: true },
 ];
 
 /** Thirteen types. `is_purchase` vetoes auto-complete — goods that were bought
@@ -100,23 +100,23 @@ export const TRANSACTION_TYPES: TransactionType[] = [
 
 export const UOM: Uom[] = [
   { code: "pcs", name: "Pieces", dimension: "count" },
-  { code: "buah", name: "Buah", dimension: "count" },
+  { code: "buah", name: "Buah (each)", dimension: "count" },
   { code: "kg", name: "Kilogram", dimension: "mass" },
   { code: "gr", name: "Gram", dimension: "mass" },
   { code: "meter", name: "Meter", dimension: "length" },
-  { code: "m2", name: "Meter persegi", dimension: "area" },
-  { code: "m3", name: "Meter kubik", dimension: "volume" },
-  { code: "cm", name: "Sentimeter", dimension: "length" },
-  { code: "sak", name: "Sak", dimension: "count" },
+  { code: "m2", name: "Square metre", dimension: "area" },
+  { code: "m3", name: "Cubic metre", dimension: "volume" },
+  { code: "cm", name: "Centimetre", dimension: "length" },
+  { code: "sak", name: "Sak (bag)", dimension: "count" },
   { code: "box", name: "Box", dimension: "count" },
   { code: "roll", name: "Roll", dimension: "count" },
   { code: "set", name: "Set", dimension: "count" },
   { code: "pack", name: "Pack", dimension: "count" },
   { code: "ltr", name: "Liter", dimension: "volume" },
-  { code: "lembar", name: "Lembar", dimension: "count" },
-  { code: "batang", name: "Batang", dimension: "count" },
+  { code: "lembar", name: "Lembar (sheet)", dimension: "count" },
+  { code: "batang", name: "Batang (bar)", dimension: "count" },
   { code: "unit", name: "Unit", dimension: "count" },
-  { code: "lusin", name: "Lusin", dimension: "count" },
+  { code: "lusin", name: "Lusin (dozen)", dimension: "count" },
 ];
 
 /** Packaging conversions only, in Phase 1. `yield_ratio` is the hook the wood
@@ -124,21 +124,21 @@ export const UOM: Uom[] = [
 export const UOM_CONVERSIONS: UomConversion[] = [
   { id: "uc_01", from_uom: "lusin", to_uom: "pcs", factor: 12, yield_ratio: null, note: null },
   { id: "uc_02", from_uom: "kg", to_uom: "gr", factor: 1000, yield_ratio: null, note: null },
-  { id: "uc_03", from_uom: "box", to_uom: "pcs", factor: 100, yield_ratio: null, note: "sekrup, per box pabrik" },
-  { id: "uc_04", from_uom: "m3", to_uom: "lembar", factor: 55, yield_ratio: 0.52, note: "log jati -> papan 3cm, rendemen 45-60%" },
+  { id: "uc_03", from_uom: "box", to_uom: "pcs", factor: 100, yield_ratio: null, note: "screws, per factory box" },
+  { id: "uc_04", from_uom: "m3", to_uom: "lembar", factor: 55, yield_ratio: 0.52, note: "teak log -> 3cm board, 45-60% yield" },
 ];
 
 export const ITEM_CATEGORIES: ItemCategory[] = [
-  { code: "production", parent_code: null, name: "Produksi" },
-  { code: "raw-wood", parent_code: "production", name: "Kayu & panel" },
+  { code: "production", parent_code: null, name: "Production" },
+  { code: "raw-wood", parent_code: "production", name: "Timber & panels" },
   { code: "hardware", parent_code: "production", name: "Hardware" },
   { code: "sanding", parent_code: null, name: "Sanding" },
   { code: "finishing", parent_code: null, name: "Finishing" },
   { code: "packing", parent_code: null, name: "Packing" },
   { code: "machining", parent_code: null, name: "Machining" },
-  { code: "office", parent_code: null, name: "Kantor" },
-  { code: "service", parent_code: null, name: "Jasa" },
-  { code: "uncurated", parent_code: null, name: "Belum dikurasi" },
+  { code: "office", parent_code: null, name: "Office" },
+  { code: "service", parent_code: null, name: "Services" },
+  { code: "uncurated", parent_code: null, name: "Not yet curated" },
 ];
 
 export const PROJECTS: Project[] = [

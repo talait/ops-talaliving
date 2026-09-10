@@ -45,10 +45,10 @@ export const AUTHORITIES: Authority[] = [
 ];
 
 export const AUTHORITY_LABEL: Record<Authority, string> = {
-  approve_goods: "Menyetujui barang (CEO)",
-  approve_funds: "Menyetujui dana",
-  post_ledger: "Membukukan ke ledger",
-  resolve_inbox: "Menyelesaikan dokumen tanpa induk",
+  approve_goods: "Approve goods (CEO)",
+  approve_funds: "Approve funds",
+  post_ledger: "Post to the ledger",
+  resolve_inbox: "Resolve unparented documents",
 };
 
 export interface User {

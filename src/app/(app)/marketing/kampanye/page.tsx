@@ -4,7 +4,7 @@ export default function Page() {
   return (
     <ModulePlaceholder
       breadcrumb="Marketing"
-      title="Kampanye"
+      title="Campaigns"
       permission="marketing.read"
     />
   );

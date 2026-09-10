@@ -24,16 +24,16 @@ export function ModulePlaceholder({
     <div>
       <PageHeader breadcrumb={breadcrumb} title={title} description={description} />
       <Card>
-        <CardHeader title="Belum dibangun" subtitle="Rute dan navigasinya sudah ada; isinya menyusul." icon={Construction} />
+        <CardHeader title="Not built yet" subtitle="The route and navigation exist; the module follows." icon={Construction} />
         <div className="space-y-3 px-5 py-6 text-sm text-slate-600">
           <p>
-            Halaman ini bagian dari kerangka. Struktur, menu, izin, dan komponennya sudah siap —
-            yang belum ada adalah model data dan alur kerjanya.
+            This page is part of the shell. Structure, navigation, permissions and components
+            are in place; the data model and the workflow are not.
           </p>
           {permission && (
             <p className="text-xs text-slate-500">
-              Dijaga izin <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px]">{permission}</code>.
-              Peran tanpa izin ini tidak melihat menunya sama sekali — coba ganti peran di kanan atas.
+              Guarded by <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px]">{permission}</code>.
+              A role without it does not see the menu entry at all — try switching role, top right.
             </p>
           )}
         </div>

@@ -8,7 +8,7 @@
  */
 export const BRAND = {
   name: "MANUFAKTUR OS",
-  tagline: "Sistem Operasi Pabrik",
+  tagline: "Factory Operations",
   /** Dipakai di <title>. */
   documentTitle: "Manufaktur OS",
 } as const;

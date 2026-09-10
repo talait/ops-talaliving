@@ -45,45 +45,45 @@ export interface RoleDefinition {
 export const ROLE_DEFINITIONS: Record<string, RoleDefinition> = {
   super_admin: {
     name: "Super Admin",
-    description: "Akses penuh, termasuk manajemen pengguna dan peran.",
+    description: "Full access, including user and role management.",
     permissions: "*",
   },
   direksi: {
-    name: "Direksi",
-    description: "Melihat seluruh modul dan menyetujui pengeluaran besar.",
+    name: "Directors",
+    description: "Reads every module and approves large spend.",
     permissions: [
       ...ALL_PERMISSIONS.filter((p) => p.endsWith(".read")),
       "procurement.approve", "payroll.approve", "accounting.post", "project.handover",
     ],
   },
   hrd: {
-    name: "HRD",
-    description: "Data karyawan, absensi, cuti, dan penggajian.",
+    name: "HR",
+    description: "Employee records, attendance, leave and payroll.",
     permissions: ["dashboard.read", "hrd.read", "hrd.create", "hrd.update", "hrd.approve", "payroll.read", "payroll.run"],
   },
   procurement: {
     name: "Procurement",
-    description: "Permintaan dan pesanan pembelian, penerimaan barang.",
+    description: "Purchase requests and orders, goods receiving.",
     permissions: ["dashboard.read", "procurement.read", "procurement.create", "procurement.update", "inventory.read", "inventory.create"],
   },
   accounting: {
     name: "Accounting",
-    description: "Buku besar, arus kas, anggaran, dan verifikasi pembelian.",
+    description: "Ledger, cash flow, budget and purchase verification.",
     permissions: ["dashboard.read", "accounting.read", "accounting.create", "accounting.update", "accounting.post", "procurement.read", "payroll.read"],
   },
   marketing: {
     name: "Marketing",
-    description: "CRM, kampanye, dan penjualan.",
+    description: "CRM, campaigns and sales.",
     permissions: ["dashboard.read", "marketing.read", "marketing.create", "marketing.update", "project.read"],
   },
   produksi: {
-    name: "Produksi",
-    description: "Desain, bill of materials, rencana dan jadwal produksi.",
+    name: "Production",
+    description: "Design, bill of materials, production planning and schedule.",
     permissions: ["dashboard.read", "production.read", "production.create", "production.update", "production.schedule", "inventory.read", "project.read"],
   },
   gudang: {
-    name: "Gudang",
-    description: "Stok bahan, penerimaan, dan penyesuaian.",
+    name: "Warehouse",
+    description: "Material stock, receiving and adjustments.",
     permissions: ["dashboard.read", "inventory.read", "inventory.create", "inventory.update", "inventory.adjust", "procurement.read"],
   },
 };

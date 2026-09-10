@@ -226,3 +226,45 @@ implemented as "yes, the amount may be reduced before checking", because that
 is the default we recorded. If the answer is no, `approveLine` loses its
 `approved_amount` argument and the change is small; it gets larger once the
 approval screen is built on D5.
+
+## F5 · 2026-09-11 · English by default — and what counts as data
+
+**Decided.** The interface is English. Multi-language is a later question.
+
+**The line that had to be drawn.** Not everything Indonesian in the app is
+*language*. Three kinds of string live here and only one of them translates:
+
+| Kind | Example | Translated? |
+|---|---|---|
+| Interface copy | "Approve", "No data.", "Balance per account" | yes |
+| Stored vocabulary | `BCA 271`, `RECCURING - UTILITIES`, `WAITING FOR APPROVAL`, `lembar`, `Receipt / Invoice / Nota` | **never** — translating a stored value does not translate it, it stops it matching |
+| Real-world names | `KAYU JATI SORTIMEN A`, `CV SUMBER KAYU JATI`, `BABY ISLAND` | **never** — they are what the things are called |
+
+Unit codes got a small compromise: the code stays `lembar`, and only the
+human-facing name gained a gloss — "Lembar (sheet)". The dropdown still writes
+`lembar` to the record.
+
+**Number formatting turned out to be a money question, not a style one.** In
+`en-US`, `Rp 18.900.000` reads as eighteen point nine — an English interface
+with Indonesian digit grouping is the one combination that can be misread as a
+number a thousand times smaller. So grouping follows the interface language,
+set once as `LOCALE` in `src/lib/format.ts`. If the team would rather read
+local grouping, that is one line.
+
+**A related trap the switch exposed.** `formatIDRCompact` used `M` for
+*miliar* — Indonesian for billion. In English `M` is million. Left alone, every
+compact figure on every chart would have been wrong by a factor of a thousand,
+silently, and would have looked plausible. Now it is K / M / B in the English
+sense.
+
+**Two bugs the screenshots caught that the build did not.** A `\u2019` escape
+written into a JSX attribute renders literally, because a JSX attribute is not
+a JavaScript string. And English compact labels are wider than the Indonesian
+ones they replaced, so chart axis ticks wrapped onto two lines — fixed by
+dropping the `Rp` prefix from axis ticks entirely, which is better anyway: the
+card title already says what the axis measures.
+
+**What surprised us.** Almost none of the work was in the components. The
+design system carried the language change without a single layout change,
+because nothing had been sized to a particular string. The work was in the
+copy, and in deciding which strings were copy at all.

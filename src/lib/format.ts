@@ -1,37 +1,66 @@
-/** Pemformatan terpusat. Ditaruh di satu berkas supaya angka rupiah dan
- *  tanggal tidak pernah tampil dengan dua gaya berbeda di dua halaman. */
+/** Centralised formatting.
+ *
+ *  One file, so rupiah and dates never appear in two different shapes on two
+ *  different pages.
+ */
+
+/** The interface language, and with it the number and date shapes.
+ *
+ *  ONE PLACE, deliberately: when multi-language arrives this becomes a value
+ *  from the session rather than a constant, and nothing else moves.
+ *
+ *  Why `en-US` grouping for rupiah, when Indonesia writes `Rp 18.900.000`:
+ *  an English interface showing `18.900` is genuinely ambiguous — an English
+ *  reader sees eighteen point nine. Mixing an English UI with Indonesian digit
+ *  grouping is the one combination that can be misread as a number a thousand
+ *  times smaller, and money is the wrong place to be clever. If the team would
+ *  rather have local grouping back, change this line and nothing else.
+ */
+export const LOCALE = "en-US";
 
 export function formatIDR(value: number, withSymbol = true): string {
-  const n = new Intl.NumberFormat("id-ID", { maximumFractionDigits: 0 }).format(Math.round(value));
+  const n = new Intl.NumberFormat(LOCALE, { maximumFractionDigits: 0 }).format(Math.round(value));
   return withSymbol ? `Rp ${n}` : n;
 }
 
-/** Untuk sumbu grafik dan kartu KPI, di mana angka penuh justru mengaburkan
- *  bentuk datanya. */
+/** For chart axes and KPI tiles, where the full number hides the shape of the
+ *  data. K / M / B in the English sense — note this is not the Indonesian
+ *  scale, where M means miliar. */
 export function formatIDRCompact(value: number): string {
+  return `Rp ${compactNumber(value)}`;
+}
+
+/** The same scale without the currency prefix, for chart axes: a tick does not
+ *  need to repeat `Rp` eight times when the card title already says what the
+ *  axis measures, and the prefix is what made English compact labels wrap. */
+export function formatCompact(value: number): string {
+  return compactNumber(value);
+}
+
+function compactNumber(value: number): string {
   const abs = Math.abs(value);
-  if (abs >= 1_000_000_000) return `Rp ${(value / 1_000_000_000).toFixed(1)} M`;
-  if (abs >= 1_000_000) return `Rp ${(value / 1_000_000).toFixed(1)} jt`;
-  if (abs >= 1_000) return `Rp ${(value / 1_000).toFixed(0)} rb`;
-  return `Rp ${value}`;
+  if (abs >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(1)}B`;
+  if (abs >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+  if (abs >= 1_000) return `${(value / 1_000).toFixed(0)}K`;
+  return `${value}`;
 }
 
 export function formatNumber(value: number): string {
-  return new Intl.NumberFormat("id-ID").format(value);
+  return new Intl.NumberFormat(LOCALE).format(value);
 }
 
 export function formatDate(d: Date): string {
-  return new Intl.DateTimeFormat("id-ID", { day: "2-digit", month: "short", year: "numeric" }).format(d);
+  return new Intl.DateTimeFormat(LOCALE, { day: "2-digit", month: "short", year: "numeric" }).format(d);
 }
 
 export function formatDateTime(d: Date): string {
-  return new Intl.DateTimeFormat("id-ID", {
+  return new Intl.DateTimeFormat(LOCALE, {
     day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
   }).format(d);
 }
 
-/** Volume kayu dalam meter kubik — tiga desimal, karena selisih 0,001 m3
- *  pada log bernilai uang. */
+/** Timber volume in cubic metres — three decimals, because 0.001 m³ of a log
+ *  is money. */
 export function formatM3(value: number): string {
-  return `${new Intl.NumberFormat("id-ID", { minimumFractionDigits: 3, maximumFractionDigits: 3 }).format(value)} m³`;
+  return `${new Intl.NumberFormat(LOCALE, { minimumFractionDigits: 3, maximumFractionDigits: 3 }).format(value)} m³`;
 }

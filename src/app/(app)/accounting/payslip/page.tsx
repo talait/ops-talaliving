@@ -4,7 +4,7 @@ export default function Page() {
   return (
     <ModulePlaceholder
       breadcrumb="Accounting"
-      title="Slip Gaji"
+      title="Payslips"
       permission="payroll.read"
     />
   );

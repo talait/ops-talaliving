@@ -49,7 +49,7 @@ export function Drawer({
           <button
             onClick={onClose}
             className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-            aria-label="Tutup"
+            aria-label="Close"
           >
             <X className="h-5 w-5" />
           </button>
@@ -94,7 +94,7 @@ export function Modal({
           <button
             onClick={onClose}
             className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100"
-            aria-label="Tutup"
+            aria-label="Close"
           >
             <X className="h-5 w-5" />
           </button>

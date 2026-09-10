@@ -4,7 +4,7 @@ export default function Page() {
   return (
     <ModulePlaceholder
       breadcrumb="Inventory"
-      title="Kayu Log"
+      title="Logs"
       permission="inventory.read"
     />
   );

@@ -17,12 +17,12 @@ import { itemIdByCode } from "./reference";
  */
 
 export const PR_DOCUMENTS: PrDocument[] = [
-  { id: "doc_06", doc_no: "pr-26-09-10_02", doc_type: "PR", status: "DRAFT", requested_by: "usr_andi", project_id: "prj_25004", purpose: "Consumable sanding & lem mingguan", created_at: "2026-09-10T02:15:00+08:00", submitted_at: null },
-  { id: "doc_05", doc_no: "pr-26-09-10_01", doc_type: "PR", status: "SUBMITTED", requested_by: "usr_andi", project_id: "prj_25007", purpose: "Packing batch BABY ISLAND", created_at: "2026-09-10T01:05:00+08:00", submitted_at: "2026-09-10T01:40:00+08:00" },
-  { id: "doc_04", doc_no: "pr-26-09-08_01", doc_type: "PR", status: "SUBMITTED", requested_by: "usr_made", project_id: "prj_25009", purpose: "Kayu & tooling VILLA SEMINYAK", created_at: "2026-09-08T09:20:00+08:00", submitted_at: "2026-09-08T10:02:00+08:00" },
-  { id: "doc_03", doc_no: "pr-26-09-04_01", doc_type: "PR", status: "SUBMITTED", requested_by: "usr_andi", project_id: "prj_25011", purpose: "Finishing HOTEL UBUD tahap 1", created_at: "2026-09-04T08:30:00+08:00", submitted_at: "2026-09-04T09:00:00+08:00" },
-  { id: "doc_02", doc_no: "pr-26-08-27_01", doc_type: "PR", status: "SUBMITTED", requested_by: "usr_andi", project_id: "prj_25004", purpose: "Panel & perawatan halaman", created_at: "2026-08-27T08:10:00+08:00", submitted_at: "2026-08-27T08:45:00+08:00" },
-  { id: "doc_01", doc_no: "pr-26-08-18_01", doc_type: "PR", status: "CLOSED", requested_by: "usr_made", project_id: "prj_25007", purpose: "Consumable + DP veneer BABY ISLAND", created_at: "2026-08-18T08:00:00+08:00", submitted_at: "2026-08-18T08:35:00+08:00" },
+  { id: "doc_06", doc_no: "pr-26-09-10_02", doc_type: "PR", status: "DRAFT", requested_by: "usr_andi", project_id: "prj_25004", purpose: "Weekly sanding and glue consumables", created_at: "2026-09-10T02:15:00+08:00", submitted_at: null },
+  { id: "doc_05", doc_no: "pr-26-09-10_01", doc_type: "PR", status: "SUBMITTED", requested_by: "usr_andi", project_id: "prj_25007", purpose: "Packing for the BABY ISLAND batch", created_at: "2026-09-10T01:05:00+08:00", submitted_at: "2026-09-10T01:40:00+08:00" },
+  { id: "doc_04", doc_no: "pr-26-09-08_01", doc_type: "PR", status: "SUBMITTED", requested_by: "usr_made", project_id: "prj_25009", purpose: "Timber and tooling for VILLA SEMINYAK", created_at: "2026-09-08T09:20:00+08:00", submitted_at: "2026-09-08T10:02:00+08:00" },
+  { id: "doc_03", doc_no: "pr-26-09-04_01", doc_type: "PR", status: "SUBMITTED", requested_by: "usr_andi", project_id: "prj_25011", purpose: "HOTEL UBUD finishing, stage 1", created_at: "2026-09-04T08:30:00+08:00", submitted_at: "2026-09-04T09:00:00+08:00" },
+  { id: "doc_02", doc_no: "pr-26-08-27_01", doc_type: "PR", status: "SUBMITTED", requested_by: "usr_andi", project_id: "prj_25004", purpose: "Panels and grounds maintenance", created_at: "2026-08-27T08:10:00+08:00", submitted_at: "2026-08-27T08:45:00+08:00" },
+  { id: "doc_01", doc_no: "pr-26-08-18_01", doc_type: "PR", status: "CLOSED", requested_by: "usr_made", project_id: "prj_25007", purpose: "Consumables plus veneer deposit, BABY ISLAND", created_at: "2026-08-18T08:00:00+08:00", submitted_at: "2026-08-18T08:35:00+08:00" },
 ];
 
 type LineSeed = [
@@ -52,7 +52,7 @@ const LINE_SEEDS: LineSeed[] = [
 
   ["doc_01", "prl_0101", 1, "ITM-0013", "AMPLAS 120 GRIT", 500, "lembar", 7_650, "vnd_07", "SANDING", "2026-08-25"],
   ["doc_01", "prl_0102", 2, "ITM-0024", "ENGSEL SENDOK HUBEN", 300, "pcs", 18_500, "vnd_02", "MACHINING", "2026-08-25"],
-  ["doc_01", "prl_0103", 3, null, "DP 30% PO veneer & HPL — po-26-08-14_01", null, null, null, "vnd_08", "RAW MATERIAL", null],
+  ["doc_01", "prl_0103", 3, null, "30% deposit, veneer and HPL PO — po-26-08-14_01", null, null, null, "vnd_08", "RAW MATERIAL", null],
 ];
 
 const DOC_NO: Record<string, string> = Object.fromEntries(
@@ -135,17 +135,17 @@ export const PAYMENT_ROUND_LINES: PaymentRoundLine[] = [
  * open at PARTIAL — nothing quietly closes it (A18). */
 export const RECEIPTS: Receipt[] = [
   { id: "rcp_01", receipt_no: "rcv-26-08-25_01", line_id: "prl_0101", po_line_id: null, qty_received: 500, condition: "GOOD", received_by: "usr_made", received_at: "2026-08-25T13:30:00+08:00", qc_by: "usr_made", note: null },
-  { id: "rcp_02", receipt_no: "rcv-26-08-26_01", line_id: "prl_0102", po_line_id: null, qty_received: 180, condition: "GOOD", received_by: "usr_made", received_at: "2026-08-26T10:05:00+08:00", qc_by: "usr_made", note: "Sisa 120 pcs menyusul, vendor kehabisan stok." },
+  { id: "rcp_02", receipt_no: "rcv-26-08-26_01", line_id: "prl_0102", po_line_id: null, qty_received: 180, condition: "GOOD", received_by: "usr_made", received_at: "2026-08-26T10:05:00+08:00", qc_by: "usr_made", note: "Remaining 120 pcs to follow; vendor out of stock." },
   { id: "rcp_03", receipt_no: "rcv-26-09-02_01", line_id: null, po_line_id: "pol_0101", qty_received: 120, condition: "GOOD", received_by: "usr_made", received_at: "2026-09-02T09:40:00+08:00", qc_by: "usr_made", note: null },
-  { id: "rcp_04", receipt_no: "rcv-26-09-06_01", line_id: null, po_line_id: "pol_0102", qty_received: 150, condition: "GOOD", received_by: "usr_made", received_at: "2026-09-06T11:15:00+08:00", qc_by: "usr_made", note: "Pengiriman tahap 1 dari 400 lembar." },
+  { id: "rcp_04", receipt_no: "rcv-26-09-06_01", line_id: null, po_line_id: "pol_0102", qty_received: 150, condition: "GOOD", received_by: "usr_made", received_at: "2026-09-06T11:15:00+08:00", qc_by: "usr_made", note: "First delivery of 400 lembar." },
 ];
 
 /* Two POs: one still DRAFT because no approved PR line points at it yet, and
  * one ISSUED whose two axes disagree on purpose — money and goods are never
  * collapsed into one bar (A1). */
 export const PURCHASE_ORDERS: PurchaseOrder[] = [
-  { id: "po_02", po_no: "po-26-09-09_01", vendor_id: "vnd_01", status: "DRAFT", created_at: "2026-09-09T15:00:00+08:00", issued_at: null, issued_by: null, note: "Kontrak kayu jati kuartal 4 — menunggu PR DP." },
-  { id: "po_01", po_no: "po-26-08-14_01", vendor_id: "vnd_08", status: "ISSUED", created_at: "2026-08-14T10:00:00+08:00", issued_at: "2026-08-19T09:12:00+08:00", issued_by: "usr_evin", note: "HPL & veneer BABY ISLAND, termin 30/70." },
+  { id: "po_02", po_no: "po-26-09-09_01", vendor_id: "vnd_01", status: "DRAFT", created_at: "2026-09-09T15:00:00+08:00", issued_at: null, issued_by: null, note: "Q4 teak contract — waiting on the deposit PR." },
+  { id: "po_01", po_no: "po-26-08-14_01", vendor_id: "vnd_08", status: "ISSUED", created_at: "2026-08-14T10:00:00+08:00", issued_at: "2026-08-19T09:12:00+08:00", issued_by: "usr_evin", note: "HPL and veneer for BABY ISLAND, 30/70 terms." },
 ];
 
 export const PO_LINES: PoLine[] = [

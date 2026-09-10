@@ -3,8 +3,8 @@ import { ModulePlaceholder } from "@/components/module-placeholder";
 export default function Page() {
   return (
     <ModulePlaceholder
-      breadcrumb="HRD"
-      title="Absensi"
+      breadcrumb="HR"
+      title="Attendance"
       permission="hrd.read"
     />
   );

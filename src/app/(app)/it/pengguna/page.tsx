@@ -4,7 +4,7 @@ export default function Page() {
   return (
     <ModulePlaceholder
       breadcrumb="IT"
-      title="Pengguna"
+      title="Users"
       permission="it.manage_users"
     />
   );

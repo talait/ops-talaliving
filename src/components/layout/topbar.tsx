@@ -12,7 +12,7 @@ export function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
       <button
         onClick={onMenuClick}
         className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 lg:hidden"
-        aria-label="Buka menu"
+        aria-label="Open menu"
       >
         <Menu className="h-5 w-5" />
       </button>
@@ -23,7 +23,7 @@ export function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
             bisa dicoba tanpa backend. Di produksi peran datang dari sesi, bukan
             dari dropdown yang bisa diubah siapa saja. */}
         <label className="flex items-center gap-2 text-xs text-slate-500">
-          <span className="hidden sm:inline">Peran (dev)</span>
+          <span className="hidden sm:inline">Role (dev)</span>
           <select
             value={user?.role}
             onChange={(e) => setRole(e.target.value as RoleId)}

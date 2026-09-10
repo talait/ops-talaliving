@@ -136,5 +136,5 @@ export function notFound(service: ServiceName, code: string, message: string): E
 }
 
 export function unauthenticated(service: ServiceName): Err {
-  return err(service, 401, "refused", "not_signed_in", "Silakan masuk terlebih dahulu.");
+  return err(service, 401, "refused", "not_signed_in", "Please sign in first.");
 }

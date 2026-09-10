@@ -4,7 +4,7 @@ export default function Page() {
   return (
     <ModulePlaceholder
       breadcrumb="Accounting"
-      title="Arus Kas"
+      title="Cash Flow"
       permission="accounting.read"
     />
   );

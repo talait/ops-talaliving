@@ -26,8 +26,16 @@ export * from "./reference";
  *  demo starts from the fixtures again rather than from a shape that no longer
  *  exists.
  */
+/** Bumped by hand whenever the fixtures change in a way a saved sandbox would
+ *  hide. Counting rows cannot do this job: a visitor who records one delivery
+ *  changes every count, and their own work is exactly what the snapshot is
+ *  for. A version somebody types when they edit the fixtures separates "the
+ *  demo data moved" from "somebody used the demo". */
+export const FIXTURE_VERSION = "2026-09-10.3";
+
 export function stateSignature(state: DemoState): string {
   return [
+    FIXTURE_VERSION,
     Object.keys(state).sort().join(","),
     state.accounts.map((a) => a.code).join(","),
     state.users.map((u) => u.email).join(","),

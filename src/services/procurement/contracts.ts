@@ -488,8 +488,16 @@ export interface PoLineJourney {
     qty: number;
     condition: ReceiptCondition;
     at: string;
+    /** Who took delivery, and who checked it — two people, or the same one
+     *  named twice. A delivery accepted and checked by nobody in particular is
+     *  the one nobody can ask about later (D101). */
     by: string;
-    documents: number;
+    qc_by: string;
+    note: string | null;
+    /** Both halves of the evidence, tracked separately: the photo of what
+     *  arrived, and the signed tanda terima. */
+    has_photo: boolean;
+    has_delivery_note: boolean;
   }[];
 }
 

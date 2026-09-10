@@ -406,16 +406,22 @@ export function poJourney(state: DemoState, poId: string): PoJourney {
           : received === 0 ? "NOT ARRIVED"
             : over > 0 ? "OVER"
               : received < l.qty ? "PARTIAL" : "GOOD",
-        receipts: rows.map((r) => ({
-          receipt_no: r.receipt_no,
-          qty: r.qty_received,
-          condition: r.condition,
-          at: r.received_at,
-          by: state.users.find((u) => u.id === r.received_by)?.full_name ?? "—",
-          documents: state.attachment_links.filter(
+        receipts: rows.map((r) => {
+          const links = state.attachment_links.filter(
             (a) => a.entity === "receipt" && a.entity_no === r.receipt_no,
-          ).length,
-        })),
+          );
+          return {
+            receipt_no: r.receipt_no,
+            qty: r.qty_received,
+            condition: r.condition,
+            at: r.received_at,
+            by: state.users.find((u) => u.id === r.received_by)?.full_name ?? "—",
+            qc_by: state.users.find((u) => u.id === r.qc_by)?.full_name ?? "—",
+            note: r.note,
+            has_photo: links.some((l) => l.kind === "Receiving Item"),
+            has_delivery_note: links.some((l) => l.kind === "Delivery Note"),
+          };
+        }),
       };
     });
 

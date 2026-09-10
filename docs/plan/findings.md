@@ -1126,7 +1126,32 @@ payment row naming all three, both facts survive: the bank moved money once,
 the vendor closed three orders.
 
 And the smallest thing on the screen is the one that will be used most: each
-delivery says whether its *tanda terima* is on file. Six of the eight
-shipments in the demo do not have one — which is exactly the state a real
-month is in, and the first thing anybody will chase.
+delivery says whether its *tanda terima* is on file. Half the shipments in the
+demo are missing one half of their evidence — which is exactly the state a
+real month is in, and the first thing anybody will chase.
+
+## F28 — below or beside: the wrong question, asked usefully
+
+Asked directly whether the supplier's detail should appear *below* the list or
+*beside* it. Both were tried against the thing being shown, and both lose to a
+third answer.
+
+Beside: the detail is three stacked tables — an order with six columns,
+deliveries with seven facts each, payments naming what they apply to. Half the
+width is roughly 700px on the laptops this is read on, so every one of them
+becomes a horizontal scroll, and the list next to it is reduced to a vendor
+name and one number, which is not enough to choose from.
+
+Below: the block is about 1,200px tall for a supplier with one order. The list
+scrolls off, so switching supplier means scrolling up, and the list's own
+purpose — comparing suppliers — is gone the moment one is open.
+
+So: **a page of its own** (D103). The list stays a list, the detail gets the
+full width it needs, and the vendor gets a URL. That last one was not part of
+the question and is probably the biggest of the three: *"kenapa HADI GLASS
+masih ada tagihan?"* arrives in chat, and the answer to it should be a link.
+
+The general shape of this: when both offered options are about *where to put
+it*, the constraint being fought is usually **how much room it needs**, and a
+third option that changes the room is worth a minute before answering.
 

@@ -9,6 +9,7 @@ import type {
 } from "@/services/procurement/contracts";
 import type { PrLine as PrLineRow } from "@/services/procurement/contracts";
 import { PROBLEM_CONDITIONS, VARIANCE_REASON_LABEL } from "@/services/procurement/contracts";
+import type { DocKind } from "@/services/documents/contracts";
 import { LOCALE } from "@/lib/format";
 import { getState, apply, newId, nextDocNumber, writeAudit, writeOutbox } from "../store";
 import {
@@ -1136,6 +1137,94 @@ export interface PoView extends PurchaseOrder {
   vendor_name: string;
 }
 
+/** Issue a purchase order.
+ *
+ *  Created and issued in one act on purpose: a PO nobody has sent is a
+ *  document, not an obligation, and the tracker exists for obligations. The
+ *  draft stage stays reachable through `status`, for the case where terms are
+ *  still being argued (D100).
+ */
+export async function createPo(
+  input: {
+    vendor_id: string;
+    lines: { description: string; qty: number; uom: UomCode; unit_price: number }[];
+    dp_percent?: number | null;
+    note?: string | null;
+    issue?: boolean;
+  },
+  idempotencyKey?: string,
+): Promise<Result<PoView>> {
+  await latency();
+  const cached = replayed<PoView>(SERVICE, "createPo", idempotencyKey);
+  if (cached) return cached;
+
+  const state = getState();
+  if (!state.vendors.some((v) => v.id === input.vendor_id)) {
+    return invalid(SERVICE, "vendor_required", "An order is placed with somebody. Choose the vendor first.", { field: "vendor_id" });
+  }
+  const lines = input.lines.filter((l) => l.description.trim() && l.qty > 0);
+  if (lines.length === 0) {
+    return invalid(SERVICE, "lines_required", "An order with no lines is not an order.", { field: "lines" });
+  }
+  const priceless = lines.find((l) => !l.unit_price);
+  if (priceless) {
+    return invalid(
+      SERVICE, "price_required",
+      `"${priceless.description}" has no unit price. A contract value nobody agreed is not a contract.`,
+      { field: "lines" },
+    );
+  }
+  if (input.dp_percent != null && (input.dp_percent < 0 || input.dp_percent > 100)) {
+    return invalid(SERVICE, "dp_out_of_range", "A deposit is between 0 and 100 per cent.", { field: "dp_percent" });
+  }
+
+  const user = actingUser();
+  let poNo = "";
+  apply((draft) => {
+    poNo = nextDocNumber(draft, "po");
+    const poId = newId("po");
+    const now = new Date().toISOString();
+    draft.purchase_orders.unshift({
+      id: poId, po_no: poNo, vendor_id: input.vendor_id,
+      status: input.issue === false ? "DRAFT" : "ISSUED",
+      created_at: now,
+      issued_at: input.issue === false ? null : now,
+      issued_by: input.issue === false ? null : user.id,
+      note: input.note?.trim() || null,
+    });
+    lines.forEach((l, i) => {
+      draft.po_lines.push({
+        id: newId("pol"), po_id: poId, line_no: i + 1, item_id: null,
+        description: l.description.trim(), qty: l.qty, uom: l.uom,
+        unit_price: l.unit_price, line_total: Math.round(l.qty * l.unit_price),
+        superseded_by: null,
+      });
+    });
+    if (input.dp_percent) {
+      draft.po_schedule.push({
+        id: newId("pos"), po_id: poId, term_no: `${poNo}-M01`, kind: "DP",
+        basis: "percent", basis_value: input.dp_percent, due_rule: "on_issue", due_date: null,
+      });
+      draft.po_schedule.push({
+        id: newId("pos"), po_id: poId, term_no: `${poNo}-M02`, kind: "FINAL",
+        basis: "percent", basis_value: 100 - input.dp_percent, due_rule: "on_delivery", due_date: null,
+      });
+    }
+    writeAudit(draft, {
+      service: SERVICE, entity: "purchase_order", entity_no: poNo,
+      action: input.issue === false ? "create" : "issue", outcome: "ok", reason: null,
+    });
+    writeOutbox(draft, {
+      service: SERVICE, event_type: "procurement.po.issued",
+      payload: { po_no: poNo, vendor_id: input.vendor_id, lines: lines.length },
+    });
+  });
+
+  const view = (await getPo(poNo));
+  if (view.data) remember(SERVICE, "createPo", idempotencyKey, view.data);
+  return view;
+}
+
 export async function listPo(): Promise<Result<PoView[]>> {
   await latency();
   const state = getState();
@@ -1168,18 +1257,32 @@ export async function createReceipt(
     po_line_id?: string | null;
     qty_received: number;
     condition: ReceiptCondition;
-    attachment_ids: string[];
+    /** Both required: the photo of the goods and the signed tanda terima. */
+    documents: { attachment_id: string; kind: DocKind }[];
+    /** Who checked it, when that is not the person recording it. */
+    qc_by?: string | null;
     note?: string | null;
   },
   idempotencyKey?: string,
 ): Promise<Result<{ receipt: Receipt; notified: boolean }>> {
   await latency();
-  const endpoint = `createReceipt:${input.line_no ?? input.po_line_id}`;
+  const endpoint = `createReceipt:${input.line_no ?? input.po_line_id}:${input.qty_received}`;
   const cached = replayed<{ receipt: Receipt; notified: boolean }>(SERVICE, endpoint, idempotencyKey);
   if (cached) return cached;
 
-  if (!input.attachment_ids.length) {
-    return invalid(SERVICE, "photo_required", "A photo of the goods is required.", { field: "attachment_ids" });
+  /* Two documents, not one (D101): the photo of what arrived, and the signed
+   * tanda terima. They answer different questions — what came, and that we
+   * acknowledged it — and a dispute three weeks later needs both. */
+  const kinds = input.documents?.map((d) => d.kind) ?? [];
+  if (!kinds.includes("Receiving Item")) {
+    return invalid(SERVICE, "photo_required", "A photo of the goods is required.", { field: "documents" });
+  }
+  if (!kinds.includes("Delivery Note")) {
+    return invalid(
+      SERVICE, "delivery_note_required",
+      "The signed tanda terima is required too — the photo says what arrived, the tanda terima says we acknowledged it.",
+      { field: "documents" },
+    );
   }
   if (!input.line_no && !input.po_line_id) {
     return invalid(SERVICE, "anchor_required", "A receiving report must point at a PR line or a PO line.", { field: "line_no" });
@@ -1195,17 +1298,17 @@ export async function createReceipt(
     line_id: line?.id ?? null, po_line_id: input.po_line_id ?? null,
     qty_received: input.qty_received, condition: input.condition,
     received_by: user.id, received_at: new Date().toISOString(),
-    qc_by: user.id, note: input.note ?? null,
+    qc_by: input.qc_by ?? user.id, note: input.note ?? null,
   };
   const notified = PROBLEM_CONDITIONS.includes(input.condition);
 
   apply((draft) => {
     draft.receipts.push(receipt);
-    for (const attId of input.attachment_ids) {
+    for (const d of input.documents) {
       draft.attachment_links.push({
-        id: newId("lnk"), attachment_id: attId,
+        id: newId("lnk"), attachment_id: d.attachment_id,
         entity: "receipt", entity_no: receipt.receipt_no,
-        kind: "Receiving Item", linked_by: user.id, linked_at: new Date().toISOString(),
+        kind: d.kind, linked_by: user.id, linked_at: new Date().toISOString(),
       });
     }
     writeAudit(draft, {

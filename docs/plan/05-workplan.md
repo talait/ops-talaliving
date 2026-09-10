@@ -261,6 +261,10 @@ bought first and the approval came later.
 - one DP and one FINAL guard, with the refusal naming the first one
 - `/procurement/penerimaan` — pick a live line, qty, condition, **photo
   required**; a problem condition leaves the line open and says who was told
+- **built as `/procurement/tracker`** (owner, 2026-09-11): obligations across
+  every supplier at the top, settled vendors split off (D102), a full-width
+  page per supplier (D103), `Add new PO` from the list (D100), and receiving
+  that takes both documents, the receiver and the QC (D101)
 
 > Read `docs/plan/README.md`. Do M11: the PO screens and receiving. Payment
 > state and delivery state are separate on screen and in the data. A problem

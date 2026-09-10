@@ -306,19 +306,34 @@ function OrderBlock({ po, onChanged }: { po: PoJourney; onChanged: () => void })
       {po.lines.some((l) => l.receipts.length > 0) && (
         <div className="border-t border-slate-100 px-4 py-3">
           <p className="text-[11px] uppercase tracking-wide text-slate-400">Delivery history</p>
-          <ul className="mt-1.5 space-y-1">
+          <ul className="mt-1.5 space-y-1.5">
             {po.lines.flatMap((l) => l.receipts.map((r) => (
-              <li key={r.receipt_no + l.po_line_id} className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px]">
-                <span className="font-mono text-slate-500">{r.receipt_no}</span>
-                <span className="text-slate-700">{formatNumber(r.qty)} {l.uom}</span>
-                <Badge tone={r.condition === "GOOD" ? "green" : "amber"}>{r.condition}</Badge>
-                <span className="text-slate-400">{r.at.slice(0, 10)} · {r.by}</span>
-                <span className={cn(
-                  "ml-auto rounded px-2 py-0.5 text-[11px]",
-                  r.documents > 0 ? "bg-violet-50 text-violet-800" : "bg-amber-50 text-amber-800",
-                )}>
-                  {r.documents > 0 ? `${r.documents} tanda terima` : "no tanda terima"}
-                </span>
+              <li key={r.receipt_no + l.po_line_id} className="rounded-lg border border-slate-100 px-3 py-2">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px]">
+                  <span className="font-mono text-slate-500">{r.receipt_no}</span>
+                  <span className="font-medium text-slate-700">{formatNumber(r.qty)} {l.uom}</span>
+                  <Badge tone={r.condition === "GOOD" ? "green" : "amber"}>{r.condition}</Badge>
+                  <span className="text-slate-500">{r.at.slice(0, 10)}</span>
+                  <span className="text-slate-500">received by <span className="text-slate-700">{r.by}</span></span>
+                  <span className="text-slate-500">checked by <span className="text-slate-700">{r.qc_by}</span></span>
+                </div>
+                {/* Both halves, named separately: the photo says what arrived,
+                    the tanda terima says we acknowledged it (D101). */}
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px]">
+                  <span className={cn(
+                    "rounded px-2 py-0.5",
+                    r.has_photo ? "bg-violet-50 text-violet-800" : "bg-amber-50 text-amber-800",
+                  )}>
+                    {r.has_photo ? "photo of the goods" : "no photo"}
+                  </span>
+                  <span className={cn(
+                    "rounded px-2 py-0.5",
+                    r.has_delivery_note ? "bg-violet-50 text-violet-800" : "bg-amber-50 text-amber-800",
+                  )}>
+                    {r.has_delivery_note ? "tanda terima" : "no tanda terima"}
+                  </span>
+                  {r.note && <span className="text-slate-500">{r.note}</span>}
+                </div>
               </li>
             )))}
           </ul>

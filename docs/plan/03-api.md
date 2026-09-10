@@ -151,11 +151,13 @@ PO and receiving:
 
 | Method | Path | Notes |
 |---|---|---|
-| POST | `/po` | born DRAFT |
+| POST | `/po` | `{vendor_id, lines[{description, qty, uom, unit_price}], dp_percent?, note?, issue?}`. **Issued by default** and born DRAFT only when `issue: false` (D100) — a PO nobody sent is a document, not an obligation. **422** without a vendor, without lines, or with a line carrying no unit price; a `dp_percent` writes the DP and FINAL terms |
 | GET | `/po/{po_no}` | two axes, exposure, schedule, credits, documents |
 | POST | `/po/{po_no}/amend` | the only way an issued obligation moves |
+| GET | `/vendors/{vendor_id}/journey` | one supplier's whole story: contract value, paid, outstanding, value received (capped at ordered — D98), *billable now* (D99), the vendor credit, and every order with its lines, receipts and evidence |
+| GET | `/vendors/journeys` | every supplier we have issued an order to, most billable first. The tracker's list and its obligations strip (D102) |
 | POST | `/po/{po_no}/close` | refused unless both axes are done **and** the evidence chain exists, or a settlement with a reason |
-| POST | `/receipts` | `{line_no | po_line_no, qty, condition, attachment_ids[]}`. **422 without a photo.** A problem condition returns `outcome: ok` plus a `notified` flag and leaves the line open (A18) |
+| POST | `/receipts` | `{line_no | po_line_no, qty, condition, qc_by?, documents[{attachment_id, kind}], note?}`. **422 without the photo of the goods, and 422 without the signed tanda terima** — both halves, because they answer different questions (D101). A problem condition returns `outcome: ok` plus a `notified` flag and leaves the line open (A18) |
 
 ## `accounting`
 

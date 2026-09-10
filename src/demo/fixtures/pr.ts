@@ -247,16 +247,16 @@ export const RECEIPTS: Receipt[] = [
   /* 47 of 45 arrived: two sheets more than ordered. Counted as what arrived,
    * flagged as OVER, and left as a vendor credit rather than quietly folded
    * into another order (D98). */
-  { id: "rcp_10", receipt_no: "rcv-26-07-08_01", line_id: null, po_line_id: "pol_0301", qty_received: 47, condition: "GOOD", received_by: "usr_made", received_at: "2026-07-08T10:15:00+08:00", qc_by: "usr_made", note: "47 lembar arrived against 45 ordered." },
+  { id: "rcp_10", receipt_no: "rcv-26-07-08_01", line_id: null, po_line_id: "pol_0301", qty_received: 47, condition: "GOOD", received_by: "usr_made", received_at: "2026-07-08T10:15:00+08:00", qc_by: "usr_andi", note: "47 lembar arrived against 45 ordered." },
   { id: "rcp_11", receipt_no: "rcv-26-07-08_02", line_id: null, po_line_id: "pol_0302", qty_received: 41, condition: "GOOD", received_by: "usr_made", received_at: "2026-07-08T10:30:00+08:00", qc_by: "usr_made", note: null },
-  { id: "rcp_12", receipt_no: "rcv-26-08-02_01", line_id: null, po_line_id: "pol_0401", qty_received: 20, condition: "GOOD", received_by: "usr_made", received_at: "2026-08-02T09:00:00+08:00", qc_by: "usr_made", note: "Shipment 1 of 4." },
+  { id: "rcp_12", receipt_no: "rcv-26-08-02_01", line_id: null, po_line_id: "pol_0401", qty_received: 20, condition: "GOOD", received_by: "usr_made", received_at: "2026-08-02T09:00:00+08:00", qc_by: "usr_andi", note: "Shipment 1 of 4." },
   { id: "rcp_13", receipt_no: "rcv-26-08-06_01", line_id: null, po_line_id: "pol_0401", qty_received: 12, condition: "GOOD", received_by: "usr_made", received_at: "2026-08-06T09:00:00+08:00", qc_by: "usr_made", note: "Shipment 2 of 4." },
   { id: "rcp_14", receipt_no: "rcv-26-08-11_01", line_id: null, po_line_id: "pol_0401", qty_received: 8, condition: "GOOD", received_by: "usr_made", received_at: "2026-08-11T09:00:00+08:00", qc_by: "usr_made", note: "Shipment 3 of 4." },
   { id: "rcp_15", receipt_no: "rcv-26-08-14_01", line_id: null, po_line_id: "pol_0401", qty_received: 6, condition: "GOOD", received_by: "usr_made", received_at: "2026-08-14T09:00:00+08:00", qc_by: "usr_made", note: "Shipment 4 of 4." },
   { id: "rcp_16", receipt_no: "rcv-26-08-05_01", line_id: null, po_line_id: "pol_0402", qty_received: 11, condition: "GOOD", received_by: "usr_made", received_at: "2026-08-05T09:00:00+08:00", qc_by: "usr_made", note: "Shipment 1 of 2." },
   { id: "rcp_17", receipt_no: "rcv-26-08-12_01", line_id: null, po_line_id: "pol_0402", qty_received: 10, condition: "GOOD", received_by: "usr_made", received_at: "2026-08-12T09:00:00+08:00", qc_by: "usr_made", note: "Shipment 2 of 2." },
-  { id: "rcp_03", receipt_no: "rcv-26-09-02_01", line_id: null, po_line_id: "pol_0101", qty_received: 120, condition: "GOOD", received_by: "usr_made", received_at: "2026-09-02T09:40:00+08:00", qc_by: "usr_made", note: null },
-  { id: "rcp_04", receipt_no: "rcv-26-09-06_01", line_id: null, po_line_id: "pol_0102", qty_received: 150, condition: "GOOD", received_by: "usr_made", received_at: "2026-09-06T11:15:00+08:00", qc_by: "usr_made", note: "First delivery of 400 lembar." },
+  { id: "rcp_03", receipt_no: "rcv-26-09-02_01", line_id: null, po_line_id: "pol_0101", qty_received: 120, condition: "GOOD", received_by: "usr_made", received_at: "2026-09-02T09:40:00+08:00", qc_by: "usr_andi", note: "Counted against the surat jalan, sheet by sheet." },
+  { id: "rcp_04", receipt_no: "rcv-26-09-06_01", line_id: null, po_line_id: "pol_0102", qty_received: 150, condition: "GOOD", received_by: "usr_made", received_at: "2026-09-06T11:15:00+08:00", qc_by: "usr_andi", note: "First delivery of 400 lembar." },
 ];
 
 /* Two POs: one still DRAFT because no approved PR line points at it yet, and

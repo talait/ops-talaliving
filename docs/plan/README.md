@@ -65,7 +65,7 @@ Update the row, the date, and the note **in the same commit** as the work.
 | M8 | Ledger: list, drawer, attach from a row, void, complete | D8 | DONE | 2026-09-11 | `/accounting/ledger` + cash position, pagination, posting with evidence and detail (D84–D89) |
 | M9 | Evidence attached from the record — the main road | D9 | DONE | 2026-09-11 | one `<EvidenceStrip>` in both drawers, *also covers*, the money-to-document path, camera capture. The documents browser is parked (D93) |
 | M10 | The exception inbox: bought first, approved later | D10 | DONE | 2026-09-11 | `/accounting/verifikasi`, five roads, nothing discarded. Reject is the road that never reaches the ledger (D94) |
-| M11 | Purchase journey: two axes per vendor, receiving with photo | D11 | DONE | 2026-09-11 | `/procurement/journey` — orders, payments, deliveries and *billable now*, per the owner's sketch (D97–D99) |
+| M11 | Purchase tracker: obligations across every vendor, two axes per supplier, receiving with both documents | D11 | DONE | 2026-09-11 | `/procurement/tracker` — total obligations at the top, settled vendors split off (D102), a full-width page per supplier (D103) with orders, payments, deliveries and *billable now* (D97–D99). Orders placed from here (D100); a delivery needs photo **and** tanda terima, receiver and QC (D101) |
 | M12 | Cashflow + **liquidation report** + dashboard on demo data | D12 | TODO | — | the meeting board landed early and now has its own screen (D74). Liquidation: money in vs where it went (owner, 2026-09-11) |
 | M13 | Polish: phone, empty states, refusals, demo reset | D13 | TODO | — | |
 | M14 | **Walkthrough + findings → the schema we actually need** | D14 | TODO | — | the payoff |

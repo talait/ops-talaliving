@@ -3,6 +3,7 @@ import type {
   Vendor, Uom, UomConversion, ItemCategory, Item, Project,
   PrDocument, PrLine, PrApproval, PaymentRound, PaymentRoundLine,
   Receipt, LineSettlement, PurchaseOrder, PoLine, PoScheduleTerm, LineVariance,
+  LineNote, ApprovalRequest,
 } from "@/services/procurement/contracts";
 import type {
   Account, TransactionType, Transaction, TransactionLine,
@@ -62,6 +63,8 @@ export interface DemoState {
   payment_round_lines: PaymentRoundLine[];
   receipts: Receipt[];
   line_settlements: LineSettlement[];
+  line_notes: LineNote[];
+  approval_requests: ApprovalRequest[];
   line_variances: LineVariance[];
 
   purchase_orders: PurchaseOrder[];

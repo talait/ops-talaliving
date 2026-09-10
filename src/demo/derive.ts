@@ -15,7 +15,7 @@ import type {
   PrLine, PrApproval, LineStatus, LineCoverage, PrLineView,
   PoStatusView, RoundSummary, PaymentRound,
   PurchaseFact, CategoryCount, VendorItemSummary, ItemSource, MeetingState,
-  VarianceView,
+  VarianceView, LineNote, ApprovalRequest,
 } from "@/services/procurement/contracts";
 import { COUNTING_CONDITIONS, PROBLEM_CONDITIONS } from "@/services/procurement/contracts";
 import type {
@@ -43,6 +43,27 @@ export function currentApproval(
     .filter((a) => a.line_id === lineId && a.step === step)
     .sort((a, b) => a.recorded_at.localeCompare(b.recorded_at));
   return rows.length ? rows[rows.length - 1] : null;
+}
+
+/** The latest note on a line. Append-only, so the current word is the last
+ *  row and the earlier ones stay readable in the trail. */
+export function currentNote(state: DemoState, lineId: string): LineNote | null {
+  const rows = state.line_notes
+    .filter((n) => n.line_id === lineId)
+    .sort((a, b) => a.recorded_at.localeCompare(b.recorded_at));
+  return rows.length ? rows[rows.length - 1] : null;
+}
+
+/** An approval asked for through chat and not answered yet.
+ *
+ *  Answered means answered — a line the approver decided in the app instead
+ *  leaves the card standing, and the chat screen marks it stale rather than
+ *  pretending the question is still open (D69). */
+export function pendingRequest(state: DemoState, lineId: string): ApprovalRequest | null {
+  return state.approval_requests
+    .filter((r) => r.line_id === lineId && !r.answered_at)
+    .sort((a, b) => a.sent_at.localeCompare(b.sent_at))
+    .pop() ?? null;
 }
 
 export function isApproved(state: DemoState, lineId: string): boolean {
@@ -265,6 +286,8 @@ export function prLineView(state: DemoState, line: PrLine): PrLineView {
     evidence_count: links.length,
     has_payment_proof: kinds.has("Payment Proof"),
     variance: varianceOf(state, line),
+    note: currentNote(state, line.id),
+    pending_request: pendingRequest(state, line.id),
     trx_nos: fundingTransactions(state, line.line_no_full).map((t) => t.trx_no),
   };
 }

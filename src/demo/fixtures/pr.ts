@@ -1,7 +1,7 @@
 import type {
   PrDocument, PrLine, PrApproval, PaymentRound, PaymentRoundLine, Receipt,
   PurchaseOrder, PoLine, PoScheduleTerm, PrCategory, UomCode,
-  LineVariance, LineSettlement,
+  LineVariance, LineSettlement, LineNote, ApprovalRequest,
 } from "@/services/procurement/contracts";
 import { itemIdByCode } from "./reference";
 
@@ -143,6 +143,40 @@ export const LINE_SETTLEMENTS: LineSettlement[] = [
     id: "stl_01", line_id: "prl_0201", shortfall: 180_000,
     reason: "Vendor price differed from the quote — Vendor dropped to Rp 287.500/lembar for the 40-sheet order.",
     decided_by: "usr_anggun", decided_at: "2026-08-29T16:35:00+08:00",
+  },
+];
+
+/* Leadership writing on a line before deciding it — which is the case that
+ * matters. "Negotiate first" on an undecided line is an instruction; the same
+ * sentence after approval is a complaint. */
+export const LINE_NOTES: LineNote[] = [
+  {
+    id: "nte_01", line_id: "prl_0501",
+    instructions: "Ask CV Bali Packing for a price on the 6-roll box before ordering.",
+    remark: null,
+    recorded_by: "usr_evin", recorded_by_email: "evin@talaliving.com",
+    recorded_at: "2026-09-10T07:20:00+08:00",
+  },
+  {
+    id: "nte_02", line_id: "prl_0301",
+    instructions: null,
+    remark: "Cut to 60 litres — the HOTEL UBUD stage 1 carcasses only need that much.",
+    recorded_by: "usr_evin", recorded_by_email: "evin@talaliving.com",
+    recorded_at: "2026-09-05T09:03:00+08:00",
+  },
+];
+
+/* One card already sitting in the CEO's chat, sent from the meeting laptop
+ * this morning. The whole point of the row: `sent_by` is Putri, and whatever
+ * comes back will be recorded as Evin's decision, because Evin is who answers
+ * it (D69). */
+export const APPROVAL_REQUESTS: ApprovalRequest[] = [
+  {
+    id: "arq_01", line_id: "prl_0503", token: "tok_26-09-10_01",
+    sent_to: "usr_evin", sent_to_email: "evin@talaliving.com",
+    sent_by: "usr_putri", sent_by_email: "putri@talaliving.com",
+    sent_at: "2026-09-10T09:05:00+08:00",
+    channel: "chat", answered_at: null, outcome: null,
   },
 ];
 

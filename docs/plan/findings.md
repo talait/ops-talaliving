@@ -656,3 +656,66 @@ Three smaller things the build taught:
    swapping it for a formatted text input is a change to make once, on
    purpose, not inside a milestone about approvals.
 
+## F15 — the approval queue was a column, not a screen
+
+M5 built a separate approval queue. The owner's answer, the same day: make it
+one screen with the requests board.
+
+He is right, and the reason is worth keeping. Approving is not a second
+subject. It is one more thing that is true about a line — like what it is for,
+what it cost, and whether it has been paid — and every one of those already
+lives on the board. Two screens meant two lists that could disagree about what
+is outstanding, and a CEO reading a list the requester could no longer see.
+
+What that merge deleted: a page, a navigation entry, a `NavItem.authority`
+field invented one milestone earlier to hide that page (D60, superseded within
+hours), a second grouping of the same rows, and a "decided recently" section
+that existed only because the queue could not show a decided line. The
+un-approve control moved to the drawer, where the rest of the line's story
+already was.
+
+Two things the merged board needed that neither screen had:
+
+1. **The bank balance.** Approving without knowing what is in BCA 271 is
+   approving in the abstract. The useful number is not what was approved — it
+   is *how much has to be put into the account before any of it can move*, so
+   the board states the balance, the approved-and-unpaid total and the
+   difference (D68).
+2. **A money field you can read.** `<input type="number">` cannot group
+   thousands: `4275000` under a label reading `Rp 4,275,000`. Noted as a rough
+   edge in F14 and deliberately deferred; putting the amount on every row of
+   the main board made it the first thing to fix. `MoneyInput` is now a text
+   input that groups while you type.
+
+## F16 — the approval was recording the wrong person, and no code was wrong
+
+The owner described how a meeting actually runs: the web app is open on one
+laptop, on whoever's account, and the CEO says yes out loud. Every approval
+recorded that way carries the wrong name — not through a bug, but because the
+application had no way of knowing that the person who spoke is not the person
+who clicked.
+
+**A trail that names the wrong person is worse than no trail**, because it
+looks authoritative. And nothing inside the app can fix it: whatever the
+screen asks, the answer arrives through a session belonging to somebody else.
+
+So the yes leaves the room. The line is sent to the approver in Google Chat,
+they answer from their own account, and the identity on the record comes from
+Google's authentication of that person (D69). The metadata then reads
+`chat · evin@talaliving.com · 14:00` — which is what happened.
+
+Three details that make it more than a notification:
+
+- **Asking and answering are different acts.** Anyone in procurement may ask;
+  only the addressee may answer. Sending is chasing, answering is deciding.
+- **The token identifies the request, never the person.** Identity comes from
+  the signed webhook. A token carrying an identity would be a password that
+  anybody who saw the card could replay.
+- **An answer from the wrong account is refused**, and the demo screen exists
+  largely to make that refusal visible: `answer from putri@… is not that
+  person's decision`.
+
+The route is already event-shaped: `procurement.approval.requested` goes to
+the outbox, a worker turns it into a card, and the answer comes back through
+one endpoint. Phase 2 changes the worker, not procurement.
+

@@ -18,6 +18,7 @@ import { DOC_KINDS, type DocKind, type AttachmentView } from "@/services/documen
 import { useToast } from "@/store/toast";
 import { useSession } from "@/store/session";
 import { VariancePanel } from "./VariancePanel";
+import { DecisionPanel } from "./DecisionPanel";
 import { PayFromLine } from "./PayFromLine";
 
 /** One item, everything about it.
@@ -48,7 +49,9 @@ export function LineDrawer({
   const fileRef = useRef<HTMLInputElement>(null);
   const mayEdit = can("procurement.update");
 
-  const isDraft = line?.status === "DRAFT";
+  /* Editable until somebody approves it, not merely while it is a draft
+     (D66). The API is the guard; this only decides whether to offer it. */
+  const editable = !!line && !line.approval?.approved && !line.removed_at && line.coverage.covered === 0;
 
   useEffect(() => {
     setEditing(false);
@@ -72,7 +75,7 @@ export function LineDrawer({
 
   async function save() {
     setSaving(true);
-    const res = await procurement.updateDraftLine(line!.line_no_full, {
+    const res = await procurement.updateLine(line!.line_no_full, {
       description: draft.description ?? "",
       qty: draft.qty ?? null,
       uom: draft.uom ?? null,
@@ -134,8 +137,8 @@ export function LineDrawer({
                   No longer needed
                 </Button>
               )}
-              {isDraft && (
-                <Button variant="outline" size="sm" icon={Pencil} onClick={startEdit}>Edit line</Button>
+              {editable && (
+                <Button variant="outline" size="sm" icon={Pencil} onClick={startEdit}>Edit item</Button>
               )}
             </div>
           )
@@ -233,17 +236,7 @@ export function LineDrawer({
               ))}
             </dl>
 
-            {line.approval && (
-              <div className="rounded-lg border border-slate-200 px-3 py-2.5 text-[13px]">
-                <p className="text-slate-700">
-                  {line.approval.approved ? "Approved" : "Un-approved"} by{" "}
-                  <span className="font-medium">{line.approval.recorded_by_email}</span>
-                </p>
-                <p className="mt-0.5 text-[11px] text-slate-400">
-                  {new Date(line.approval.recorded_at).toLocaleString()} · via {line.approval.channel}
-                </p>
-              </div>
-            )}
+            <DecisionPanel line={line} onChanged={onChanged} />
 
             {cov.covered > 0 && (
               <div>

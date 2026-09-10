@@ -6,9 +6,8 @@ import {
   FolderKanban, Hammer, Truck, Wrench, Stamp,
   PencilRuler, ListTree, CalendarClock,
   Cpu, ScrollText, Activity, UserCog, KeyRound,
-  Settings, FlaskConical, type LucideIcon,
+  Settings, FlaskConical, MessagesSquare, type LucideIcon,
 } from "lucide-react";
-import type { Authority } from "@/services/identity/contracts";
 
 /** Menu sebagai DATA, bukan JSX.
  *
@@ -23,11 +22,6 @@ export interface NavItem {
   href: string;
   icon: LucideIcon;
   permission?: string;
-  /** A screen whose whole subject is one decision (D24). Module access says
-   *  which screens exist; an authority says who decides — so the approval
-   *  queue is hidden from everyone but its decider, however much procurement
-   *  access they hold. */
-  authority?: Authority;
   badge?: "core" | "new";
 }
 
@@ -62,7 +56,6 @@ export const NAV: NavSection[] = [
     icon: ShoppingCart,
     items: [
       { label: "Requests", href: "/procurement/pr", icon: ClipboardList, permission: "procurement.read", badge: "core" },
-      { label: "Approvals", href: "/procurement/approvals", icon: Stamp, permission: "procurement.read", authority: "approve_goods" },
       { label: "Purchase Order", href: "/procurement/po", icon: FileText, permission: "procurement.read" },
       { label: "Receiving Report", href: "/procurement/penerimaan", icon: PackageCheck, permission: "procurement.read" },
       { label: "Suppliers", href: "/procurement/supplier", icon: Truck, permission: "procurement.read" },
@@ -135,6 +128,7 @@ export const NAV: NavSection[] = [
     icon: FlaskConical,
     items: [
       { label: "Diagnostics", href: "/demo", icon: FlaskConical, permission: "dashboard.read", badge: "new" },
+      { label: "Google Chat (simulated)", href: "/demo/chat", icon: MessagesSquare, permission: "dashboard.read" },
     ],
   },
   {

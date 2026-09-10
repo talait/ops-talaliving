@@ -227,6 +227,80 @@ export interface PrApproval {
   channel: Channel;
 }
 
+/** Leadership's own words on a line, kept apart from the decision.
+ *
+ *  Two fields, because they are two different acts. `instructions` is
+ *  something the requester is expected to DO — "negotiate first", "buy the
+ *  smaller pack", "use the Denpasar supplier this time". `remark` is a note
+ *  for the record — why the amount was cut, what to watch next month.
+ *
+ *  They are not columns on the approval row on purpose: a note can be left on
+ *  a line nobody has decided yet, which is exactly when "get another quote"
+ *  is worth saying. Append-only, like every other statement here.
+ */
+export interface LineNote {
+  id: string;
+  line_id: string;
+  instructions: string | null;
+  remark: string | null;
+  recorded_by: string;
+  recorded_by_email: string;
+  recorded_at: string;
+}
+
+/** An approval asked for through a channel that knows who answers.
+ *
+ *  The problem this exists for: a leadership meeting runs on whoever's laptop
+ *  is open. If procurement ticks the box while the CEO says yes across the
+ *  table, the record says procurement approved it — which is false, and it is
+ *  false in the one place the whole system is supposed to be trustworthy.
+ *
+ *  So the yes leaves the room: the line is sent to the approver in Google
+ *  Chat, they answer there, and the identity on the record comes from the
+ *  chat platform's own authentication rather than from whoever is logged in
+ *  here (D69). The metadata then reads what actually happened —
+ *  `chat · evin@talaliving.com · 14:00`.
+ *
+ *  `token` identifies the REQUEST, never the person. In Phase 2 the answer
+ *  arrives as a signed webhook from Google and the identity comes from that
+ *  signature; a token that carried an identity would be a password anybody
+ *  who saw the card could reuse.
+ */
+export interface ApprovalRequest {
+  id: string;
+  line_id: string;
+  token: string;
+  /** Whose yes this is. The request is addressed, not broadcast. */
+  sent_to: string;
+  sent_to_email: string;
+  /** Whoever pressed send — usually not the approver. Kept because "who
+   *  chased this" is a different question from "who decided it". */
+  sent_by: string;
+  sent_by_email: string;
+  sent_at: string;
+  channel: Channel;
+  answered_at: string | null;
+  outcome: "approved" | "declined" | null;
+}
+
+/** One card as the approver sees it in chat: the line, and enough of it to
+ *  decide without opening anything. */
+export interface ApprovalRequestView extends ApprovalRequest {
+  line_no_full: string;
+  description: string;
+  purpose: string | null;
+  qty: number | null;
+  uom: UomCode | null;
+  unit_price: number | null;
+  item_total: number;
+  vendor_name: string | null;
+  requested_by_name: string;
+  project_code: string | null;
+  /** True once the line has been decided by any route — the card is stale and
+   *  the screen says so rather than offering a button that will 409. */
+  line_decided: boolean;
+}
+
 export interface PaymentRound {
   id: string;
   round_no: string;
@@ -507,6 +581,10 @@ export interface PrLineView extends PrLine {
   evidence_count: number;
   has_payment_proof: boolean;
   variance: VarianceView;
+  /** The latest word from leadership, if there is one. */
+  note: LineNote | null;
+  /** Sent to the approver and not answered yet. */
+  pending_request: ApprovalRequest | null;
   /** The ledger rows that funded this line, by public id. */
   trx_nos: string[];
   coverage: LineCoverage;

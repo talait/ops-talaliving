@@ -1,10 +1,11 @@
 /** Implements `/api/v1/procurement` from `03-api.md`. */
-import { ok, noop, invalid, notFound, type Result } from "@/services/_shared/envelope";
+import { ok, noop, invalid, notFound, refused, type Result } from "@/services/_shared/envelope";
 import type {
   Vendor, Item, Uom, Project, ItemCategory,
   PrDocument, PrLine, PrLineView, PaymentRound, RoundSummary,
   PurchaseOrder, PoLine, PoStatusView, Receipt, ReceiptCondition, PrCategory, UomCode,
   VendorView, ItemView, VarianceReason, PrApproval,
+  ApprovalRequestView,
 } from "@/services/procurement/contracts";
 import type { PrLine as PrLineRow } from "@/services/procurement/contracts";
 import { PROBLEM_CONDITIONS, VARIANCE_REASON_LABEL } from "@/services/procurement/contracts";
@@ -13,6 +14,7 @@ import { getState, apply, newId, nextDocNumber, writeAudit, writeOutbox } from "
 import {
   prLineView, approvalQueue, lineCoverage, roundSummary, poStatus, isApproved,
   boughtCategories, itemsBoughtFrom, itemSources, purchaseFacts, openLines,
+  pendingRequest,
   varianceOf, currentApproval,
 } from "../derive";
 import {
@@ -271,7 +273,16 @@ export async function decidedLines(limit = 12): Promise<Result<PrLineView[]>> {
  *  and never raised — money can only shrink on its way through approval (A8).
  */
 export async function approveLine(
-  input: { line_no: string; approved: boolean; approved_qty?: number | null; approved_amount?: number | null },
+  input: {
+    line_no: string;
+    approved: boolean;
+    approved_qty?: number | null;
+    approved_amount?: number | null;
+    /** Leadership's own words, recorded with the decision when they write any
+     *  (D64). Written as a note row, not as columns on the decision. */
+    instructions?: string | null;
+    remark?: string | null;
+  },
   idempotencyKey?: string,
 ): Promise<Result<PrLineView>> {
   await latency();
@@ -297,6 +308,19 @@ export async function approveLine(
     return conflict(SERVICE, "line_removed", `Line ${input.line_no} has been removed and cannot be approved.`);
   }
 
+  /* Quantity and money shrink together. Approving 40 of the 60 litres asked
+   * for is the decision leadership actually takes; the amount that follows
+   * from it is arithmetic, and asking somebody to do that arithmetic in their
+   * head is how an approval ends up disagreeing with itself (D65). */
+  const qty = input.approved_qty ?? line.qty;
+  if (input.approved && qty != null && line.qty != null && qty > line.qty) {
+    return invalid(
+      SERVICE, "approved_qty_above_requested",
+      `Approved quantity (${qty}) is more than the ${line.qty} ${line.uom ?? ""} requested. Approval can only reduce.`.trim(),
+      { field: "approved_qty", requested: line.qty, attempted: qty },
+    );
+  }
+
   const amount = input.approved_amount ?? line.item_total;
   if (input.approved && amount > line.item_total) {
     return invalid(
@@ -319,11 +343,29 @@ export async function approveLine(
     draft.pr_approvals.push({
       id: newId("apr"), line_id: line.id, step: "GOODS",
       approved: input.approved,
-      approved_qty: input.approved ? input.approved_qty ?? line.qty : null,
+      approved_qty: input.approved ? qty : null,
       approved_amount: input.approved ? amount : null,
       recorded_by: user.id, recorded_by_email: user.email,
       recorded_at: new Date().toISOString(), channel: "web",
     });
+    if (input.instructions?.trim() || input.remark?.trim()) {
+      draft.line_notes.push({
+        id: newId("nte"), line_id: line.id,
+        instructions: input.instructions?.trim() || null,
+        remark: input.remark?.trim() || null,
+        recorded_by: user.id, recorded_by_email: user.email,
+        recorded_at: new Date().toISOString(),
+      });
+    }
+    /* A decision taken here answers the card sitting in chat. Leaving it open
+     * would mean the approver is still being asked for something already
+     * settled — and the answer they gave would then land as a 409. */
+    for (const r of draft.approval_requests) {
+      if (r.line_id === line.id && !r.answered_at) {
+        r.answered_at = new Date().toISOString();
+        r.outcome = input.approved ? "approved" : "declined";
+      }
+    }
     writeAudit(draft, {
       service: SERVICE, entity: "pr_line", entity_no: input.line_no,
       action: input.approved ? "approve" : "unapprove", outcome: "ok", reason: null,
@@ -353,6 +395,266 @@ export async function lineHistory(lineNo: string): Promise<Result<PrApproval[]>>
   return ok(SERVICE, state.pr_approvals
     .filter((a) => a.line_id === line.id)
     .sort((a, b) => a.recorded_at.localeCompare(b.recorded_at)));
+}
+
+/* ------------------------------------------------------------------ */
+/* Approval asked for through chat (D69)                               */
+/* ------------------------------------------------------------------ */
+
+/** Send lines to the approver in Google Chat.
+ *
+ *  This exists because of how the meeting actually runs: one laptop, open on
+ *  whoever's account, and the CEO saying yes out loud. Ticking the box on that
+ *  laptop records the wrong person as the approver — and an approval trail
+ *  that names the wrong person is worse than no trail, because it looks
+ *  authoritative.
+ *
+ *  So the question leaves the room. Sending is an ordinary act anyone in
+ *  procurement may do; answering is the decision, and only the addressee can
+ *  take it.
+ */
+export async function requestApproval(
+  input: { line_nos: string[]; to?: string },
+  idempotencyKey?: string,
+): Promise<Result<ApprovalRequestView[]>> {
+  await latency();
+  const endpoint = `requestApproval:${input.line_nos.join(",")}`;
+  const cached = replayed<ApprovalRequestView[]>(SERVICE, endpoint, idempotencyKey);
+  if (cached) return cached;
+
+  const state = getState();
+  /* Whoever holds the authority to approve goods is who the question goes to.
+   * Not a name in a config file: if the authority moves, the notification
+   * follows it (D19). */
+  const approver = state.users.find((u) =>
+    input.to ? u.id === input.to : u.authorities.includes("approve_goods"));
+  if (!approver) {
+    return conflict(SERVICE, "no_approver", "Nobody currently holds the authority to approve goods, so there is no one to ask.");
+  }
+
+  const user = actingUser();
+  const fresh: string[] = [];
+  for (const lineNo of input.line_nos) {
+    const line = state.pr_lines.find((l) => l.line_no_full === lineNo);
+    if (!line || line.removed_at) continue;
+    if (isApproved(state, line.id)) continue;
+    if (pendingRequest(state, line.id)) continue;  /* already asked; asking twice is nagging, not a record */
+    fresh.push(lineNo);
+  }
+
+  if (fresh.length === 0) {
+    /* Not an error: asking again for something already asked or already
+       decided is a no-op, and saying so beats a silent success. */
+    return noop(SERVICE, [] as ApprovalRequestView[]);
+  }
+
+  apply((draft) => {
+    for (const lineNo of fresh) {
+      const line = draft.pr_lines.find((l) => l.line_no_full === lineNo)!;
+      const token = `tok_${newId("req").slice(4)}`;
+      draft.approval_requests.push({
+        id: newId("arq"), line_id: line.id, token,
+        sent_to: approver.id, sent_to_email: approver.email,
+        sent_by: user.id, sent_by_email: user.email,
+        sent_at: new Date().toISOString(),
+        channel: "chat", answered_at: null, outcome: null,
+      });
+      writeAudit(draft, {
+        service: SERVICE, entity: "pr_line", entity_no: lineNo,
+        action: "request_approval", outcome: "ok", reason: approver.email,
+      });
+      /* The event IS the integration. A worker subscribes to this and posts
+       * the card; nothing here knows what Google Chat is (ADR-004, events). */
+      writeOutbox(draft, {
+        service: SERVICE, event_type: "procurement.approval.requested",
+        payload: { line_no: lineNo, token, to: approver.email, amount: line.item_total },
+      });
+    }
+  });
+
+  const view = approvalRequestViews(getState()).filter((r) => fresh.includes(r.line_no_full));
+  remember(SERVICE, endpoint, idempotencyKey, view);
+  return ok(SERVICE, view);
+}
+
+function approvalRequestViews(state: ReturnType<typeof getState>): ApprovalRequestView[] {
+  return state.approval_requests.map((r) => {
+    const line = state.pr_lines.find((l) => l.id === r.line_id)!;
+    const doc = state.pr_documents.find((d) => d.id === line.doc_id);
+    return {
+      ...r,
+      line_no_full: line.line_no_full,
+      description: line.description,
+      purpose: line.purpose,
+      qty: line.qty,
+      uom: line.uom,
+      unit_price: line.unit_price,
+      item_total: line.item_total,
+      vendor_name: state.vendors.find((v) => v.id === line.vendor_id)?.name ?? null,
+      requested_by_name: state.users.find((u) => u.id === doc?.requested_by)?.full_name ?? "—",
+      project_code: state.projects.find((p) => p.id === doc?.project_id)?.code ?? null,
+      line_decided: isApproved(state, line.id),
+    };
+  });
+}
+
+/** The cards waiting in one person's chat. */
+export async function listApprovalRequests(
+  opts: { for_email?: string; pending?: boolean } = {},
+): Promise<Result<ApprovalRequestView[]>> {
+  await latency();
+  let rows = approvalRequestViews(getState());
+  if (opts.for_email) rows = rows.filter((r) => r.sent_to_email === opts.for_email);
+  if (opts.pending) rows = rows.filter((r) => !r.answered_at);
+  return ok(SERVICE, rows.sort((a, b) => b.sent_at.localeCompare(a.sent_at)));
+}
+
+/** The answer coming back from chat.
+ *
+ *  **The identity does not come from this session.** It comes from the chat
+ *  platform, which authenticated the person who tapped the button — that is
+ *  the entire reason the round trip exists, and using `actingUser()` here
+ *  would put us back to recording whoever's laptop was open.
+ *
+ *  In Phase 2 this is a signed webhook from Google and `answered_by_email` is
+ *  read from the verified sender, never from the request body. The demo screen
+ *  stands in for that signature, and the check below is the shape of the rule
+ *  it will enforce: an answer from anyone but the addressee is refused.
+ */
+export async function answerFromChat(
+  input: {
+    token: string;
+    answered_by_email: string;
+    approved: boolean;
+    approved_qty?: number | null;
+    approved_amount?: number | null;
+    instructions?: string | null;
+    remark?: string | null;
+  },
+  idempotencyKey?: string,
+): Promise<Result<PrLineView>> {
+  await latency();
+  const endpoint = `answerFromChat:${input.token}`;
+  const cached = replayed<PrLineView>(SERVICE, endpoint, idempotencyKey);
+  if (cached) return cached;
+
+  const state = getState();
+  const req = state.approval_requests.find((r) => r.token === input.token);
+  if (!req) return notFound(SERVICE, "request_not_found", "That approval card does not match anything — it may have been withdrawn.");
+  if (req.answered_at) {
+    return conflict(SERVICE, "already_answered", `Answered already, at ${new Date(req.answered_at).toLocaleString(LOCALE)}. Nothing changed.`);
+  }
+  if (input.answered_by_email !== req.sent_to_email) {
+    apply((draft) => {
+      writeAudit(draft, {
+        service: SERVICE, entity: "pr_line", entity_no: req.token,
+        action: "answer_from_chat", outcome: "refused", reason: input.answered_by_email,
+      });
+    });
+    return refused(
+      SERVICE, "not_the_addressee",
+      `This was sent to ${req.sent_to_email}. An answer from ${input.answered_by_email} is not that person's decision, and recording it as theirs is the mistake this whole route exists to prevent.`,
+    );
+  }
+
+  const line = state.pr_lines.find((l) => l.id === req.line_id);
+  if (!line) return notFound(SERVICE, "line_not_found", "The item this card refers to no longer exists.");
+  if (line.removed_at) return conflict(SERVICE, "line_removed", `${line.line_no_full} has been removed since the card was sent.`);
+
+  const amount = input.approved_amount ?? line.item_total;
+  if (input.approved && amount > line.item_total) {
+    return invalid(
+      SERVICE, "approved_above_requested",
+      `Approved amount (${amount.toLocaleString(LOCALE)}) exceeds the ${line.item_total.toLocaleString(LOCALE)} requested. Approval can only reduce.`,
+      { field: "approved_amount" },
+    );
+  }
+
+  apply((draft) => {
+    const r = draft.approval_requests.find((x) => x.id === req.id)!;
+    r.answered_at = new Date().toISOString();
+    r.outcome = input.approved ? "approved" : "declined";
+    if (input.approved) {
+      draft.pr_approvals.push({
+        id: newId("apr"), line_id: line.id, step: "GOODS",
+        approved: true,
+        approved_qty: input.approved_qty ?? line.qty,
+        approved_amount: amount,
+        /* The approver, not the person holding the laptop. */
+        recorded_by: req.sent_to, recorded_by_email: req.sent_to_email,
+        recorded_at: new Date().toISOString(),
+        channel: req.channel,
+      });
+    }
+    if (input.instructions?.trim() || input.remark?.trim()) {
+      draft.line_notes.push({
+        id: newId("nte"), line_id: line.id,
+        instructions: input.instructions?.trim() || null,
+        remark: input.remark?.trim() || null,
+        recorded_by: req.sent_to, recorded_by_email: req.sent_to_email,
+        recorded_at: new Date().toISOString(),
+      });
+    }
+    writeAudit(draft, {
+      service: SERVICE, entity: "pr_line", entity_no: line.line_no_full,
+      action: input.approved ? "approve" : "decline",
+      outcome: "ok", reason: `chat · ${req.sent_to_email}`,
+    });
+    writeOutbox(draft, {
+      service: SERVICE, event_type: "procurement.line.approved",
+      payload: { line_no: line.line_no_full, approved: input.approved, amount, channel: "chat" },
+    });
+  });
+
+  const view = prLineView(getState(), getState().pr_lines.find((l) => l.id === line.id)!);
+  remember(SERVICE, endpoint, idempotencyKey, view);
+  return ok(SERVICE, view);
+}
+
+/** Leadership writing on a line without deciding it.
+ *
+ *  Separate from `approveLine` because the useful case is the undecided line:
+ *  "get another quote before you order this" is an instruction, and making
+ *  somebody approve the line before they can say it would be exactly backwards
+ *  (D64). Append-only — a new note never erases the previous one.
+ */
+export async function noteLine(
+  input: { line_no: string; instructions?: string | null; remark?: string | null },
+  idempotencyKey?: string,
+): Promise<Result<PrLineView>> {
+  await latency();
+  const endpoint = `noteLine:${input.line_no}`;
+  const cached = replayed<PrLineView>(SERVICE, endpoint, idempotencyKey);
+  if (cached) return cached;
+
+  const denied = requireAuthority(SERVICE, "approve_goods");
+  if (denied) return denied;
+
+  const state = getState();
+  const line = state.pr_lines.find((l) => l.line_no_full === input.line_no);
+  if (!line) return notFound(SERVICE, "line_not_found", `Line ${input.line_no} not found.`);
+  if (!input.instructions?.trim() && !input.remark?.trim()) {
+    return invalid(SERVICE, "note_empty", "There is nothing to record — write an instruction or a remark.", { field: "instructions" });
+  }
+
+  const user = actingUser();
+  apply((draft) => {
+    draft.line_notes.push({
+      id: newId("nte"), line_id: line.id,
+      instructions: input.instructions?.trim() || null,
+      remark: input.remark?.trim() || null,
+      recorded_by: user.id, recorded_by_email: user.email,
+      recorded_at: new Date().toISOString(),
+    });
+    writeAudit(draft, {
+      service: SERVICE, entity: "pr_line", entity_no: input.line_no,
+      action: "note", outcome: "ok", reason: null,
+    });
+  });
+
+  const view = prLineView(getState(), getState().pr_lines.find((l) => l.id === line.id)!);
+  remember(SERVICE, endpoint, idempotencyKey, view);
+  return ok(SERVICE, view);
 }
 
 /** Removed because it is no longer needed. No deadline, nothing ages out —
@@ -937,14 +1239,24 @@ export async function whereToBuy(query: string): Promise<Result<ItemView[]>> {
 /* Draft editing                                                       */
 /* ------------------------------------------------------------------ */
 
-/** Change a line while its document is still a draft.
+/** Change a line for as long as nobody has approved it.
  *
- *  Only while DRAFT. Once submitted, a line is something other people have
- *  looked at and possibly decided on, and editing it in place would rewrite
- *  what they saw. After that the routes are: the CEO reduces the approved
- *  amount, or the requester removes the line and asks again.
+ *  The rule used to be "drafts only" (D51). The owner's rule is simpler and
+ *  matches how the work actually goes: **a request is editable until it is
+ *  approved** (D66). Somebody spots the wrong quantity an hour after
+ *  submitting, and making them remove the line and file it again — losing its
+ *  place in the queue and its number — is bureaucracy the old spreadsheet
+ *  never imposed either.
+ *
+ *  Three doors close it, and each is a real event rather than a phase:
+ *  approval (the amount is now somebody's decision), payment (money has moved
+ *  against these numbers) and removal.
+ *
+ *  What the edit costs is answered rather than avoided: the previous values go
+ *  into the audit row, so a line that was 60 litres when the CEO read it and
+ *  is 80 now says so.
  */
-export async function updateDraftLine(
+export async function updateLine(
   lineNo: string,
   input: Partial<Pick<PrLineRow,
     "description" | "qty" | "uom" | "unit_price" | "vendor_id" | "category" | "purpose" | "need_by" | "item_id">>,
@@ -953,19 +1265,44 @@ export async function updateDraftLine(
   const state = getState();
   const line = state.pr_lines.find((l) => l.line_no_full === lineNo);
   if (!line) return notFound(SERVICE, "line_not_found", `Line ${lineNo} not found.`);
-  const doc = state.pr_documents.find((d) => d.id === line.doc_id);
-  if (doc?.status !== "DRAFT") {
+
+  if (line.removed_at) {
+    return conflict(SERVICE, "line_removed", `Line ${lineNo} has been removed. Ask for it again rather than editing it back to life.`);
+  }
+  if (isApproved(state, line.id)) {
     return conflict(
-      SERVICE, "not_a_draft",
-      `${doc?.doc_no} has already been submitted. Reduce the approved amount, or remove the line and ask again — editing it now would rewrite what the approver saw.`,
+      SERVICE, "already_approved",
+      `${lineNo} has been approved. Editing it now would rewrite what the approver said yes to — ask the CEO to un-approve it first, or remove it and ask again.`,
     );
   }
+  const covered = lineCoverage(state, line).covered;
+  if (covered > 0) {
+    return conflict(
+      SERVICE, "already_paid",
+      `${covered.toLocaleString(LOCALE)} has already been paid against ${lineNo}. Past that point the words are return, credit or void — never an edit.`,
+    );
+  }
+
+  const before = {
+    description: line.description, qty: line.qty, uom: line.uom,
+    unit_price: line.unit_price, purpose: line.purpose, need_by: line.need_by,
+    vendor_id: line.vendor_id, category: line.category,
+  } as Record<string, unknown>;
+  const changed = Object.entries(input)
+    .filter(([k, v]) => before[k] !== v)
+    .map(([k, v]) => `${k}: ${String(before[k] ?? "—")} → ${String(v ?? "—")}`)
+    .join("; ");
 
   apply((draft) => {
     const l = draft.pr_lines.find((x) => x.id === line.id)!;
     Object.assign(l, input);
     l.item_total = Math.round((l.qty ?? 0) * (l.unit_price ?? 0));
-    writeAudit(draft, { service: SERVICE, entity: "pr_line", entity_no: lineNo, action: "edit_draft", outcome: "ok", reason: null });
+    writeAudit(draft, {
+      service: SERVICE, entity: "pr_line", entity_no: lineNo,
+      action: "edit_line", outcome: "ok",
+      /* The old values, not just the fact that something changed. */
+      reason: changed || null,
+    });
   });
   return ok(SERVICE, prLineView(getState(), getState().pr_lines.find((l) => l.id === line.id)!));
 }

@@ -24,6 +24,7 @@ export function NumberInput({
   disabled,
   className,
   id,
+  size = "md",
 }: {
   value: number;
   onChange: (value: number) => void;
@@ -34,6 +35,9 @@ export function NumberInput({
   disabled?: boolean;
   className?: string;
   id?: string;
+  /** `sm` exists for controls that sit inside a table row, where a 40px field
+   *  turns a dense board into a scroll. */
+  size?: "sm" | "md";
 }) {
   const [text, setText] = useState(() => String(value ?? 0));
 
@@ -83,7 +87,8 @@ export function NumberInput({
       onBlur={handleBlur}
       onFocus={(e) => e.currentTarget.select()}
       className={cn(
-        "h-10 w-full rounded-lg border border-slate-200 px-3 text-sm focus:border-brand-400 focus:outline-none disabled:bg-slate-50",
+        "w-full rounded-lg border border-slate-200 focus:border-brand-400 focus:outline-none disabled:bg-slate-50",
+        size === "sm" ? "h-8 px-2 text-[13px]" : "h-10 px-3 text-sm",
         className,
       )}
     />

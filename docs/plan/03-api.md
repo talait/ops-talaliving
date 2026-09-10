@@ -123,7 +123,12 @@ PR chain:
 | PUT | `/pr/{doc_no}/lines` | edit while DRAFT; after submit → supersede |
 | POST | `/pr/{doc_no}/submit` | DRAFT → SUBMITTED, lines get `-LNN` |
 | POST | `/pr/{doc_no}/reopen` | only while no gate has decided |
-| POST | `/pr/lines/{line_no}/approve` | `{approved: true\|false, approved_qty?, approved_amount?}` — a **checkbox**, not a vocabulary (D28). `step` ∈ `GOODS` · `FUNDS`; there is no IT step (D20). **422 if approved_amount > requested** (A8). **403 without the matching authority** — `approve_goods` is the CEO's alone (D19). Each toggle writes an append-only row carrying timestamp, name, email and channel |
+| PUT | `/pr/lines/{line_no}` | edit an item **while nobody has approved it** (D66) — not merely while the document is a draft. **409** once approved, once money has been allocated, or once removed. The previous values go into the audit row |
+| POST | `/pr/lines/{line_no}/note` | `{instructions?, remark?}` — leadership's optional words, on a line decided or not (D64). Append-only; **422** when both are empty |
+| POST | `/pr/approval-requests` | `{line_nos[], to?}` — ask the approver in chat (D69). Anyone in procurement may ask. Skips lines already decided or already asked and returns `outcome: noop` when that leaves nothing. Emits `procurement.approval.requested`, which is what a worker turns into a chat card |
+| GET | `/pr/approval-requests` | `?for_email=&pending=1` — the cards waiting on one person |
+| POST | `/pr/approval-requests/{token}/answer` | the answer coming back from chat. **The identity is taken from the platform's signed request, never from the body or the session** — that is the whole reason the round trip exists. **403 when the answerer is not the addressee**, 409 when already answered, 422 above the requested amount. Writes the approval with `channel: chat` and the approver's own name |
+| POST | `/pr/lines/{line_no}/approve` | `{approved: true\|false, approved_qty?, approved_amount?, instructions?, remark?}` — a **checkbox**, not a vocabulary (D28). The quantity may be cut as well as the amount, and cutting the quantity recomputes the amount at the unit price (D65). `step` ∈ `GOODS` · `FUNDS`; there is no IT step (D20). **422 if approved_amount > requested, or approved_qty > requested** (A8). Answers any chat card still open on the line. **403 without the matching authority** — `approve_goods` is the CEO's alone (D19). Each toggle writes an append-only row carrying timestamp, name, email and channel |
 | GET | `/pr/queue` | the standing approval queue: every submitted line not approved and not removed (D21). Nothing ages out |
 | POST | `/pr/lines/{line_no}/remove` | no longer needed (D29). Soft — the row stays with who and when. **409 once any money has been allocated to the line**: that is a return or a credit, not a removal |
 | GET | `/pr/lines/{line_no}/history` | approvals, revisions, allocations, receipts — the full trail |
@@ -206,7 +211,7 @@ endpoints a person's browser calls. **No second write path** (§1.3: "we are
 not building a second system").
 
 Event names are `<service>.<entity>.<past tense>`:
-`procurement.pr.submitted`, `procurement.line.approved`,
+`procurement.pr.submitted`, `procurement.approval.requested`, `procurement.line.approved`,
 `procurement.round.closed`, `accounting.transaction.posted`,
 `accounting.transaction.voided`, `accounting.allocation.recorded`.
 

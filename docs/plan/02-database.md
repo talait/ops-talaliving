@@ -300,6 +300,8 @@ erDiagram
     pr_lines ||--o{ payment_round_lines : "in"
     pr_lines ||--o{ line_settlements : "short settled"
     pr_lines ||--o{ line_variances : "explained"
+    pr_lines ||--o{ line_notes : "annotated"
+    pr_lines ||--o{ approval_requests : "asked"
 
     pr_documents {
         uuid id PK
@@ -375,6 +377,24 @@ erDiagram
         text reason "NOT NULL. a named human decision"
         uuid decided_by FK
     }
+    line_notes {
+        uuid id PK
+        uuid line_id FK
+        text instructions "something to DO"
+        text remark "for the record"
+        uuid recorded_by FK
+        timestamptz recorded_at
+    }
+    approval_requests {
+        uuid id PK
+        uuid line_id FK
+        text token UK "identifies the REQUEST, never a person"
+        uuid sent_to FK "whose yes this is"
+        uuid sent_by FK "who chased it"
+        channel_t channel "chat"
+        timestamptz answered_at
+        text outcome "approved|declined|null"
+    }
     line_variances {
         uuid id PK
         uuid line_id FK
@@ -385,6 +405,30 @@ erDiagram
         timestamptz recorded_at
     }
 ```
+
+**`line_notes` — leadership's two optional fields** (D64). `instructions` is
+something the requester is expected to DO; `remark` is for the record. They
+are not columns on `pr_approvals` because the moment they earn their keep is
+on a line nobody has decided yet: "get another quote before you order this" is
+an instruction, and making somebody approve the line before they can say it
+would be backwards.
+
+**`approval_requests` — the yes that leaves the room** (D69). A leadership
+meeting runs on one laptop, open on whoever's account. Ticking the box there
+records that person as the approver, which is false — and false in the one
+place the system exists to be trustworthy. So the line is sent to the
+approver in Google Chat, and the answer comes back carrying **their**
+identity.
+
+Two columns carry the rule. `sent_to` is whose decision it is; `sent_by` is
+who chased it, which is a different question worth keeping. `token`
+identifies the request and never the person: in Phase 2 the answer arrives as
+a signed webhook from Google and the identity is read from that signature, so
+a token that carried an identity would be a password anybody who saw the card
+could replay.
+
+The resulting `pr_approvals` row reads `chat · evin@talaliving.com · 14:00`,
+which is what actually happened.
 
 **`line_variances` — why the money that moved is not the money approved**
 (D54, D55). Append-only, like every decision record here: a correction is a new

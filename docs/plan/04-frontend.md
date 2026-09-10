@@ -108,7 +108,7 @@ Every new route is one line in `nav.ts`.
 
 | Route | Screen | Milestone |
 |---|---|---|
-| ▸ `/accounting/ledger` | the ledger: filter bar, table, row → drawer with lines, evidence, allocations, the path to PR and PO. Actions: mark COMPLETED, VOID with a reason | M8 |
+| ▸ `/accounting/ledger` | **built (M8)**: filter by account, type and text; rows show date, description, amount, **unallocated where a request was expected** (D83), evidence count and status. The drawer holds what it bought, what it paid for, the documents — attached **from the row** (ADR-010) — VOID with a mandatory reason, and mark completed. Nothing is deleted: a voided row stays with its amount at zero and its reason on it. Old description follows. the ledger: filter bar, table, row → drawer with lines, evidence, allocations, the path to PR and PO. Actions: mark COMPLETED, VOID with a reason | M8 |
 | ▸ `/accounting/verifikasi` | **The exception inbox.** Only documents whose parent is unknown — bought first, approved later. Photo left, form right; resolve into a transaction, a retroactive PR line, a link to something existing, a note, or a rejection. Should stay small | M10 |
 | ▸ `/accounting/cashflow` | five account balances from the view, movement chart, tie-out | M12 |
 | ✚ `/accounting/bukti` | evidence browser by entity, month, type; and the inbox health number | M9 |

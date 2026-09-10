@@ -45,7 +45,9 @@ export function TransferForm({
   const [incoming, reloadIncoming] = useLoad(() => accounting.listIncoming(), []);
   const [waiting, reloadWaiting] = useLoad(() => accounting.listIncomingReview(), []);
   const [fromId, setFromId] = useState("");
-  const [amount, setAmount] = useState(round.to_transfer || round.requested_total);
+  /* Defaults to what is still missing, not to the whole round: the second
+     instalment is for the part the first one did not cover (D82). */
+  const [amount, setAmount] = useState(round.transfer_shortfall || round.requested_total);
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
@@ -60,8 +62,8 @@ export function TransferForm({
   }, [sources]);
 
   useEffect(() => {
-    setAmount(round.to_transfer || round.requested_total);
-  }, [round.round_no, round.to_transfer, round.requested_total]);
+    setAmount(round.transfer_shortfall || round.requested_total);
+  }, [round.round_no, round.transfer_shortfall, round.requested_total]);
 
   /** Road one: we moved it, here is the receipt. */
   async function recordWithUpload() {
@@ -81,7 +83,9 @@ export function TransferForm({
     const out = await accounting.postTransaction({
       trx_date: date, account_id: fromId, direction: "OUT", amount_idr: amount,
       type_code: "CASHFLOW", description: `${label} — transfer to BCA 271`,
-      source_ref: `round:${round.round_no}:out`,
+      /* One source_ref per instalment, so a second transfer is a second pair
+         of rows and a retry of the first is still a duplicate (A4). */
+      source_ref: `round:${round.round_no}:out:${round.transfers.length + 1}`,
     });
     if (out.error) {
       setBusy(false);
@@ -93,7 +97,7 @@ export function TransferForm({
       trx_date: date, account_id: target.account_id, direction: "IN", amount_idr: amount,
       type_code: "CASHFLOW",
       description: `${label} — from ${rows.find((a) => a.account_id === fromId)?.code ?? "leadership"}`,
-      source_ref: `round:${round.round_no}:in`,
+      source_ref: `round:${round.round_no}:in:${round.transfers.length + 1}`,
     });
     if (inLeg.error) {
       setBusy(false);
@@ -150,11 +154,22 @@ export function TransferForm({
     onDone();
   }
 
-  const booked: IncomingMoney[] = incoming.status === "ready" ? incoming.data : [];
+  /* A ledger row already counted against this round is not offered again. */
+  const used = new Set(round.transfers.map((t) => t.trx_no));
+  const booked: IncomingMoney[] = incoming.status === "ready"
+    ? incoming.data.filter((r) => !used.has(r.trx_no))
+    : [];
   const chatRows = waiting.status === "ready" ? waiting.data : [];
 
   return (
     <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50/60 px-3 py-3">
+      {round.transfers.length > 0 && (
+        <p className="mb-3 text-[13px] text-slate-600">
+          {formatIDR(round.transferred_total)} has come in already ·{" "}
+          <span className="font-medium text-amber-700">{formatIDR(round.transfer_shortfall)} still short</span>
+        </p>
+      )}
+
       <div className="mb-3 flex flex-wrap gap-2">
         {([
           ["upload", "We transferred it", Upload],

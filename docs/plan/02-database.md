@@ -297,6 +297,7 @@ erDiagram
     vendors ||--o{ pr_lines : "from"
     items ||--o{ pr_lines : "of"
     payment_rounds ||--o{ payment_round_lines : "freezes"
+    payment_rounds ||--o{ round_transfers : "funded by"
     pr_lines ||--o{ payment_round_lines : "in"
     pr_lines ||--o{ line_settlements : "short settled"
     pr_lines ||--o{ line_variances : "explained"
@@ -353,7 +354,15 @@ erDiagram
         text transferred_trx_no
         uuid closed_by FK
         timestamptz closed_at
-        uuid transferred_proof_id FK "no proof, no transfer"
+    }
+    round_transfers {
+        uuid id PK
+        uuid round_id FK
+        bigint amount
+        text trx_no "the ledger row that moved it"
+        uuid proof_attachment_id FK "no proof, no transfer"
+        uuid recorded_by FK
+        timestamptz recorded_at
     }
     payment_round_lines {
         uuid id PK
@@ -418,8 +427,12 @@ erDiagram
     }
 ```
 
-**`payment_rounds.transferred_proof_id` — no proof, no transfer** (D80). A
-round reaches TRANSFERRED only with a document behind it. "Transferred" is a
+**`round_transfers` — no proof, no transfer, and rarely only one** (D80, D82).
+A round reaches TRANSFERRED on its first instalment and keeps taking more
+until it is fully funded; each row carries its own amount, its own ledger row
+and its own proof, because each is its own claim about the bank. A single
+`transferred_amount` column on the round could hold only the last transfer, or
+a total nobody could take apart. "Transferred" is a
 claim about the bank, and the sheet's version of that claim was a tick
 somebody typed — which is exactly how a round could read funded while the
 money was still sitting in the leadership account. The same rule already

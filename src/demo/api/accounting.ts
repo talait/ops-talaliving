@@ -2,13 +2,14 @@
 import { ok, invalid, notFound, type Result } from "@/services/_shared/envelope";
 import type {
   Account, AccountBalance, Transaction, TransactionView, TransactionTypeCode,
-  IncomingMoney,
+  IncomingMoney, TransactionDetail, AllocationView, TransactionLine,
   Direction, PaymentAllocation, EvidenceInboxRow, InboxHealth, AllocMethod,
 } from "@/services/accounting/contracts";
 import { LOCALE } from "@/lib/format";
 import { getState, apply, newId, nextDocNumber, writeAudit, writeOutbox } from "../store";
 import {
   accountBalances, transactionView, allocatedTotal, inboxHealth, lineCoverage,
+  lineStatus,
 } from "../derive";
 import { latency, actingUser, requireAuthority, conflict, replayed, remember, paged } from "./_kit";
 import * as procurement from "./procurement";
@@ -43,12 +44,31 @@ export async function listTransactions(
   return paged(SERVICE, views, opts.limit ?? 50, opts.offset ?? 0);
 }
 
-export async function getTransaction(trxNo: string): Promise<Result<TransactionView>> {
+/** The whole row: what it bought, what it funded, and the line each
+ *  allocation points at. One call, because a drawer that needs three is a
+ *  drawer that renders in three stages. */
+export async function getTransaction(trxNo: string): Promise<Result<TransactionDetail>> {
   await latency();
   const state = getState();
   const trx = state.transactions.find((t) => t.trx_no === trxNo);
   if (!trx) return notFound(SERVICE, "transaction_not_found", `Transaction ${trxNo} not found.`);
-  return ok(SERVICE, transactionView(state, trx));
+
+  const allocations: AllocationView[] = state.payment_allocations
+    .filter((a) => a.trx_id === trx.id)
+    .map((a) => {
+      const line = state.pr_lines.find((l) => l.line_no_full === a.pr_line_no);
+      return {
+        ...a,
+        line_description: line?.description ?? null,
+        line_status: line ? lineStatus(state, line) : null,
+      };
+    });
+
+  return ok(SERVICE, {
+    ...transactionView(state, trx),
+    lines: state.transaction_lines.filter((l) => l.trx_id === trx.id),
+    allocations,
+  });
 }
 
 /** The one write seam. Everything that creates a ledger row comes through

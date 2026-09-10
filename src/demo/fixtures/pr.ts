@@ -1,7 +1,7 @@
 import type {
   PrDocument, PrLine, PrApproval, PaymentRound, PaymentRoundLine, Receipt,
   PurchaseOrder, PoLine, PoScheduleTerm, PrCategory, UomCode,
-  LineVariance, LineSettlement, LineNote, ApprovalRequest, ApprovalBatch,
+  LineVariance, LineSettlement, LineNote, ApprovalRequest, ApprovalBatch, RoundTransfer,
 } from "@/services/procurement/contracts";
 import { itemIdByCode } from "./reference";
 
@@ -197,10 +197,34 @@ export const APPROVAL_REQUESTS: ApprovalRequest[] = [
 ];
 
 export const PAYMENT_ROUNDS: PaymentRound[] = [
-  { id: "rnd_04", round_no: "pay-26-09-09_01", status: "OPEN", opened_at: "2026-09-09T07:00:00+08:00", approved_by: null, approved_at: null, transferred_amount: null, transferred_trx_no: null, transferred_proof_id: null, closed_by: null, closed_at: null },
-  { id: "rnd_03", round_no: "pay-26-09-07_01", status: "APPROVED", opened_at: "2026-09-02T07:00:00+08:00", approved_by: "usr_geryle", approved_at: "2026-09-07T14:30:00+08:00", transferred_amount: null, transferred_trx_no: null, transferred_proof_id: null, closed_by: null, closed_at: null },
-  { id: "rnd_02", round_no: "pay-26-08-31_01", status: "CLOSED", opened_at: "2026-08-26T07:00:00+08:00", approved_by: "usr_geryle", approved_at: "2026-08-28T15:00:00+08:00", transferred_amount: 12_100_000, transferred_trx_no: "trx-26-08-29_001", transferred_proof_id: "att_16", closed_by: "usr_geryle", closed_at: "2026-09-01T09:20:00+08:00" },
-  { id: "rnd_01", round_no: "pay-26-08-22_01", status: "CLOSED", opened_at: "2026-08-18T07:00:00+08:00", approved_by: "usr_geryle", approved_at: "2026-08-19T16:10:00+08:00", transferred_amount: 29_100_000, transferred_trx_no: "trx-26-08-20_001", transferred_proof_id: "att_15", closed_by: "usr_geryle", closed_at: "2026-08-24T10:00:00+08:00" },
+  { id: "rnd_04", round_no: "pay-26-09-09_01", status: "OPEN", opened_at: "2026-09-09T07:00:00+08:00", approved_by: null, approved_at: null, closed_by: null, closed_at: null },
+  { id: "rnd_03", round_no: "pay-26-09-07_01", status: "APPROVED", opened_at: "2026-09-02T07:00:00+08:00", approved_by: "usr_geryle", approved_at: "2026-09-07T14:30:00+08:00", closed_by: null, closed_at: null },
+  { id: "rnd_02", round_no: "pay-26-08-31_01", status: "CLOSED", opened_at: "2026-08-26T07:00:00+08:00", approved_by: "usr_geryle", approved_at: "2026-08-28T15:00:00+08:00", closed_by: "usr_geryle", closed_at: "2026-09-01T09:20:00+08:00" },
+  { id: "rnd_01", round_no: "pay-26-08-22_01", status: "CLOSED", opened_at: "2026-08-18T07:00:00+08:00", approved_by: "usr_geryle", approved_at: "2026-08-19T16:10:00+08:00", closed_by: "usr_geryle", closed_at: "2026-08-24T10:00:00+08:00" },
+];
+
+/* pay-26-08-22_01 was funded in two goes — a first transfer on the Thursday
+ * and the rest once a client paid on the Friday. That is the ordinary case,
+ * not the exception, which is why the record is a list (D82). */
+export const ROUND_TRANSFERS: RoundTransfer[] = [
+  {
+    id: "rtf_01", round_id: "rnd_01", amount: 20_000_000, trx_no: "trx-26-08-20_001",
+    proof_attachment_id: "att_15",
+    recorded_by: "usr_putri", recorded_by_email: "putri@talaliving.com",
+    recorded_at: "2026-08-20T09:25:00+08:00",
+  },
+  {
+    id: "rtf_02", round_id: "rnd_01", amount: 9_100_000, trx_no: "trx-26-08-20_001",
+    proof_attachment_id: "att_15",
+    recorded_by: "usr_putri", recorded_by_email: "putri@talaliving.com",
+    recorded_at: "2026-08-21T10:05:00+08:00",
+  },
+  {
+    id: "rtf_03", round_id: "rnd_02", amount: 12_100_000, trx_no: "trx-26-08-29_001",
+    proof_attachment_id: "att_16",
+    recorded_by: "usr_putri", recorded_by_email: "putri@talaliving.com",
+    recorded_at: "2026-08-29T08:55:00+08:00",
+  },
 ];
 
 export const PAYMENT_ROUND_LINES: PaymentRoundLine[] = [

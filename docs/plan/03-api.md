@@ -144,7 +144,7 @@ Rounds:
 | POST | `/rounds/sync` | roll every approved-and-still-owed line into the single OPEN round. Idempotent; safe to call on every page load |
 | GET | `/rounds/{round_no}` | requested, balances, TO TRANSFER, funded-by |
 | POST | `/rounds/{round_no}/approve` | `procurement.approve_funds`. Freezes the numbers |
-| POST | `/rounds/{round_no}/transfer` | records amount + transaction + **the proof**. `post_ledger`, not `approve_funds` (D78) — the funds decision was approving the round. **422 without `proof_attachment_id`** (D80): a round is funded when there is proof it was funded. **Does not make any line PAID** (A10) |
+| POST | `/rounds/{round_no}/transfer` | records **one instalment** — amount + transaction + **the proof** (D82); a round takes as many as it needs and reports what is still short. **409 when the same `trx_no` is counted twice** against one round. `post_ledger`, not `approve_funds` (D78) — the funds decision was approving the round. **422 without `proof_attachment_id`** (D80): a round is funded when there is proof it was funded. **Does not make any line PAID** (A10) |
 | POST | `/rounds/{round_no}/close` | the step everyone forgets. Response lists what is still owed and is being released |
 
 PO and receiving:
@@ -164,7 +164,7 @@ PO and receiving:
 | GET | `/accounts` | with balances from `v_account_balance` |
 | GET | `/transactions` | `?account=&type=&from=&to=&vendor=&status=&q=` |
 | POST | `/transactions` | the **one write seam**. Requires `source_ref`; a repeat is `duplicate`, never a second row |
-| GET | `/transactions/{trx_no}` | + lines + documents + allocations + the PR/PO path |
+| GET | `/transactions/{trx_no}` | one call: the row, its lines, its allocations (each naming the request line it settled), and the PR/PO path. A drawer that needs three calls renders in three stages |
 | POST | `/transactions/{trx_no}/void` | amount → 0, reason mandatory. Reversible |
 | POST | `/transactions/{trx_no}/complete` | mark COMPLETED. §10.1 item 15 — never built in v1, built here |
 | POST | `/allocations` | `{trx_no, pr_line_no, amount, method}`. **422 if Σ allocations would exceed the transaction** (A9) |

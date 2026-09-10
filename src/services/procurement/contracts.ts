@@ -311,6 +311,24 @@ export interface ApprovalRequestView extends ApprovalRequest {
   to_pay: number;
 }
 
+/** One transfer into the paying account against one round.
+ *
+ *  A round is funded in parts more often than not — leadership sends half on
+ *  Monday and the rest when a client pays — so the record is a list, not a
+ *  single amount. Each instalment carries its own proof, because each is its
+ *  own claim about the bank (D80, D82).
+ */
+export interface RoundTransfer {
+  id: string;
+  round_id: string;
+  amount: number;
+  trx_no: string;
+  proof_attachment_id: string;
+  recorded_by: string;
+  recorded_by_email: string;
+  recorded_at: string;
+}
+
 /** One send: the list, and the three totals a person needs to answer it.
  *
  *  A card per line would ask the approver to add up fifteen numbers in their
@@ -349,12 +367,8 @@ export interface PaymentRound {
   opened_at: string;
   approved_by: string | null;
   approved_at: string | null;
-  transferred_amount: number | null;
-  transferred_trx_no: string | null;
-  /** The proof that the money moved. A round cannot be marked funded without
-   *  one (D80): "transferred" is a claim about the bank, and a claim about the
-   *  bank with nothing behind it is the same empty stamp the old sheet had. */
-  transferred_proof_id: string | null;
+  /* What was transferred does not live here: a round is funded in as many
+   * instalments as it takes, so the record is the list of them (D82). */
   closed_by: string | null;
   closed_at: string | null;
 }
@@ -459,11 +473,13 @@ export interface RoundSummary {
   round_no: string;
   status: RoundStatus;
   requested_total: number;
-  /** What actually moved, and the ledger row that says so. Null until the
-   *  transfer is recorded — and a funded round still pays nobody (A10). */
-  transferred_amount: number | null;
-  transferred_trx_no: string | null;
-  transferred_proof_id: string | null;
+  /** Every instalment that has landed, and what they add up to. A funded
+   *  round still pays nobody (A10). */
+  transfers: RoundTransfer[];
+  transferred_total: number;
+  /** Requested, less what has actually been transferred in. Zero once the
+   *  round is fully funded; positive while instalments are still owed. */
+  transfer_shortfall: number;
   paying_balance: number;
   to_transfer: number;
   remaining_after_payment: number;

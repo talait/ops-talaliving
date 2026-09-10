@@ -5,7 +5,7 @@ import {
 } from "./reference";
 import {
   PR_DOCUMENTS, PR_LINES, PR_APPROVALS, PAYMENT_ROUNDS, PAYMENT_ROUND_LINES,
-  RECEIPTS, PURCHASE_ORDERS, PO_LINES, PO_SCHEDULE,
+  RECEIPTS, PURCHASE_ORDERS, PO_LINES, PO_SCHEDULE, ROUND_TRANSFERS,
   LINE_VARIANCES, LINE_SETTLEMENTS, LINE_NOTES, APPROVAL_REQUESTS, APPROVAL_BATCHES,
 } from "./pr";
 import {
@@ -39,6 +39,7 @@ export function initialState(): DemoState {
     line_notes: LINE_NOTES,
     approval_requests: APPROVAL_REQUESTS,
     approval_batches: APPROVAL_BATCHES,
+    round_transfers: ROUND_TRANSFERS,
     line_variances: LINE_VARIANCES,
 
     purchase_orders: PURCHASE_ORDERS,

@@ -915,7 +915,6 @@ export async function syncRound(): Promise<Result<RoundView>> {
       draft.payment_rounds.unshift({
         id: roundId, round_no: nextDocNumber(draft, "pay"), status: "OPEN",
         opened_at: new Date().toISOString(), approved_by: null, approved_at: null,
-        transferred_amount: null, transferred_trx_no: null, transferred_proof_id: null,
         closed_by: null, closed_at: null,
       });
     }
@@ -999,8 +998,11 @@ export async function transferRound(
 
   const round = getState().payment_rounds.find((r) => r.round_no === roundNo);
   if (!round) return notFound(SERVICE, "round_not_found", `Round ${roundNo} not found.`);
-  if (round.status !== "APPROVED") {
-    return conflict(SERVICE, "round_not_approved", `Round ${roundNo} is ${round.status}.`);
+  if (round.status !== "APPROVED" && round.status !== "TRANSFERRED") {
+    return conflict(
+      SERVICE, "round_not_approved",
+      `Round ${roundNo} is ${round.status}. A round is funded after it is approved and before it is closed.`,
+    );
   }
   /* No proof, no transfer (D80). "Transferred" is a claim about the bank, and
    * the old sheet's version of that claim was a tick somebody typed. The same
@@ -1012,14 +1014,40 @@ export async function transferRound(
       { field: "proof_attachment_id" },
     );
   }
+  if (input.amount <= 0) {
+    return invalid(SERVICE, "amount_positive", "A transfer of nothing is not a transfer.", { field: "amount" });
+  }
+  /* The same ledger row cannot fund a round twice. Two instalments are two
+   * transactions; one transaction counted twice is money invented (A4). */
+  const already = getState().round_transfers.find(
+    (t) => t.round_id === round.id && t.trx_no === input.trx_no,
+  );
+  if (already) {
+    return conflict(
+      SERVICE, "already_counted",
+      `${input.trx_no} is already recorded against ${roundNo} — nothing changed.`,
+      { amount: already.amount },
+    );
+  }
 
+  const user = actingUser();
   apply((draft) => {
     const r = draft.payment_rounds.find((x) => x.id === round.id)!;
+    /* A round becomes TRANSFERRED on the first instalment: money has moved.
+     * Whether it is fully funded is a number, not a status — the screen shows
+     * the shortfall and more instalments can follow (D82). */
     r.status = "TRANSFERRED";
-    r.transferred_amount = input.amount;
-    r.transferred_trx_no = input.trx_no;
-    r.transferred_proof_id = input.proof_attachment_id;
-    writeAudit(draft, { service: SERVICE, entity: "payment_round", entity_no: roundNo, action: "transfer", outcome: "ok", reason: null });
+    draft.round_transfers.push({
+      id: newId("rtf"), round_id: round.id,
+      amount: input.amount, trx_no: input.trx_no,
+      proof_attachment_id: input.proof_attachment_id,
+      recorded_by: user.id, recorded_by_email: user.email,
+      recorded_at: new Date().toISOString(),
+    });
+    writeAudit(draft, {
+      service: SERVICE, entity: "payment_round", entity_no: roundNo,
+      action: "transfer", outcome: "ok", reason: `${input.trx_no} · ${input.amount}`,
+    });
   });
   const view = roundView(round.id)!;
   remember(SERVICE, `transferRound:${roundNo}`, idempotencyKey, view);

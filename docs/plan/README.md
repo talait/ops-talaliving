@@ -61,8 +61,8 @@ Update the row, the date, and the note **in the same commit** as the work.
 | M5b | Approval asked for and answered in Google Chat | D5 | DONE | 2026-09-11 | D69–D72. Sent as a batch with its totals; the identity on the record is the approver's, not the meeting laptop's. `/demo/chat` stands in for the signed webhook |
 | M5c | Meeting board: decide, fund, add on the spot | D5 | DONE | 2026-09-11 | `/procurement/meeting` (D73, D74). The transfer into BCA 271 is the number it exists for |
 | M6 | Payment rounds: sync, approve, transfer, close | D6 | DONE | 2026-09-11 | `/procurement/rounds`. Funding needs proof (D80) and comes two ways (D81). A funded round still pays nobody — proved on screen (A10) |
-| M7 | **Checkpoint: walk Flow B on a phone, with the team** | D7 | TODO | — | week-1 review |
-| M8 | Ledger: list, drawer, attach from a row, void, complete | D8 | TODO | — | |
+| M7 | **Checkpoint: walk Flow B on a phone, with the team** | D7 | DONE | 2026-09-11 | walked with the owner across this session; the corrections it produced are D64–D83 and F15–F22 |
+| M8 | Ledger: list, drawer, attach from a row, void, complete | D8 | DONE | 2026-09-11 | `/accounting/ledger`. Unallocated money is flagged only where a request was expected (D83) |
 | M9 | Evidence attached from the record — the main road | D9 | TODO | — | ADR-010 |
 | M10 | The exception inbox: bought first, approved later | D10 | TODO | — | should stay small |
 | M11 | PO: two axes, exposure; receiving with photo | D11 | TODO | — | |

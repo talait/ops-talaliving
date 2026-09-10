@@ -398,6 +398,11 @@ export function transactionView(state: DemoState, trx: Transaction): Transaction
     pr_line_nos: state.payment_allocations
       .filter((a) => a.trx_id === trx.id && a.superseded_by === null && a.pr_line_no)
       .map((a) => a.pr_line_no as string),
+    /* Only a purchase is expected to name a request line. Payroll and the
+     * electricity bill are money leaving for reasons nobody raises a PR for,
+     * and flagging them would drown the rows that matter (D83). */
+    expects_allocation: trx.direction === "OUT"
+      && (state.transaction_types.find((t) => t.code === trx.type_code)?.is_purchase ?? false),
   };
 }
 
@@ -470,6 +475,11 @@ export function roundSummary(state: DemoState, roundId: string): RoundSummary {
     }, 0)
     : rows.reduce((s, rl) => s + rl.requested_amount, 0);
 
+  const transfers = state.round_transfers
+    .filter((t) => t.round_id === roundId)
+    .sort((a, b) => byTime(a.recorded_at, b.recorded_at));
+  const transferred_total = transfers.reduce((sum, t) => sum + t.amount, 0);
+
   const paying_balance = accountBalances(state)
     .filter((b) => b.is_paying && b.code === "BCA 271")
     .reduce((s, b) => s + b.balance, 0);
@@ -479,9 +489,11 @@ export function roundSummary(state: DemoState, roundId: string): RoundSummary {
     round_no: round?.round_no ?? "",
     status: round?.status ?? "OPEN",
     requested_total,
-    transferred_amount: round?.transferred_amount ?? null,
-    transferred_trx_no: round?.transferred_trx_no ?? null,
-    transferred_proof_id: round?.transferred_proof_id ?? null,
+    transfers,
+    transferred_total,
+    /* What is still to come IN, not what is still owed to suppliers: a round
+     * can be half funded and fully approved at the same time. */
+    transfer_shortfall: Math.max(requested_total - transferred_total, 0),
     paying_balance,
     /* Never negative, and a shortfall never blocks approval — the balance is
      * information, not a gate. */

@@ -225,6 +225,24 @@ export interface TransactionView extends Transaction {
   has_payment_proof: boolean;
   has_receipt_doc: boolean;
   pr_line_nos: string[];
+  /** Whether money leaving on this row is supposed to point at a request at
+   *  all. Payroll, utilities and bank charges never do; a supplier payment
+   *  always should. Without the distinction the ledger flags two thirds of a
+   *  normal month as a problem, and people learn to ignore the flag (D83). */
+  expects_allocation: boolean;
+}
+
+/** One allocation, with enough of the line to read it without a second call. */
+export interface AllocationView extends PaymentAllocation {
+  line_description: string | null;
+  line_status: string | null;
+}
+
+/** Everything a ledger row is made of, in one call: what it bought, what it
+ *  funded, and what proves it. */
+export interface TransactionDetail extends TransactionView {
+  lines: TransactionLine[];
+  allocations: AllocationView[];
 }
 
 export interface InboxHealth {

@@ -11,7 +11,7 @@ import { StatusPill } from "@/components/ui/status-pill";
 import { formatIDR, formatNumber } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { documents, procurement } from "@/demo/api";
-import type { PrLineView, RoundStatus } from "@/services/procurement/contracts";
+import type { PrLineView, RoundStatus, RoundTransfer } from "@/services/procurement/contracts";
 import { useToast } from "@/store/toast";
 import { useSession } from "@/store/session";
 import { TransferForm } from "./TransferForm";
@@ -265,7 +265,8 @@ export default function RoundsPage() {
                     )}
                   </div>
 
-                  {live.status === "APPROVED" && (
+                  {(live.status === "APPROVED"
+                    || (live.status === "TRANSFERRED" && live.transfer_shortfall > 0)) && (
                     <div className="px-4 py-3">
                       {mayPost ? (
                         <TransferForm round={live} onDone={reload} />
@@ -278,11 +279,11 @@ export default function RoundsPage() {
                     </div>
                   )}
 
-                  {live.transferred_amount != null && (
-                    <TransferredLine
-                      amount={live.transferred_amount}
-                      trxNo={live.transferred_trx_no}
-                      proofId={live.transferred_proof_id}
+                  {live.transfers.length > 0 && (
+                    <TransfersPanel
+                      transfers={live.transfers}
+                      total={live.transferred_total}
+                      shortfall={live.transfer_shortfall}
                     />
                   )}
 
@@ -340,16 +341,15 @@ export default function RoundsPage() {
                       key: "trf",
                       header: "Transferred",
                       align: "right",
-                      render: (r) => r.transferred_amount != null
+                      render: (r) => r.transfers.length > 0
                         ? (
                           <div className="whitespace-nowrap">
-                            <p className="tabular-nums text-slate-700">{formatIDR(r.transferred_amount)}</p>
-                            <p className="font-mono text-[10px] text-slate-400">{r.transferred_trx_no}</p>
-                            {/* Every funded round has one, because it could not
-                                have been funded without it (D80). */}
-                            {r.transferred_proof_id && (
-                              <p className="text-[10px] text-violet-700">proof on file</p>
-                            )}
+                            <p className="tabular-nums text-slate-700">{formatIDR(r.transferred_total)}</p>
+                            {/* Funded in parts more often than not, and every
+                                part carried its own proof (D80, D82). */}
+                            <p className="text-[10px] text-slate-400">
+                              {r.transfers.length} transfer{r.transfers.length > 1 ? "s" : ""} · proof on file
+                            </p>
                           </div>
                         )
                         : <span className="text-slate-300">never funded</span>,
@@ -369,36 +369,55 @@ export default function RoundsPage() {
   );
 }
 
-/** What was transferred, and the document that proves it.
+/** Every instalment that funded this round, and what is still to come.
  *
- *  The filename is fetched rather than stored on the round: the round keeps
- *  the attachment id, and what that file is called is the documents service's
- *  business (ADR-004).
+ *  Leadership sends half on Monday and the rest when a client pays: that is
+ *  the ordinary case, not the exception (D82). Each row carries its own proof
+ *  because each is its own claim about the bank — and the filenames are asked
+ *  of the documents service rather than copied onto the round (ADR-004).
  */
-function TransferredLine({
-  amount, trxNo, proofId,
+function TransfersPanel({
+  transfers, total, shortfall,
 }: {
-  amount: number;
-  trxNo: string | null;
-  proofId: string | null;
+  transfers: RoundTransfer[];
+  total: number;
+  shortfall: number;
 }) {
   const [attachments] = useLoad(() => documents.listAttachments(), []);
-  const proof = attachments.status === "ready"
-    ? attachments.data.find((a) => a.id === proofId)
-    : undefined;
+  const nameOf = (id: string) => attachments.status === "ready"
+    ? attachments.data.find((a) => a.id === id)?.filename ?? null
+    : null;
 
   return (
-    <p className="flex flex-wrap items-center gap-2 px-4 py-2.5 text-[13px] text-slate-600">
-      <ArrowRightLeft className="h-3.5 w-3.5 text-slate-400" />
-      {formatIDR(amount)} transferred · <span className="font-mono text-[12px]">{trxNo}</span>
-      {proof ? (
-        <span className="flex items-center gap-1.5 rounded bg-violet-50 px-2 py-0.5 text-[12px] text-violet-800">
-          <FileText className="h-3.5 w-3.5" />
-          {proof.filename}
-        </span>
-      ) : (
-        <span className="text-[12px] text-amber-700">proof not found</span>
-      )}
-    </p>
+    <div className="border-b border-slate-100 px-4 py-3">
+      <div className="flex flex-wrap items-baseline gap-x-3">
+        <p className="text-[12px] font-semibold uppercase tracking-wide text-slate-500">
+          Funded so far
+        </p>
+        <p className="text-lg font-bold tabular-nums tracking-tight text-slate-800">
+          {formatIDR(total)}
+        </p>
+        {shortfall > 0
+          ? <p className="text-[13px] text-amber-700">{formatIDR(shortfall)} still to come in</p>
+          : <p className="text-[13px] text-emerald-700">fully funded</p>}
+      </div>
+
+      <ul className="mt-2 divide-y divide-slate-100 rounded-lg border border-slate-200">
+        {transfers.map((t) => (
+          <li key={t.id} className="flex flex-wrap items-center gap-2 px-3 py-2 text-[13px]">
+            <ArrowRightLeft className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+            <span className="tabular-nums font-medium text-slate-800">{formatIDR(t.amount)}</span>
+            <span className="font-mono text-[11px] text-slate-500">{t.trx_no}</span>
+            <span className="text-[11px] text-slate-400">
+              {new Date(t.recorded_at).toLocaleString()} · {t.recorded_by_email.split("@")[0]}
+            </span>
+            <span className="ml-auto flex items-center gap-1.5 rounded bg-violet-50 px-2 py-0.5 text-[12px] text-violet-800">
+              <FileText className="h-3.5 w-3.5" />
+              {nameOf(t.proof_attachment_id) ?? "proof on file"}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

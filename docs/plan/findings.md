@@ -901,3 +901,41 @@ ledger row does, not a copy. The proof lives on the transaction that received
 the money, where it can be read on its own; the round keeps only the id, and
 asks the documents service what the file is called.
 
+## F22 — funding comes in instalments, and "unallocated" was crying wolf
+
+Two corrections, both from the same instinct: a screen that is wrong about the
+ordinary case teaches people to ignore it.
+
+**A round is funded more than once.** The model held one
+`transferred_amount` and one proof, so the second instalment had nowhere to go
+— it would have overwritten the first or been left out of the books. Leadership
+sends part on Monday and the rest when a client pays; that is the ordinary
+week, not an exception. The record is now a list (D82): each instalment with
+its own amount, its own ledger row and its own proof, and the round showing
+what has come in against what is still short. The transfer form stays open
+while a shortfall remains and defaults to exactly that shortfall, so the second
+transfer is for the part the first one did not cover.
+
+Two small guards came with it: one `source_ref` per instalment, so a retry of
+the first transfer is still a duplicate while a genuine second transfer is
+allowed; and the same `trx_no` cannot be counted twice against one round —
+two instalments are two transactions, and one transaction counted twice is
+money invented.
+
+**The ledger flagged two thirds of a normal month.** The first draft marked
+every OUT row with unspent allocation as "money pointing at nothing" — 24 of
+34 rows, which included payroll, the electricity bill and the bank charges.
+Nobody raises a purchase request for payroll. Flagged only on types that are
+purchases (`is_purchase`, already in the type table), the count drops to 10 and
+every one of them is a row worth asking about (D83). A flag that fires on the
+normal case is worse than no flag, because it trains the reader to skip it.
+
+**M8 itself was mostly assembly.** The ledger screen needed one new API shape
+— the whole row in one call, lines and allocations included, because a drawer
+that needs three calls renders in three stages — and one new derived field.
+Everything else was already in the service: void with a reason, mark
+completed, allocate against a request line validated at the seam, attach from
+the row. The screen's own contribution is what it puts side by side: what the
+money bought, what it settled, and what proves it, in one place, on the row
+where somebody is already standing.
+

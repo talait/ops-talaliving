@@ -42,6 +42,7 @@ interface DraftLine {
   unit_price: number;
   vendor_id: string;
   category: PrCategory;
+  purpose: string;
   need_by: string;
 }
 
@@ -56,14 +57,13 @@ interface DraftLine {
 const blankLine = (key: string): DraftLine => ({
   key,
   item_id: "", description: "", qty: 1, uom: "pcs",
-  unit_price: 0, vendor_id: "", category: "RAW MATERIAL", need_by: "",
+  unit_price: 0, vendor_id: "", category: "RAW MATERIAL", purpose: "", need_by: "",
 });
 
 export default function NewPurchaseRequestPage() {
   const router = useRouter();
   const { toast } = useToast();
   const [projectId, setProjectId] = useState("");
-  const [purpose, setPurpose] = useState("");
   const lineSeq = useRef(1);
   const [lines, setLines] = useState<DraftLine[]>(() => [blankLine("l1")]);
   const [saving, setSaving] = useState(false);
@@ -122,7 +122,6 @@ export default function NewPurchaseRequestPage() {
     setSaving(true);
     const res = await procurement.createPr({
       project_id: projectId || null,
-      purpose: purpose.trim() || null,
       lines: usable.map((l) => ({
         item_id: l.item_id || null,
         description: l.description.trim(),
@@ -131,6 +130,7 @@ export default function NewPurchaseRequestPage() {
         unit_price: l.unit_price,
         vendor_id: l.vendor_id || null,
         category: l.category,
+        purpose: l.purpose.trim() || null,
         need_by: l.need_by || null,
       })),
     });
@@ -240,6 +240,24 @@ export default function NewPurchaseRequestPage() {
                   </div>
                 </div>
 
+                <div>
+                  <label className="block text-xs text-slate-500" htmlFor={`purpose-${l.key}`}>
+                    What is it for
+                  </label>
+                  <input
+                    id={`purpose-${l.key}`}
+                    value={l.purpose}
+                    onChange={(e) => patch(l.key, { purpose: e.target.value })}
+                    placeholder="e.g. Table tops, VILLA SEMINYAK — kiln-dried only"
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-brand-400 focus:outline-none"
+                  />
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    The one field that turns a price into a decision. Each item can be
+                    for a different job — that is why it lives here and not on the
+                    request as a whole.
+                  </p>
+                </div>
+
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div>
                     <label className="block text-xs text-slate-500">Vendor</label>
@@ -314,16 +332,10 @@ export default function NewPurchaseRequestPage() {
                   ))}
                 </select>
               </div>
-              <div>
-                <label className="block text-xs text-slate-500" htmlFor="pr-purpose">Purpose</label>
-                <input
-                  id="pr-purpose"
-                  value={purpose}
-                  onChange={(e) => setPurpose(e.target.value)}
-                  placeholder="e.g. Finishing HOTEL UBUD, stage 1"
-                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-brand-400 focus:outline-none"
-                />
-              </div>
+              <p className="text-[11px] text-slate-500">
+                A request can hold items for several jobs and several suppliers.
+                What each item is for is written on the item.
+              </p>
             </div>
           </Card>
 

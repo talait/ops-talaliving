@@ -17,42 +17,49 @@ import { itemIdByCode } from "./reference";
  */
 
 export const PR_DOCUMENTS: PrDocument[] = [
-  { id: "doc_06", doc_no: "pr-26-09-10_02", doc_type: "PR", status: "DRAFT", requested_by: "usr_andi", project_id: "prj_25004", purpose: "Weekly sanding and glue consumables", created_at: "2026-09-10T02:15:00+08:00", submitted_at: null },
-  { id: "doc_05", doc_no: "pr-26-09-10_01", doc_type: "PR", status: "SUBMITTED", requested_by: "usr_andi", project_id: "prj_25007", purpose: "Packing for the BABY ISLAND batch", created_at: "2026-09-10T01:05:00+08:00", submitted_at: "2026-09-10T01:40:00+08:00" },
-  { id: "doc_04", doc_no: "pr-26-09-08_01", doc_type: "PR", status: "SUBMITTED", requested_by: "usr_made", project_id: "prj_25009", purpose: "Timber and tooling for VILLA SEMINYAK", created_at: "2026-09-08T09:20:00+08:00", submitted_at: "2026-09-08T10:02:00+08:00" },
-  { id: "doc_03", doc_no: "pr-26-09-04_01", doc_type: "PR", status: "SUBMITTED", requested_by: "usr_andi", project_id: "prj_25011", purpose: "HOTEL UBUD finishing, stage 1", created_at: "2026-09-04T08:30:00+08:00", submitted_at: "2026-09-04T09:00:00+08:00" },
-  { id: "doc_02", doc_no: "pr-26-08-27_01", doc_type: "PR", status: "SUBMITTED", requested_by: "usr_andi", project_id: "prj_25004", purpose: "Panels and grounds maintenance", created_at: "2026-08-27T08:10:00+08:00", submitted_at: "2026-08-27T08:45:00+08:00" },
-  { id: "doc_01", doc_no: "pr-26-08-18_01", doc_type: "PR", status: "CLOSED", requested_by: "usr_made", project_id: "prj_25007", purpose: "Consumables plus veneer deposit, BABY ISLAND", created_at: "2026-08-18T08:00:00+08:00", submitted_at: "2026-08-18T08:35:00+08:00" },
+  { id: "doc_06", doc_no: "pr-26-09-10_02", doc_type: "PR", status: "DRAFT", requested_by: "usr_andi", project_id: "prj_25004", created_at: "2026-09-10T02:15:00+08:00", submitted_at: null },
+  { id: "doc_05", doc_no: "pr-26-09-10_01", doc_type: "PR", status: "SUBMITTED", requested_by: "usr_andi", project_id: "prj_25007", created_at: "2026-09-10T01:05:00+08:00", submitted_at: "2026-09-10T01:40:00+08:00" },
+  { id: "doc_04", doc_no: "pr-26-09-08_01", doc_type: "PR", status: "SUBMITTED", requested_by: "usr_made", project_id: "prj_25009", created_at: "2026-09-08T09:20:00+08:00", submitted_at: "2026-09-08T10:02:00+08:00" },
+  { id: "doc_03", doc_no: "pr-26-09-04_01", doc_type: "PR", status: "SUBMITTED", requested_by: "usr_andi", project_id: "prj_25011", created_at: "2026-09-04T08:30:00+08:00", submitted_at: "2026-09-04T09:00:00+08:00" },
+  { id: "doc_02", doc_no: "pr-26-08-27_01", doc_type: "PR", status: "SUBMITTED", requested_by: "usr_andi", project_id: "prj_25004", created_at: "2026-08-27T08:10:00+08:00", submitted_at: "2026-08-27T08:45:00+08:00" },
+  { id: "doc_01", doc_no: "pr-26-08-18_01", doc_type: "PR", status: "CLOSED", requested_by: "usr_made", project_id: "prj_25007", created_at: "2026-08-18T08:00:00+08:00", submitted_at: "2026-08-18T08:35:00+08:00" },
 ];
 
 type LineSeed = [
   string, string, number, string | null, string, number | null, UomCode | null,
-  number | null, string | null, PrCategory | null, string | null,
+  number | null, string | null, PrCategory | null, string | null, string | null,
 ];
 
-/* doc_id, id, line_no, item_code, description, qty, uom, unit_price, vendor, category, need_by */
+/* doc_id, id, line_no, item_code, description, qty, uom, unit_price, vendor,
+   category, need_by, purpose */
 const LINE_SEEDS: LineSeed[] = [
-  ["doc_06", "prl_0601", 1, "ITM-0014", "AMPLAS 240 GRIT", 200, "lembar", 8_000, "vnd_07", "SANDING", "2026-09-18"],
-  ["doc_06", "prl_0602", 2, "ITM-0022", "LEM PUTIH FOX 5 KG", 6, "pack", 230_000, "vnd_03", "FINISHING", "2026-09-18"],
+  ["doc_06", "prl_0601", 1, "ITM-0014", "AMPLAS 240 GRIT", 200, "lembar", 8_000, "vnd_07", "SANDING", "2026-09-18", "Weekly sanding stock, workshop floor"],
+  ["doc_06", "prl_0602", 2, "ITM-0022", "LEM PUTIH FOX 5 KG", 6, "pack", 230_000, "vnd_03", "FINISHING", "2026-09-18", "Laminating panels — BABY ISLAND wardrobes"],
 
-  ["doc_05", "prl_0501", 1, "ITM-0033", "BUBBLE WRAP 125CM", 4, "roll", 428_000, "vnd_09", "PACKING", "2026-09-20"],
-  ["doc_05", "prl_0502", 2, "ITM-0032", "KARDUS DOUBLE WALL 60X40X40", 150, "pcs", 28_500, "vnd_09", "PACKING", "2026-09-20"],
-  ["doc_05", "prl_0503", 3, "ITM-0034", "STRETCH FILM 500MM", 10, "roll", 96_000, "vnd_09", "PACKING", "2026-09-20"],
+  ["doc_05", "prl_0501", 1, "ITM-0033", "BUBBLE WRAP 125CM", 4, "roll", 428_000, "vnd_09", "PACKING", "2026-09-20", "Wrapping finished units before shipping"],
+  ["doc_05", "prl_0502", 2, "ITM-0032", "KARDUS DOUBLE WALL 60X40X40", 150, "pcs", 28_500, "vnd_09", "PACKING", "2026-09-20", "Export cartons for the BABY ISLAND batch"],
+  ["doc_05", "prl_0503", 3, "ITM-0034", "STRETCH FILM 500MM", 10, "roll", 96_000, "vnd_09", "PACKING", "2026-09-20", "Pallet wrapping, same shipment"],
 
-  ["doc_04", "prl_0401", 1, "ITM-0001", "KAYU JATI SORTIMEN A", 1.2, "m3", 18_900_000, "vnd_01", "RAW MATERIAL", "2026-09-22"],
-  ["doc_04", "prl_0402", 2, "ITM-0006", "PAPAN JATI KERING 3CM", 30, "lembar", 640_000, "vnd_01", "RAW MATERIAL", "2026-09-22"],
-  ["doc_04", "prl_0403", 3, "ITM-0030", "PISAU PLANER 300MM", 2, "set", 435_000, "vnd_05", "MACHINING", "2026-09-30"],
-  ["doc_04", "prl_0404", 4, "ITM-0029", "MATA BOR SET HSS", 1, "set", 285_000, "vnd_05", "MACHINING", null],
+  ["doc_04", "prl_0401", 1, "ITM-0001", "KAYU JATI SORTIMEN A", 1.2, "m3", 18_900_000, "vnd_01", "RAW MATERIAL", "2026-09-22", "Main frames — VILLA SEMINYAK dining set"],
+  ["doc_04", "prl_0402", 2, "ITM-0006", "PAPAN JATI KERING 3CM", 30, "lembar", 640_000, "vnd_01", "RAW MATERIAL", "2026-09-22", "Table tops, VILLA SEMINYAK. Kiln-dried only"],
+  ["doc_04", "prl_0403", 3, "ITM-0030", "PISAU PLANER 300MM", 2, "set", 435_000, "vnd_05", "MACHINING", "2026-09-30", "Replacement blades — the current set is chipped"],
+  ["doc_04", "prl_0404", 4, "ITM-0029", "MATA BOR SET HSS", 1, "set", 285_000, "vnd_05", "MACHINING", null, "Spare drill set for the second bench"],
 
-  ["doc_03", "prl_0301", 1, "ITM-0017", "CAT DUCO PUTIH", 60, "ltr", 168_000, "vnd_04", "FINISHING", "2026-09-16"],
-  ["doc_03", "prl_0302", 2, "ITM-0018", "THINNER ND SUPER", 100, "ltr", 33_500, "vnd_04", "FINISHING", "2026-09-16"],
+  ["doc_03", "prl_0301", 1, "ITM-0017", "CAT DUCO PUTIH", 60, "ltr", 168_000, "vnd_04", "FINISHING", "2026-09-16", "Carcass finishing, HOTEL UBUD stage 1"],
+  ["doc_03", "prl_0302", 2, "ITM-0018", "THINNER ND SUPER", 100, "ltr", 33_500, "vnd_04", "FINISHING", "2026-09-16", "Thinner for the same finishing run"],
 
-  ["doc_02", "prl_0201", 1, "ITM-0007", "PLYWOOD 18MM 122X244", 40, "lembar", 292_000, "vnd_03", "RAW MATERIAL", "2026-09-02"],
-  ["doc_02", "prl_0202", 2, "ITM-0039", "JASA POTONG RUMPUT HALAMAN", null, null, null, "vnd_10", "OTHER", null],
+  ["doc_02", "prl_0201", 1, "ITM-0007", "PLYWOOD 18MM 122X244", 40, "lembar", 292_000, "vnd_03", "RAW MATERIAL", "2026-09-02", "Drawer bottoms and backing panels, STANDARD"],
+  ["doc_02", "prl_0202", 2, "ITM-0039", "JASA POTONG RUMPUT HALAMAN", null, null, null, "vnd_10", "OTHER", null, "Monthly grounds maintenance at the workshop"],
 
-  ["doc_01", "prl_0101", 1, "ITM-0013", "AMPLAS 120 GRIT", 500, "lembar", 7_650, "vnd_07", "SANDING", "2026-08-25"],
-  ["doc_01", "prl_0102", 2, "ITM-0024", "ENGSEL SENDOK HUBEN", 300, "pcs", 18_500, "vnd_02", "MACHINING", "2026-08-25"],
-  ["doc_01", "prl_0103", 3, null, "30% deposit, veneer and HPL PO — po-26-08-14_01", null, null, null, "vnd_08", "RAW MATERIAL", null],
+  /* Bought first, approved never. The state a leadership meeting most needs to
+   * see, and the whole reason it gets its own corner rather than being folded
+   * into "in progress". Without an example in the fixtures the board would
+   * teach that this cannot happen — and it is exactly what does. */
+  ["doc_02", "prl_0203", 3, "ITM-0027", "SEKRUP GYPSUM 1 INCH", 2, "box", 47_500, "vnd_03", "OTHER", null, "Bench repair — bought the same afternoon, no PR raised first"],
+
+  ["doc_01", "prl_0101", 1, "ITM-0013", "AMPLAS 120 GRIT", 500, "lembar", 7_650, "vnd_07", "SANDING", "2026-08-25", "Sanding stock for the BABY ISLAND batch"],
+  ["doc_01", "prl_0102", 2, "ITM-0024", "ENGSEL SENDOK HUBEN", 300, "pcs", 18_500, "vnd_02", "MACHINING", "2026-08-25", "Wardrobe doors — 300 hinges, BABY ISLAND"],
+  ["doc_01", "prl_0103", 3, null, "30% deposit, veneer and HPL PO — po-26-08-14_01", null, null, null, "vnd_08", "RAW MATERIAL", null, "Deposit so INDO VENEER starts cutting"],
 ];
 
 const DOC_NO: Record<string, string> = Object.fromEntries(
@@ -66,7 +73,7 @@ const FIXED_TOTAL: Record<string, number> = {
 };
 
 export const PR_LINES: PrLine[] = LINE_SEEDS.map(
-  ([doc_id, id, line_no, item_code, description, qty, uom, unit_price, vendor_id, category, need_by]) => ({
+  ([doc_id, id, line_no, item_code, description, qty, uom, unit_price, vendor_id, category, need_by, purpose]) => ({
     id,
     doc_id,
     line_no,
@@ -85,6 +92,7 @@ export const PR_LINES: PrLine[] = LINE_SEEDS.map(
     po_line_id: null,
     category,
     need_by,
+    purpose,
     /* Removed because it is no longer needed — no deadline, nothing ages out.
      * Soft, and it can never be paid (D29). */
     removed_at: id === "prl_0404" ? "2026-09-09T11:20:00+08:00" : null,

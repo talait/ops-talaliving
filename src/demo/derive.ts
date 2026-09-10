@@ -14,7 +14,7 @@ import type { DemoState } from "./state";
 import type {
   PrLine, PrApproval, LineStatus, LineCoverage, PrLineView,
   PoStatusView, RoundSummary, PaymentRound,
-  PurchaseFact, CategoryCount, VendorItemSummary, ItemSource,
+  PurchaseFact, CategoryCount, VendorItemSummary, ItemSource, MeetingState,
 } from "@/services/procurement/contracts";
 import { COUNTING_CONDITIONS, PROBLEM_CONDITIONS } from "@/services/procurement/contracts";
 import type {
@@ -190,21 +190,65 @@ export function lineStatus(state: DemoState, line: PrLine): LineStatus {
   return "WAITING FOR APPROVAL";
 }
 
+/** Approved-or-not against paid-or-not. Two independent facts, four
+ *  combinations, and the interesting one is the corner where money moved
+ *  without a yes — which is exactly the corner a single "in progress" status
+ *  would hide (A1). */
+export function meetingState(state: DemoState, line: PrLine): MeetingState {
+  const approved = isApproved(state, line.id);
+  const paid = lineCoverage(state, line).covered > 0;
+  if (approved && paid) return "settled";
+  if (approved) return "approved_unpaid";
+  if (paid) return "paid_unapproved";
+  return "neither";
+}
+
 export function prLineView(state: DemoState, line: PrLine): PrLineView {
   const doc = state.pr_documents.find((d) => d.id === line.doc_id);
   const vendor = state.vendors.find((v) => v.id === line.vendor_id);
   const item = state.items.find((i) => i.id === line.item_id);
+  const links = state.attachment_links.filter(
+    (l) => l.entity === "pr_line" && l.entity_no === line.line_no_full,
+  );
+  const kinds = lineEvidenceKinds(state, line);
   return {
     ...line,
     status: lineStatus(state, line),
+    meeting_state: meetingState(state, line),
     coverage: lineCoverage(state, line),
     approval: currentApproval(state, line.id),
     doc_no: doc?.doc_no ?? "",
+    requested_by_name: state.users.find((u) => u.id === doc?.requested_by)?.full_name ?? "—",
+    project_code: state.projects.find((p) => p.id === doc?.project_id)?.code ?? null,
+    submitted_at: doc?.submitted_at ?? null,
     vendor_name: vendor?.name ?? null,
     item_name: item?.name ?? null,
     received_qty: receivedQty(state, line),
     has_problem_receipt: hasProblemReceipt(state, line),
+    evidence_count: links.length,
+    has_payment_proof: kinds.has("Payment Proof"),
   };
+}
+
+/** Every line that is still someone's problem, across every document.
+ *
+ *  This is the view the whole redefinition turns on. A line does not belong to
+ *  the meeting it first appeared in — it stays here until it is settled or
+ *  removed, so "it comes back at the next meeting" needs no machinery at all.
+ *  The old system moved unpaid lines into a fresh document to make them
+ *  reappear; that existed because the surface was a spreadsheet with one tab
+ *  per submission. With a line-first board there is nothing to carry forward.
+ */
+export function openLines(state: DemoState): PrLineView[] {
+  return state.pr_lines
+    .filter((line) => {
+      const doc = state.pr_documents.find((d) => d.id === line.doc_id);
+      if (!doc || doc.status === "DRAFT" || doc.status === "CANCELLED") return false;
+      return !line.removed_at;
+    })
+    .map((line) => prLineView(state, line))
+    .filter((l) => l.status !== "COMPLETED")
+    .sort((a, b) => (b.submitted_at ?? "").localeCompare(a.submitted_at ?? ""));
 }
 
 /** The standing queue (D21): every submitted line that is neither approved nor

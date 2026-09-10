@@ -2,128 +2,141 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ClipboardList, Plus, FileText, Trash2, Send } from "lucide-react";
-import { Badge, Button, Card, CardHeader, PageHeader, Progress, StatCard } from "@/components/ui/primitives";
+import {
+  ClipboardList, Plus, CheckCircle2, Clock, AlertTriangle, Circle, FileText,
+} from "lucide-react";
+import { Button, Card, CardHeader, PageHeader } from "@/components/ui/primitives";
 import { DataTable, type Column } from "@/components/ui/data-table";
-import { Drawer } from "@/components/ui/drawer";
 import { Loaded, SourceBadge, useLoad } from "@/components/ui/loaded";
 import { StatusPill } from "@/components/ui/status-pill";
 import { formatIDR, formatNumber } from "@/lib/format";
-import { procurement } from "@/demo/api";
-import type { PrDocumentView } from "@/demo/api/procurement";
-import { LINE_STATUSES, type LineStatus } from "@/services/procurement/contracts";
 import { cn } from "@/lib/cn";
+import { procurement } from "@/demo/api";
+import {
+  MEETING_STATE_LABEL, type PrLineView, type MeetingState,
+} from "@/services/procurement/contracts";
 import { useToast } from "@/store/toast";
 import { useSession } from "@/store/session";
+import { LineDrawer } from "./LineDrawer";
 
-/** Purchase requests.
+/** The requests board.
  *
- *  A document is a container; the LINE is the unit that matters. Each line
- *  carries its own status, its own approval and its own money, and the document
- *  is only how they arrived together. That is why the drawer lists lines with
- *  their own pills rather than showing one status for the document — a PR with
- *  one line paid and one line still waiting has no single honest status.
+ *  A purchase request is a collection of items somebody wants to buy — from as
+ *  many suppliers as it takes — and the ITEM is what everyone actually tracks.
+ *  So this page lists lines, not documents (owner, 2026-09-11).
+ *
+ *  The consequence worth noticing: a line stays here until it is settled or
+ *  removed, so "it comes back at the next leadership meeting" needs no
+ *  machinery. The old system moved unpaid lines into a fresh document to make
+ *  them reappear, because its surface was a spreadsheet with one tab per
+ *  submission. Nothing has to be carried forward when nothing was ever
+ *  filed away.
  */
-export default function PurchaseRequestsPage() {
+
+const STATE_META: Record<MeetingState, { icon: typeof Circle; tone: string; ring: string }> = {
+  settled: { icon: CheckCircle2, tone: "text-emerald-600", ring: "ring-emerald-200 bg-emerald-50" },
+  approved_unpaid: { icon: Clock, tone: "text-brand-600", ring: "ring-brand-200 bg-brand-50" },
+  paid_unapproved: { icon: AlertTriangle, tone: "text-rose-600", ring: "ring-rose-200 bg-rose-50" },
+  neither: { icon: Circle, tone: "text-amber-600", ring: "ring-amber-200 bg-amber-50" },
+};
+
+const STATE_ORDER: MeetingState[] = ["neither", "approved_unpaid", "paid_unapproved", "settled"];
+
+export default function RequestsBoardPage() {
   const { can } = useSession();
   const { toast } = useToast();
   const [q, setQ] = useState("");
-  const [status, setStatus] = useState<"" | LineStatus>("");
-  const [selected, setSelected] = useState<PrDocumentView | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [stateFilter, setStateFilter] = useState<MeetingState | "">("");
+  const [showSettled, setShowSettled] = useState(false);
+  const [selected, setSelected] = useState<PrLineView | null>(null);
 
-  const [state, reload] = useLoad(() => procurement.listPr(), []);
+  const [lines, reload] = useLoad(
+    () => (showSettled ? procurement.listAllLines() : procurement.listOpenLines()),
+    [showSettled],
+  );
   const mayEdit = can("procurement.create");
 
-  function matches(d: PrDocumentView) {
-    if (status && !d.lines.some((l) => l.status === status)) return false;
+  function matches(l: PrLineView) {
+    if (stateFilter && l.meeting_state !== stateFilter) return false;
     if (!q) return true;
-    const needle = q.toLowerCase();
-    return d.doc_no.toLowerCase().includes(needle)
-      || (d.purpose ?? "").toLowerCase().includes(needle)
-      || d.requested_by_name.toLowerCase().includes(needle)
-      || d.lines.some((l) => l.description.toLowerCase().includes(needle));
+    const n = q.toLowerCase();
+    return l.description.toLowerCase().includes(n)
+      || (l.purpose ?? "").toLowerCase().includes(n)
+      || (l.vendor_name ?? "").toLowerCase().includes(n)
+      || l.line_no_full.toLowerCase().includes(n)
+      || l.requested_by_name.toLowerCase().includes(n);
   }
 
-  async function submit(d: PrDocumentView) {
-    setBusy(true);
-    const res = await procurement.submitPr(d.doc_no, `submit-${d.doc_no}`);
-    setBusy(false);
-    if (res.error) { toast(res.error.status === 409 ? "warning" : "critical", "Not submitted", res.error.message); return; }
-    toast("success", "Submitted", `${d.doc_no} is now waiting for approval.`);
-    setSelected(res.data);
+  async function removeLine(l: PrLineView) {
+    const res = await procurement.removeLine({ line_no: l.line_no_full });
+    if (res.error) { toast("warning", "Not removed", res.error.message); return; }
+    toast("success", "Removed", `${l.line_no_full} is no longer needed.`);
+    setSelected(null);
     reload();
   }
 
-  async function removeLine(lineNo: string) {
-    const res = await procurement.removeLine({ line_no: lineNo });
-    if (res.error) {
-      /* 409 here is the guard doing its job, not a failure: money has reached
-         the line, and what applies then is a return or a credit. */
-      toast("warning", "Not removed", res.error.message);
-      return;
-    }
-    toast("success", "Line removed", `${lineNo} is no longer needed.`);
-    const refreshed = await procurement.getPr(selected!.doc_no);
-    if (refreshed.data) setSelected(refreshed.data);
-    reload();
-  }
-
-  const columns: Column<PrDocumentView>[] = [
+  const columns: Column<PrLineView>[] = [
     {
-      key: "doc",
-      header: "Document",
-      render: (d) => (
-        <div>
-          <p className="font-mono text-[13px] font-semibold text-brand-700">{d.doc_no}</p>
-          <p className="text-xs text-slate-500">{d.requested_by_name}</p>
+      key: "item",
+      header: "Item",
+      className: "whitespace-normal",
+      render: (l) => (
+        <div className="max-w-[250px]">
+          <p className="font-medium text-slate-800">{l.description}</p>
+          {/* The purpose is the reason this row is scannable at all. Without it
+              a board of 40 lines is 40 prices and no decisions. */}
+          {l.purpose && <p className="mt-0.5 text-[13px] text-slate-500">{l.purpose}</p>}
+          <p className="mt-0.5 font-mono text-[10px] text-slate-400">
+            {l.line_no_full} · {l.requested_by_name}
+            {l.project_code && ` · ${l.project_code}`}
+          </p>
         </div>
       ),
     },
     {
-      key: "purpose",
-      header: "Purpose",
-      className: "max-w-[260px] whitespace-normal",
-      render: (d) => (
-        <div>
-          <p className="text-slate-700">{d.purpose ?? "—"}</p>
-          {d.project_code && <p className="text-[11px] text-slate-400">Project {d.project_code}</p>}
+      key: "vendor",
+      header: "Vendor",
+      className: "whitespace-normal",
+      render: (l) => (
+        <div className="max-w-[130px]">
+          {l.vendor_name
+            ? <span className="text-[13px] text-slate-600">{l.vendor_name}</span>
+            : <span className="text-slate-300">not decided</span>}
         </div>
       ),
     },
-    { key: "lines", header: "Lines", align: "right", render: (d) => formatNumber(d.lines.length) },
     {
-      key: "requested",
-      header: "Requested",
+      key: "qty",
+      header: "Qty",
       align: "right",
-      render: (d) => <span className="tabular-nums">{formatIDR(d.requested_total)}</span>,
+      render: (l) => l.qty != null
+        ? <span className="whitespace-nowrap text-[13px] text-slate-600">{formatNumber(l.qty)} {l.uom}</span>
+        : <span className="text-slate-300">—</span>,
     },
     {
-      key: "approved",
-      header: "Approved",
+      key: "amount",
+      header: "Amount",
       align: "right",
-      render: (d) =>
-        d.approved_total > 0
-          ? <span className="tabular-nums font-medium text-slate-800">{formatIDR(d.approved_total)}</span>
-          : <span className="text-slate-300">—</span>,
+      render: (l) => (
+        <div>
+          <p className="tabular-nums font-medium text-slate-800">{formatIDR(l.item_total)}</p>
+          {l.approval?.approved && l.approval.approved_amount !== l.item_total && (
+            <p className="text-[11px] text-brand-700">approved {formatIDR(l.approval.approved_amount ?? 0)}</p>
+          )}
+        </div>
+      ),
     },
     {
-      key: "state",
-      header: "Lines by status",
-      className: "max-w-[240px] whitespace-normal",
-      render: (d) => {
-        const counts = new Map<LineStatus, number>();
-        for (const l of d.lines) counts.set(l.status, (counts.get(l.status) ?? 0) + 1);
-        return (
-          <span className="flex flex-wrap gap-1">
-            {[...counts.entries()].map(([s, n]) => (
-              <span key={s} className="inline-flex">
-                <StatusPill kind="line" status={n > 1 ? `${s} · ${n}` : s} />
-              </span>
-            ))}
-          </span>
-        );
-      },
+      key: "status",
+      header: "Status",
+      render: (l) => (
+        <div className="space-y-1">
+          <StatusPill kind="line" status={l.status} />
+          {l.coverage.covered > 0 && !l.coverage.settled && (
+            <p className="text-[11px] text-slate-500">{formatIDR(l.coverage.remaining)} still owed</p>
+          )}
+        </div>
+      ),
     },
   ];
 
@@ -131,63 +144,95 @@ export default function PurchaseRequestsPage() {
     <div>
       <PageHeader
         breadcrumb="Procurement"
-        title="Purchase Requests"
-        description="What people have asked to buy. A document groups lines that arrived together; each line carries its own status, approval and money."
+        title="Requests"
+        description="Everything anyone has asked to buy that is not finished yet — across every submission and every supplier. An item stays on this board until it is settled or no longer needed."
         actions={
-          mayEdit && (
-            <Link href="/procurement/pr/new">
-              <Button icon={Plus}>New request</Button>
+          <>
+            <Link href="/procurement/pr/documents">
+              <Button variant="outline" icon={FileText}>Submissions</Button>
             </Link>
-          )
+            {mayEdit && (
+              <Link href="/procurement/pr/new">
+                <Button icon={Plus}>New request</Button>
+              </Link>
+            )}
+          </>
         }
       />
 
-      <Loaded state={state} onRetry={reload}>
-        {(docs) => {
-          const rows = docs.filter(matches);
-          const allLines = docs.flatMap((d) => d.lines);
-          const waiting = allLines.filter((l) => l.status === "WAITING FOR APPROVAL");
+      <Loaded state={lines} onRetry={reload}>
+        {(all) => {
+          const counts = STATE_ORDER.map((s) => ({
+            state: s,
+            rows: all.filter((l) => l.meeting_state === s),
+          }));
+          const rows = all.filter(matches);
           return (
             <>
-              <div className="mb-6 grid gap-4 sm:grid-cols-3">
-                <StatCard label="Documents" value={docs.length} icon={FileText} hint={`${allLines.length} lines`} />
-                <StatCard
-                  label="Waiting for approval"
-                  value={waiting.length}
-                  icon={ClipboardList}
-                  tone="amber"
-                  hint={formatIDR(waiting.reduce((s, l) => s + l.item_total, 0))}
-                />
-                <StatCard
-                  label="Requested in total"
-                  value={formatIDR(allLines.reduce((s, l) => s + l.item_total, 0))}
-                  icon={FileText}
-                  tone="brand"
-                />
+              {/* The four questions a leadership meeting actually asks, in the
+                  order they get asked. Each one filters the board. */}
+              <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                {counts.map(({ state, rows: r }) => {
+                  const meta = STATE_META[state];
+                  const Icon = meta.icon;
+                  const active = stateFilter === state;
+                  return (
+                    <button
+                      key={state}
+                      onClick={() => setStateFilter(active ? "" : state)}
+                      className={cn(
+                        "rounded-xl border bg-white px-4 py-4 text-left shadow-card transition-colors",
+                        active ? "border-brand-400 ring-2 ring-brand-100" : "border-slate-200 hover:border-slate-300",
+                      )}
+                    >
+                      <span className={cn("flex h-9 w-9 items-center justify-center rounded-lg ring-1 ring-inset", meta.ring)}>
+                        <Icon className={cn("h-4 w-4", meta.tone)} />
+                      </span>
+                      <p className="mt-3 text-2xl font-bold tracking-tight text-slate-800">{r.length}</p>
+                      <p className="text-sm text-slate-600">{MEETING_STATE_LABEL[state]}</p>
+                      <p className="mt-1 tabular-nums text-xs text-slate-400">
+                        {formatIDR(r.reduce((s, l) => s + l.item_total, 0))}
+                      </p>
+                    </button>
+                  );
+                })}
               </div>
+
+              {counts.find((c) => c.state === "paid_unapproved")!.rows.length > 0 && (
+                <div className="mb-5 flex items-start gap-3 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" />
+                  <p className="text-[13px] text-rose-800">
+                    <strong>Money moved before anyone approved it</strong> on{" "}
+                    {counts.find((c) => c.state === "paid_unapproved")!.rows.length} line(s).
+                    Kept in its own corner on purpose — folding it in with everything
+                    else in progress is exactly how it stays invisible.
+                  </p>
+                </div>
+              )}
 
               <Card>
                 <CardHeader
-                  title="All requests"
-                  subtitle="Filter by line status — a document is shown when any of its lines matches."
+                  title={stateFilter ? MEETING_STATE_LABEL[stateFilter] : "All open items"}
+                  subtitle="One row per item, not per document. An item from last month's submission sits beside one from today, because that is how it will be discussed."
                   icon={ClipboardList}
                   action={
                     <div className="flex flex-wrap items-center gap-2">
-                      <SourceBadge state={state} />
-                      <select
-                        id="pr-status"
-                        value={status}
-                        onChange={(e) => setStatus(e.target.value as LineStatus | "")}
-                        className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-700 focus:border-brand-400 focus:outline-none"
-                      >
-                        <option value="">Any status</option>
-                        {LINE_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-                      </select>
+                      <SourceBadge state={lines} />
+                      <label className="flex items-center gap-1.5 text-xs text-slate-500">
+                        <input
+                          id="show-settled"
+                          type="checkbox"
+                          checked={showSettled}
+                          onChange={(e) => setShowSettled(e.target.checked)}
+                          className="h-3.5 w-3.5 rounded border-slate-300"
+                        />
+                        Include finished
+                      </label>
                       <input
-                        id="pr-search"
+                        id="line-search"
                         value={q}
                         onChange={(e) => setQ(e.target.value)}
-                        placeholder="Document, item, requester…"
+                        placeholder="Item, purpose, vendor…"
                         className="h-9 w-44 rounded-lg border border-slate-200 px-3 text-sm text-slate-700 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none"
                       />
                     </div>
@@ -196,9 +241,9 @@ export default function PurchaseRequestsPage() {
                 <DataTable
                   columns={columns}
                   rows={rows}
-                  rowKey={(d) => d.id}
+                  rowKey={(l) => l.id}
                   onRowClick={setSelected}
-                  empty={q || status ? "Nothing matches those filters." : "No requests yet."}
+                  empty={q || stateFilter ? "Nothing matches those filters." : "Nothing outstanding."}
                 />
               </Card>
             </>
@@ -206,114 +251,12 @@ export default function PurchaseRequestsPage() {
         }}
       </Loaded>
 
-      <Drawer
-        open={!!selected}
+      <LineDrawer
+        line={selected}
         onClose={() => setSelected(null)}
-        title={selected?.doc_no ?? ""}
-        subtitle={selected ? `${selected.requested_by_name} · ${selected.status}` : undefined}
-        width="max-w-2xl"
-        footer={
-          selected && mayEdit && selected.status === "DRAFT" ? (
-            <div className="flex justify-end">
-              <Button size="sm" icon={Send} onClick={() => submit(selected)} disabled={busy}>
-                {busy ? "Submitting…" : "Submit for approval"}
-              </Button>
-            </div>
-          ) : null
-        }
-      >
-        {selected && (
-          <div className="space-y-5 text-sm">
-            <dl className="grid grid-cols-2 gap-3">
-              {([
-                ["Purpose", selected.purpose ?? "—"],
-                ["Project", selected.project_code ?? "—"],
-                ["Requested", formatIDR(selected.requested_total)],
-                ["Approved", selected.approved_total > 0 ? formatIDR(selected.approved_total) : "—"],
-              ] as [string, string][]).map(([k, v]) => (
-                <div key={k} className="rounded-lg border border-slate-200 px-3 py-2">
-                  <dt className="text-xs text-slate-400">{k}</dt>
-                  <dd className="mt-0.5 font-medium text-slate-800">{v}</dd>
-                </div>
-              ))}
-            </dl>
-
-            {selected.status === "DRAFT" && (
-              <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-[13px] text-amber-800">
-                Still a draft. Nothing has been asked of anyone yet — it appears in
-                nobody&rsquo;s approval queue until it is submitted.
-              </p>
-            )}
-
-            <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Lines
-              </p>
-              <div className="space-y-2">
-                {selected.lines.map((l) => {
-                  const cov = l.coverage;
-                  const pct = cov.approved > 0 ? (cov.covered / cov.approved) * 100 : 0;
-                  return (
-                    <div
-                      key={l.id}
-                      className={cn(
-                        "rounded-lg border px-3 py-3",
-                        l.removed_at ? "border-slate-200 bg-slate-50/70 opacity-70" : "border-slate-200",
-                      )}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="font-mono text-[11px] text-slate-400">{l.line_no_full}</p>
-                          <p className={cn("font-medium text-slate-800", l.removed_at && "line-through")}>
-                            {l.description}
-                          </p>
-                          <p className="text-xs text-slate-500">
-                            {l.qty != null ? `${formatNumber(l.qty)} ${l.uom ?? ""} × ${formatIDR(l.unit_price ?? 0)}` : "no quantity"}
-                            {l.vendor_name && ` · ${l.vendor_name}`}
-                          </p>
-                        </div>
-                        <div className="shrink-0 text-right">
-                          <p className="tabular-nums font-semibold text-slate-800">{formatIDR(l.item_total)}</p>
-                          {l.approval?.approved && l.approval.approved_amount !== l.item_total && (
-                            <p className="text-[11px] text-brand-700">
-                              approved {formatIDR(l.approval.approved_amount ?? 0)}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="mt-2.5 flex flex-wrap items-center gap-2">
-                        <StatusPill kind="line" status={l.status} />
-                        {l.received_qty > 0 && l.qty != null && (
-                          <Badge tone="slate">received {formatNumber(l.received_qty)} of {formatNumber(l.qty)}</Badge>
-                        )}
-                        {mayEdit && !l.removed_at && (
-                          <button
-                            onClick={() => removeLine(l.line_no_full)}
-                            className="ml-auto inline-flex items-center gap-1 text-[11px] text-slate-400 transition-colors hover:text-rose-600"
-                          >
-                            <Trash2 className="h-3 w-3" /> No longer needed
-                          </button>
-                        )}
-                      </div>
-
-                      {cov.covered > 0 && (
-                        <div className="mt-2.5">
-                          <Progress value={pct} tone={cov.settled ? "green" : "amber"} />
-                          <p className="mt-1 text-[11px] text-slate-500">
-                            {formatIDR(cov.covered)} of {formatIDR(cov.approved)} covered
-                            {cov.remaining > 0 && ` · ${formatIDR(cov.remaining)} still owed`}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        )}
-      </Drawer>
+        onChanged={(l) => { setSelected(l); reload(); }}
+        onRemove={removeLine}
+      />
     </div>
   );
 }

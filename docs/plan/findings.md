@@ -533,3 +533,52 @@ of the vendor knows more than the record does.
 the sentence under the total — *a draft is in nobody's queue; submitting is
 what puts these lines in front of the CEO*. Saving and asking are different
 acts, and nothing in the data model was going to tell anyone that.
+
+## F12 · 2026-09-11 · the request was redefined, and the model got smaller
+
+**The owner restated what a purchase request is.** A collection of items
+somebody wants to buy, possibly from several suppliers in one request. Items
+not yet approved, not yet paid, not yet received must be visible on one page.
+Rather than issuing requests document by document, treat the line as the thing
+that persists and reappears at the next leadership meeting. And leadership must
+be able to see which items are approved, and which were **paid without being
+approved**.
+
+**M4 had already walked into the same conclusion from the other direction**
+(F11: "the document is a container; the line is the unit"). Building the screen
+found the shape; the owner named it. That is the frontend-first bet paying out
+in the way it was supposed to.
+
+**The redefinition made the model smaller, not larger.** Three things went
+away:
+
+1. **`pr_documents.purpose` is gone.** A request holding items for three jobs
+   cannot have one purpose without lying about two of them. Moved to the line,
+   where it is the most useful field on the row — "2 pail lem putih" is a cost;
+   "2 pail lem putih — laminating meja HOTEL UBUD" is a decision.
+2. **Carry-forward will never be built.** The recap describes MOVE TO NEW PR,
+   CARRY and RETRO — machinery for making an unpaid line reappear in a later
+   document. It existed because the surface was a spreadsheet with one tab per
+   submission, so a line that was not in this month's tab was invisible. On a
+   line-first board a line simply stays until it is settled or removed. It
+   reappears at the next meeting by never having left. An entire subsystem
+   deleted by changing where the list starts.
+3. **The meeting board arrived seven milestones early**, because once the board
+   is line-first, the four states are just a grouping of what is already there.
+
+**The state that mattered had no example.** "Paid, not approved" read zero,
+because nothing in the fixtures had money against an unapproved line. A demo
+whose most important corner is always empty teaches that the corner cannot
+happen — and it is exactly what does happen. One seeded line (petty cash, bench
+repair, bought the same afternoon) and the board now says what it is for.
+
+**Two gaps the owner named, both real:** a draft could not be edited, and a
+line waiting for payment could not receive its evidence. Both were "designed
+and unreachable", the same shape as F9. The definition-of-done clause added
+then would have caught them — it is now being applied to lines as well as
+fields.
+
+**A layout bug worth remembering.** `max-width` on a `<td>` is advisory under
+auto table layout: the purpose text ran straight through the Vendor column.
+The constraint has to sit on an element *inside* the cell. Fits exactly at
+1280 now.

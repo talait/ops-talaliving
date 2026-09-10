@@ -103,6 +103,10 @@ export const PAYMENT_ALLOCATIONS: PaymentAllocation[] = [
   { id: "alc_02", trx_id: trxIdByNo("trx-26-08-21_001"), pr_line_no: "pr-26-08-18_01-L02", po_no: null, amount: 5_550_000, method: "transfer", superseded_by: null, allocated_by: "usr_putri", allocated_at: "2026-08-21T16:10:00+08:00" },
   { id: "alc_03", trx_id: trxIdByNo("trx-26-08-21_002"), pr_line_no: "pr-26-08-18_01-L03", po_no: "po-26-08-14_01", amount: 19_668_000, method: "transfer", superseded_by: null, allocated_by: "usr_putri", allocated_at: "2026-08-21T16:12:00+08:00" },
   { id: "alc_04", trx_id: trxIdByNo("trx-26-08-29_002"), pr_line_no: "pr-26-08-27_01-L01", po_no: null, amount: 11_680_000, method: "transfer", superseded_by: null, allocated_by: "usr_anggun", allocated_at: "2026-08-29T16:20:00+08:00" },
+  /* Cash out of petty cash against a line nobody had approved. The allocation
+   * is real, so the coverage is real, so the board shows it — which is the
+   * point (A6: warn, never hide). */
+  { id: "alc_06", trx_id: trxIdByNo("trx-26-08-22_001"), pr_line_no: "pr-26-08-27_01-L03", po_no: null, amount: 95_000, method: "cash", superseded_by: null, allocated_by: "usr_anggun", allocated_at: "2026-08-22T17:00:00+08:00" },
   { id: "alc_05", trx_id: trxIdByNo("trx-26-08-29_003"), pr_line_no: "pr-26-08-27_01-L02", po_no: null, amount: 350_000, method: "cash", superseded_by: null, allocated_by: "usr_anggun", allocated_at: "2026-08-29T16:22:00+08:00" },
 ];
 

@@ -166,6 +166,14 @@ export interface Project {
 /* PR chain                                                            */
 /* ------------------------------------------------------------------ */
 
+/** A submission batch, not a subject.
+ *
+ *  A document records that these lines arrived together on a given day from a
+ *  given person. It carries no purpose of its own, because a request can hold
+ *  items for three different jobs from three different suppliers, and a single
+ *  "purpose" on the container would have to be a lie about at least two of
+ *  them (owner, 2026-09-11). What each item is for belongs to the item.
+ */
 export interface PrDocument {
   id: string;
   doc_no: string;
@@ -173,7 +181,6 @@ export interface PrDocument {
   status: PrDocStatus;
   requested_by: string;
   project_id: string | null;
-  purpose: string | null;
   created_at: string;
   submitted_at: string | null;
 }
@@ -194,6 +201,10 @@ export interface PrLine {
   vendor_id: string | null;
   po_line_id: string | null;
   category: PrCategory | null;
+  /** What this item is FOR, in the requester's words. The single most useful
+   *  field on the line for whoever has to approve it: "2 pail lem putih" is a
+   *  cost, "2 pail lem putih — laminating meja HOTEL UBUD" is a decision. */
+  purpose: string | null;
   need_by: string | null;
   /** Removal is soft and audited (D29). Refused once money has reached it. */
   removed_at: string | null;
@@ -337,6 +348,26 @@ export interface RoundSummary {
 
 /** What the approval queue and the PR list hand a screen: the line, plus
  *  everything derived from it, in one object so nothing is recomputed twice. */
+/** The four states a leadership meeting sorts by — and the reason the middle
+ *  two are kept apart rather than merged into "in progress".
+ *
+ *  `paid_unapproved` is the one that matters: money left before anyone said
+ *  yes. Folding it in with the others is precisely how that used to stay
+ *  invisible (A1, and the recap's own meeting board).
+ */
+export type MeetingState =
+  | "settled"          // approved and paid
+  | "approved_unpaid"  // said yes, money has not moved
+  | "paid_unapproved"  // money moved, nobody said yes
+  | "neither";         // still just a request
+
+export const MEETING_STATE_LABEL: Record<MeetingState, string> = {
+  settled: "Settled",
+  approved_unpaid: "Approved, not paid",
+  paid_unapproved: "Paid, not approved",
+  neither: "Waiting for approval",
+};
+
 /** One purchase fact, from wherever it can be found. The single derivation
  *  behind both directions of the question: what do we buy from this vendor,
  *  and who do we buy this item from. */
@@ -407,6 +438,12 @@ export interface ItemView extends Item {
 
 export interface PrLineView extends PrLine {
   status: LineStatus;
+  meeting_state: MeetingState;
+  requested_by_name: string;
+  project_code: string | null;
+  submitted_at: string | null;
+  evidence_count: number;
+  has_payment_proof: boolean;
   coverage: LineCoverage;
   approval: PrApproval | null;
   doc_no: string;

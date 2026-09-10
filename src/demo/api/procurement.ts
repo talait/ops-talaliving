@@ -6,12 +6,13 @@ import type {
   PurchaseOrder, PoLine, PoStatusView, Receipt, ReceiptCondition, PrCategory, UomCode,
   VendorView, ItemView,
 } from "@/services/procurement/contracts";
+import type { PrLine as PrLineRow } from "@/services/procurement/contracts";
 import { PROBLEM_CONDITIONS } from "@/services/procurement/contracts";
 import { LOCALE } from "@/lib/format";
 import { getState, apply, newId, nextDocNumber, writeAudit, writeOutbox } from "../store";
 import {
   prLineView, approvalQueue, lineCoverage, roundSummary, poStatus, isApproved,
-  boughtCategories, itemsBoughtFrom, itemSources, purchaseFacts,
+  boughtCategories, itemsBoughtFrom, itemSources, purchaseFacts, openLines,
 } from "../derive";
 import {
   latency, actingUser, requireAuthority, conflict, replayed, remember, paged,
@@ -106,6 +107,25 @@ export interface PrDocumentView extends PrDocument {
   approved_total: number;
 }
 
+/** The board: every open line, everywhere. */
+export async function listOpenLines(): Promise<Result<PrLineView[]>> {
+  await latency();
+  return ok(SERVICE, openLines(getState()));
+}
+
+/** Every line including settled ones, for the "show everything" view. */
+export async function listAllLines(): Promise<Result<PrLineView[]>> {
+  await latency();
+  const state = getState();
+  return ok(SERVICE, state.pr_lines
+    .filter((l) => {
+      const doc = state.pr_documents.find((d) => d.id === l.doc_id);
+      return doc && doc.status !== "CANCELLED";
+    })
+    .map((l) => prLineView(state, l))
+    .sort((a, b) => (b.submitted_at ?? b.doc_no).localeCompare(a.submitted_at ?? a.doc_no)));
+}
+
 function docView(docId: string): PrDocumentView | null {
   const state = getState();
   const doc = state.pr_documents.find((d) => d.id === docId);
@@ -149,11 +169,12 @@ export interface NewLineInput {
   item_total?: number | null;
   vendor_id?: string | null;
   category?: PrCategory | null;
+  purpose?: string | null;
   need_by?: string | null;
 }
 
 export async function createPr(
-  input: { project_id?: string | null; purpose?: string | null; lines: NewLineInput[] },
+  input: { project_id?: string | null; lines: NewLineInput[] },
   idempotencyKey?: string,
 ): Promise<Result<PrDocumentView>> {
   await latency();
@@ -169,7 +190,7 @@ export async function createPr(
     draft.pr_documents.push({
       id: docId, doc_no: docNo, doc_type: "PR", status: "DRAFT",
       requested_by: user.id, project_id: input.project_id ?? null,
-      purpose: input.purpose ?? null, created_at: new Date().toISOString(), submitted_at: null,
+      created_at: new Date().toISOString(), submitted_at: null,
     });
     input.lines.forEach((l, i) => {
       const lineNo = i + 1;
@@ -180,7 +201,8 @@ export async function createPr(
         qty: l.qty ?? null, uom: l.uom ?? null, unit_price: l.unit_price ?? null,
         item_total: l.item_total ?? Math.round((l.qty ?? 0) * (l.unit_price ?? 0)),
         vendor_id: l.vendor_id ?? null, po_line_id: null,
-        category: l.category ?? null, need_by: l.need_by ?? null,
+        category: l.category ?? null, purpose: l.purpose ?? null,
+        need_by: l.need_by ?? null,
         removed_at: null, removed_by: null,
       });
     });
@@ -871,4 +893,72 @@ export async function whereToBuy(query: string): Promise<Result<ItemView[]>> {
     .map((i) => itemView(state, i))
     .filter((i) => i.sourced_from.length > 0);
   return ok(SERVICE, rows);
+}
+
+/* ------------------------------------------------------------------ */
+/* Draft editing                                                       */
+/* ------------------------------------------------------------------ */
+
+/** Change a line while its document is still a draft.
+ *
+ *  Only while DRAFT. Once submitted, a line is something other people have
+ *  looked at and possibly decided on, and editing it in place would rewrite
+ *  what they saw. After that the routes are: the CEO reduces the approved
+ *  amount, or the requester removes the line and asks again.
+ */
+export async function updateDraftLine(
+  lineNo: string,
+  input: Partial<Pick<PrLineRow,
+    "description" | "qty" | "uom" | "unit_price" | "vendor_id" | "category" | "purpose" | "need_by" | "item_id">>,
+): Promise<Result<PrLineView>> {
+  await latency();
+  const state = getState();
+  const line = state.pr_lines.find((l) => l.line_no_full === lineNo);
+  if (!line) return notFound(SERVICE, "line_not_found", `Line ${lineNo} not found.`);
+  const doc = state.pr_documents.find((d) => d.id === line.doc_id);
+  if (doc?.status !== "DRAFT") {
+    return conflict(
+      SERVICE, "not_a_draft",
+      `${doc?.doc_no} has already been submitted. Reduce the approved amount, or remove the line and ask again — editing it now would rewrite what the approver saw.`,
+    );
+  }
+
+  apply((draft) => {
+    const l = draft.pr_lines.find((x) => x.id === line.id)!;
+    Object.assign(l, input);
+    l.item_total = Math.round((l.qty ?? 0) * (l.unit_price ?? 0));
+    writeAudit(draft, { service: SERVICE, entity: "pr_line", entity_no: lineNo, action: "edit_draft", outcome: "ok", reason: null });
+  });
+  return ok(SERVICE, prLineView(getState(), getState().pr_lines.find((l) => l.id === line.id)!));
+}
+
+export async function addDraftLine(docNo: string, input: NewLineInput): Promise<Result<PrLineView>> {
+  await latency();
+  const state = getState();
+  const doc = state.pr_documents.find((d) => d.doc_no === docNo);
+  if (!doc) return notFound(SERVICE, "pr_not_found", `Document ${docNo} not found.`);
+  if (doc.status !== "DRAFT") {
+    return conflict(SERVICE, "not_a_draft", `${docNo} has already been submitted.`);
+  }
+  if (!input.description?.trim()) {
+    return invalid(SERVICE, "description_required", "A line needs a description.", { field: "description" });
+  }
+
+  let newId_ = "";
+  apply((draft) => {
+    const lineNo = draft.pr_lines.filter((l) => l.doc_id === doc.id).length + 1;
+    newId_ = newId("prl");
+    draft.pr_lines.push({
+      id: newId_, doc_id: doc.id, line_no: lineNo,
+      line_no_full: `${docNo}-L${String(lineNo).padStart(2, "0")}`,
+      item_id: input.item_id ?? null, description: input.description.trim(),
+      qty: input.qty ?? null, uom: input.uom ?? null, unit_price: input.unit_price ?? null,
+      item_total: input.item_total ?? Math.round((input.qty ?? 0) * (input.unit_price ?? 0)),
+      vendor_id: input.vendor_id ?? null, po_line_id: null,
+      category: input.category ?? null, purpose: input.purpose ?? null,
+      need_by: input.need_by ?? null, removed_at: null, removed_by: null,
+    });
+    writeAudit(draft, { service: SERVICE, entity: "pr_line", entity_no: docNo, action: "add_draft_line", outcome: "ok", reason: null });
+  });
+  return ok(SERVICE, prLineView(getState(), getState().pr_lines.find((l) => l.id === newId_)!));
 }

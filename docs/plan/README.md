@@ -67,7 +67,7 @@ Update the row, the date, and the note **in the same commit** as the work.
 | M10 | The exception inbox: bought first, approved later | D10 | DONE | 2026-09-11 | `/accounting/verifikasi`, five roads, nothing discarded. Reject is the road that never reaches the ledger (D94) |
 | M11 | Purchase tracker: obligations across every vendor, two axes per supplier, receiving with both documents | D11 | DONE | 2026-09-11 | `/procurement/tracker` — total obligations at the top, settled vendors split off (D102), a full-width page per supplier (D103) with orders, payments, deliveries and *billable now* (D97–D99). Orders placed from here (D100); a delivery needs photo **and** tanda terima, receiver and QC (D101) |
 | M12a | Liquidation: one transfer in, and where it went | D12 | DONE | 2026-09-11 | `/accounting/liquidation` — per transfer, not per month (D106). Cashflow dropped: the ledger already is it (D108) |
-| M12b | Payment calendar: 12 months, projected against actual, with due dates | D12 | TODO | — | recurring bills carry the day they are due, so it budgets and reminds at once (owner, 2026-09-11) |
+| M12b | Payment calendar: 12 months, projected against actual, with due dates | D12 | DONE | 2026-09-11 | `/accounting/calendar` — one estimate per line with the day it is due (D109), *not in the plan* reconciles it to the ledger (D111), and the verdict names the month the money runs out. On the demo's own numbers: December |
 | M13 | Polish: phone, empty states, refusals, demo reset | D13 | TODO | — | |
 | M14 | **Walkthrough + findings → the schema we actually need** | D14 | TODO | — | the payoff |
 

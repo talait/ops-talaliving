@@ -748,6 +748,70 @@ already encodes exactly that — but the owner's call is to complete them by
 hand for now and turn the rule on once we have watched which types really
 never get a delivery. The column exists so that switch is a data change.
 
+### The payment calendar (new, M12b)
+
+Three small tables, and the reason they are tables rather than a spreadsheet
+is that two of them are decisions somebody has to be able to read back.
+
+```sql
+create table acct.cash_component (
+  id            uuid primary key default gen_random_uuid(),
+  name          text not null,
+  direction     acct.direction not null,
+  amount_idr    bigint not null check (amount_idr > 0),
+  due_day       smallint not null check (due_day between 1 and 31),
+  -- how the plan finds what actually happened; unique so no ledger row is
+  -- claimed twice (D110)
+  type_code     text references acct.transaction_type(code),
+  vendor_id     uuid references procure.vendor(id),
+  account_id    uuid references acct.account(id),
+  starts_on     char(7) not null,          -- YYYY-MM
+  ends_on       char(7),
+  note          text,
+  active        boolean not null default true,
+  created_by    uuid not null references core.app_user(id),
+  created_at    timestamptz not null default now()
+);
+create unique index cash_component_category_uq
+  on acct.cash_component (type_code, coalesce(vendor_id, '00000000-0000-0000-0000-000000000000'::uuid))
+  where active and type_code is not null;
+
+create table acct.cash_override (          -- one month that differs (D109)
+  id            uuid primary key default gen_random_uuid(),
+  component_id  uuid not null references acct.cash_component(id),
+  month         char(7) not null,
+  amount_idr    bigint,                    -- null = not this month
+  due_day       smallint check (due_day between 1 and 31),
+  reason        text not null,             -- required, always
+  recorded_by   uuid not null references core.app_user(id),
+  recorded_at   timestamptz not null default now(),
+  unique (component_id, month)
+);
+
+create table acct.cash_settlement (        -- "that row was this bill"
+  id            uuid primary key default gen_random_uuid(),
+  component_id  uuid not null references acct.cash_component(id),
+  month         char(7) not null,
+  trx_id        uuid not null unique references acct.transaction(id),
+  recorded_by   uuid not null references core.app_user(id),
+  recorded_at   timestamptz not null default now()
+);
+```
+
+`due_day` is a day, not a date, because the thing being described repeats. The
+view clamps it: the 31st of a 30-day month is the 30th, since a reminder needs
+a date that exists.
+
+What is **not** here: a `cash_plan` table. The plan is `v_cash_plan`, computed
+from these three plus the ledger, because a stored projection is a number that
+disagrees with the ledger the moment anybody posts (A3).
+
+The gap this schema exposes is in `procure.po_schedule`: its terms fire on an
+event (`on_issue`, `on_delivery`), so Rp 156.892.000 of real supplier
+obligations carry no date and no month can hold them (F30). Phase 2 adds
+`expected_date` there — the date we *think* it lands, distinct from the rule
+that makes it due.
+
 ---
 
 ## Evidence: the main road and the exception road

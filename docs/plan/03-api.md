@@ -190,6 +190,24 @@ PO and receiving:
 exist is a 422 with the line number echoed — not a text field written
 hopefully and validated by a sweep three hours later.
 
+Liquidation:
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/fundings` | every transfer of operating money into an account that pays people, newest first, with how long each one lasted (D106) |
+| GET | `/fundings/{trx_no}` | one transfer: the balance before it, every row that left before the next transfer arrived with the transfer counting down, and the split by type, vendor and project |
+
+Payment calendar:
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/cash/plan` | twelve months from the current one: every recurring line, planned against actual, the *not in the plan* row, and the month the money runs out. Computed, never stored (A3) |
+| GET | `/cash/due` | the next three weeks and anything already late, by due date — the reminder half (D109) |
+| POST | `/cash/components` | `{name, direction, amount, due_day, type_code?, vendor_id?, account_id?}`. **409 when another active line already claims that category** (D110) — two lines on one category means no ledger row can say which it paid |
+| PATCH | `/cash/components/{id}` | estimate, day, name, or `active: false` to take it off the calendar. The audit row carries before and after |
+| PUT | `/cash/components/{id}/months/{month}` | one month that differs. **422 without a reason** — in three months nobody remembers why one cell is bigger |
+| POST | `/cash/settlements` | `{component_id, month, trx_no}` — naming the ledger row that paid a bill. **409 if that row is already named by another line.** The calendar never posts a transaction: money is recorded in the ledger, with its evidence, and named here afterwards (D112) |
+
 ## `documents`
 
 | Method | Path | Notes |

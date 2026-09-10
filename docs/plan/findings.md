@@ -1190,3 +1190,39 @@ And one hole worth naming: an unclassified transaction type was skipping the
 `is_purchase ?? false`. Unknown types are normal here (Q10 keeps `EJO` as-is),
 so the default was an exemption nobody asked for — Rp 2,48 juta of PACKING sat
 outside the check. Now unknown means expected (D107).
+
+## F30 — the plan cannot hold the obligations we already know about
+
+The payment calendar works, and the first thing it printed was uncomfortable:
+on the estimates the business itself supplied, the money runs out in **December
+2026**, Rp 21 juta short, and every month after that is worse. Rp 150 juta in,
+about Rp 173 juta out. That is the whole point of the screen — nobody could
+see it before, because the bills lived in one person's head and the ledger
+only looks backwards.
+
+But it holds less than it should, and the reason is a schema gap.
+
+**`po_schedule` has no expected date.** Its terms fire on an event —
+`on_issue`, `on_delivery` — which is correct as a *rule* and useless as a
+*date*. Of eight terms in the demo, exactly one carries a real date. So Rp
+156.892.000 of supplier obligations cannot be placed in any month, and the
+calendar states that under the verdict rather than spreading it evenly to make
+the chart tidy. Phase 2 adds `expected_date` beside the rule: what we think
+lands when, distinct from what makes it due.
+
+Two smaller things the build settled:
+
+**A part-paid bill is not a finished bill.** The first version of the forecast
+counted only rows that had not been paid at all this month, so payroll — half
+paid on the 9th — fell out of September entirely and the month looked Rp 17
+juta cheaper than it is. Now the current month carries `planned − actual`,
+floored at zero. The general form: *partly done* is a state, and code that
+branches on *done / not done* will get it wrong in whichever direction is
+worse.
+
+**Category matching is a guess and has to look like one.** The plan finds
+actuals by transaction type, which is right often enough to be useful and
+wrong often enough to be dangerous. So a matched figure shows as `≈ Rp 8,5 M`,
+a linked one shows plainly, and one ledger row can only ever be claimed by one
+line (D110). Two lines on `RECCURING - PAYROLL` would have shown the same Rp
+61 juta twice, in a number somebody was about to make a decision on.

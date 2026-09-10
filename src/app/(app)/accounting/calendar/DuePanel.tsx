@@ -1,0 +1,150 @@
+"use client";
+
+import { useState } from "react";
+import { Bell, Link2 } from "lucide-react";
+import { Badge, Button, Card, CardHeader } from "@/components/ui/primitives";
+import { Modal } from "@/components/ui/drawer";
+import { Loaded, useLoad } from "@/components/ui/loaded";
+import { formatIDR } from "@/lib/format";
+import { cn } from "@/lib/cn";
+import { accounting } from "@/demo/api";
+import type { CashDue } from "@/services/accounting/contracts";
+import { useToast } from "@/store/toast";
+
+/** The reminder half of the calendar.
+ *
+ *  A budget nobody looks at on the 24th is a document; the same list, sorted
+ *  by the day each bill falls due, is the thing that gets the electricity
+ *  paid. Overdue first, because that is the one that costs money.
+ */
+export function DuePanel({ onChanged }: { onChanged: () => void }) {
+  const [due, reload] = useLoad(() => accounting.listDue(), []);
+  const [linking, setLinking] = useState<CashDue | null>(null);
+
+  return (
+    <>
+      <Card className="mb-4">
+        <CardHeader
+          title="Due next"
+          subtitle="The next three weeks, and anything already late. Sorted by the day it falls due."
+          icon={Bell}
+        />
+        <Loaded state={due} onRetry={reload}>
+          {(rows) => rows.length === 0 ? (
+            <p className="px-5 py-6 text-[13px] text-slate-500">Nothing falls due in the next three weeks.</p>
+          ) : (
+            <ul className="divide-y divide-slate-100">
+              {rows.map((d) => (
+                <li key={`${d.component_id}:${d.month}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-5 py-2.5">
+                  <span className="w-[86px] shrink-0 font-mono text-[12px] text-slate-500">{d.due_date}</span>
+                  <span className="min-w-[180px] flex-1 text-[13px] font-medium text-slate-800">
+                    {d.name}
+                    {d.vendor_name && <span className="font-normal text-slate-500"> · {d.vendor_name}</span>}
+                  </span>
+                  <span className={cn(
+                    "w-[120px] text-right text-[13px] tabular-nums",
+                    d.direction === "IN" ? "text-emerald-700" : "text-slate-800",
+                  )}>
+                    {d.direction === "IN" ? "+ " : ""}{formatIDR(d.planned)}
+                  </span>
+                  <DueBadge d={d} />
+                  {d.direction === "OUT" && (
+                    <Button variant="ghost" size="sm" icon={Link2} onClick={() => setLinking(d)}>
+                      Link a payment
+                    </Button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </Loaded>
+      </Card>
+
+      {linking && (
+        <LinkPayment
+          due={linking}
+          onClose={() => setLinking(null)}
+          onLinked={() => { setLinking(null); reload(); onChanged(); }}
+        />
+      )}
+    </>
+  );
+}
+
+function DueBadge({ d }: { d: CashDue }) {
+  if (d.state === "OVERDUE") {
+    return <Badge tone="red">{d.days_away === 0 ? "due today" : `${Math.abs(d.days_away)} day(s) late`}</Badge>;
+  }
+  if (d.state === "PARTIAL") {
+    return <Badge tone="amber">part paid — {formatIDR(d.actual)} so far</Badge>;
+  }
+  if (d.days_away === 0) return <Badge tone="amber">due today</Badge>;
+  return <Badge tone={d.days_away <= 7 ? "amber" : "slate"}>in {d.days_away} day(s)</Badge>;
+}
+
+/** Pointing at the ledger row that paid a bill.
+ *
+ *  The calendar guesses by category, and says when it is guessing. This is how
+ *  somebody replaces the guess with a fact — and the ledger stays the only
+ *  place a payment is recorded, because a calendar that could post its own
+ *  transactions would be a second books nobody reconciles. */
+function LinkPayment({ due, onClose, onLinked }: { due: CashDue; onClose: () => void; onLinked: () => void }) {
+  const { toast } = useToast();
+  const [rows] = useLoad(() => accounting.listTransactions({ limit: 200 }), []);
+  const [busy, setBusy] = useState(false);
+
+  async function link(trxNo: string) {
+    setBusy(true);
+    const res = await accounting.linkPayment({
+      component_id: due.component_id, month: due.month, trx_no: trxNo,
+    });
+    setBusy(false);
+    if (res.error) {
+      toast(res.error.status === 409 ? "warning" : "critical", "Not linked", res.error.message);
+      return;
+    }
+    toast("success", "Linked", `${trxNo} now counts against ${due.name}.`);
+    onLinked();
+  }
+
+  return (
+    <Modal open onClose={onClose} width="max-w-2xl" title={`Which row paid ${due.name}?`}>
+      <p className="mb-3 text-[13px] text-slate-600">
+        {due.month} · planned {formatIDR(due.planned)}. Only rows already in the
+        ledger appear here — a payment is recorded there, with its evidence,
+        and named here afterwards.
+      </p>
+      <Loaded state={rows} onRetry={() => {}}>
+        {(all) => {
+          const candidates = all.filter(
+            (t) => t.direction === "OUT" && t.trx_date.startsWith(due.month),
+          );
+          return candidates.length === 0 ? (
+            <p className="text-[13px] text-amber-700">
+              Nothing left an account in {due.month} yet. Post the payment in the
+              ledger first, then come back and name it here.
+            </p>
+          ) : (
+            <ul className="divide-y divide-slate-100">
+              {candidates.map((t) => (
+                <li key={t.trx_no} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
+                  <span className="w-[86px] shrink-0 font-mono text-[11px] text-slate-500">{t.trx_date}</span>
+                  <span className="min-w-[200px] flex-1 text-[13px] text-slate-700">
+                    {t.description}
+                    <span className="block text-[11px] text-slate-500">
+                      {t.type_code} · {t.account_code}
+                    </span>
+                  </span>
+                  <span className="tabular-nums text-[13px] text-slate-800">{formatIDR(t.amount_idr)}</span>
+                  <Button size="sm" variant="outline" disabled={busy} onClick={() => link(t.trx_no)}>
+                    This one
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          );
+        }}
+      </Loaded>
+    </Modal>
+  );
+}

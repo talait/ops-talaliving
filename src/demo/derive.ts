@@ -21,6 +21,8 @@ import { COUNTING_CONDITIONS, PROBLEM_CONDITIONS } from "@/services/procurement/
 import type {
   Transaction, AccountBalance, TransactionView, InboxHealth,
   FundingView, FundingDetail, FundingSpendGroup, FundingSpendRow,
+  CashPlan, CashRow, CashCell, CashCellState, CashMonth, CashUnplanned, CashDue,
+  CashComponent, Transaction as TrxRow,
 } from "@/services/accounting/contracts";
 import type { DocKind } from "@/services/documents/contracts";
 import { LOCALE } from "@/lib/format";
@@ -966,4 +968,246 @@ export function fundings(state: DemoState): FundingView[] {
       return view as FundingView;
     })
     .reverse();
+}
+
+/* ------------------------------------------------------------------ */
+/* Payment calendar — twelve months, planned against actual            */
+/* ------------------------------------------------------------------ */
+
+const monthKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+const daysInMonth = (month: string) => {
+  const [y, m] = month.split("-").map(Number);
+  return new Date(y, m, 0).getDate();
+};
+/** The 31st of a 30-day month is the 30th. A due date that does not exist is
+ *  a date nobody can be reminded on. */
+const dueDateOf = (month: string, day: number) =>
+  `${month}-${String(Math.min(day, daysInMonth(month))).padStart(2, "0")}`;
+
+const monthLabel = (month: string) => {
+  const [y, m] = month.split("-").map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString(LOCALE, { month: "short", year: "numeric" });
+};
+
+/** Twelve months starting with the one we are in. */
+function planMonths(from: Date, count = 12): string[] {
+  const out: string[] = [];
+  const d = new Date(from.getFullYear(), from.getMonth(), 1);
+  for (let i = 0; i < count; i += 1) {
+    out.push(monthKey(d));
+    d.setMonth(d.getMonth() + 1);
+  }
+  return out;
+}
+
+const inMonth = (t: TrxRow, month: string) => t.trx_date.startsWith(month);
+
+/** Does this ledger row look like this component's category?
+ *
+ *  A guess, and the screen labels it as one. A component with a vendor is the
+ *  narrower claim and wins; a category with no component behind it lands in
+ *  "not in the plan" rather than being quietly absorbed.
+ */
+function matchesComponent(c: CashComponent, t: TrxRow): boolean {
+  if (t.status === "VOID") return false;
+  if (t.direction !== c.direction) return false;
+  if (c.type_code !== null && t.type_code !== c.type_code) return false;
+  if (c.vendor_id !== null && t.vendor_id !== c.vendor_id) return false;
+  return true;
+}
+
+function activeIn(c: CashComponent, month: string): boolean {
+  if (!c.active) return false;
+  if (month < c.starts_on) return false;
+  if (c.ends_on !== null && month > c.ends_on) return false;
+  return true;
+}
+
+/** The accounts the business actually pays out of. Leadership's account is
+ *  not one of them: money sitting there has not been given to operations yet,
+ *  and counting it would make every month look survivable. */
+function payingAccountIds(state: DemoState): Set<string> {
+  return new Set(
+    state.accounts.filter((a) => a.custody === "accounting" && a.is_active).map((a) => a.id),
+  );
+}
+
+export function cashPlan(state: DemoState, now = new Date()): CashPlan {
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const months = planMonths(now);
+  const current = months[0];
+  const paying = payingAccountIds(state);
+  const ledger = state.transactions.filter((t) => t.status !== "VOID" && paying.has(t.account_id));
+
+  /* Cash as it is right now, across the accounts that pay people. Everything
+     below is that number moving forward. */
+  const opening_cash = accountBalances(state)
+    .filter((a) => paying.has(a.account_id))
+    .reduce((s, a) => s + a.balance, 0);
+
+  /* Rows a component has claimed, so "not in the plan" cannot count them twice. */
+  const claimed = new Set<string>();
+
+  const rows: CashRow[] = state.cash_components
+    .filter((c) => c.active)
+    .map((c) => {
+      const cells: CashCell[] = months.map((month) => {
+        const override = state.cash_overrides.find(
+          (o) => o.component_id === c.id && o.month === month,
+        );
+        const live = activeIn(c, month);
+        const skipped = !live || (override !== undefined && override.amount === null);
+        const planned = skipped ? 0 : override?.amount ?? c.amount;
+        const due_date = dueDateOf(month, override?.due_day ?? c.due_day);
+
+        const linked = state.cash_settlements.filter(
+          (st) => st.component_id === c.id && st.month === month,
+        );
+        const linkedRows = linked
+          .map((st) => ledger.find((t) => t.trx_no === st.trx_no))
+          .filter((t): t is TrxRow => !!t);
+
+        const guessed = linkedRows.length > 0
+          ? []
+          : ledger.filter((t) => inMonth(t, month) && matchesComponent(c, t) && !claimed.has(t.trx_no));
+
+        const hits = linkedRows.length > 0 ? linkedRows : guessed;
+        hits.forEach((t) => claimed.add(t.trx_no));
+        const actual = hits.reduce((s, t) => s + t.amount_idr, 0);
+
+        const future = month > current || (month === current && due_date > today);
+        let cellState: CashCellState;
+        if (skipped) cellState = "SKIPPED";
+        else if (actual >= planned - PAYMENT_TOLERANCE_IDR && actual > 0) cellState = "PAID";
+        else if (actual > 0) cellState = "PARTIAL";
+        else if (due_date < today) cellState = "OVERDUE";
+        else if (!future) cellState = "DUE";
+        else cellState = daysBetween(today, due_date) <= 7 ? "DUE" : "PLANNED";
+
+        return {
+          month,
+          due_date,
+          planned,
+          actual,
+          matched_by: hits.length === 0 ? null : linkedRows.length > 0 ? "linked" : "category",
+          trx_nos: hits.map((t) => t.trx_no),
+          state: cellState,
+          overridden: override !== undefined,
+          reason: override?.reason ?? null,
+        };
+      });
+
+      return {
+        component: c,
+        vendor_name: state.vendors.find((v) => v.id === c.vendor_id)?.name ?? null,
+        account_code: state.accounts.find((a) => a.id === c.account_id)?.code ?? null,
+        cells,
+        planned_total: cells.reduce((s, x) => s + x.planned, 0),
+        actual_total: cells.reduce((s, x) => s + x.actual, 0),
+      };
+    });
+
+  /* Everything that actually left in a month with nothing in the plan claiming
+     it. A plan that does not reconcile to the ledger is fiction (D111). */
+  const unplanned: CashUnplanned[] = months.map((month) => {
+    const loose = ledger.filter(
+      (t) => t.direction === "OUT" && inMonth(t, month) && !claimed.has(t.trx_no),
+    );
+    const byType = new Map<string, number>();
+    loose.forEach((t) => byType.set(t.type_code, (byType.get(t.type_code) ?? 0) + t.amount_idr));
+    return {
+      month,
+      amount: loose.reduce((s, t) => s + t.amount_idr, 0),
+      trx_nos: loose.map((t) => t.trx_no),
+      top_types: [...byType.entries()]
+        .map(([type_code, amount]) => ({ type_code, amount }))
+        .sort((a, b) => b.amount - a.amount)
+        .slice(0, 3),
+    };
+  });
+
+  /* Running cash. The month we are in counts only what is still ahead of
+     today — what already happened is in the opening balance. */
+  let running = opening_cash;
+  const monthViews: CashMonth[] = months.map((month, i) => {
+    const cells = rows.map((r) => ({ row: r, cell: r.cells[i] }));
+    /* The month we are in counts only what is *still to happen*: what already
+       left is in the opening balance. A part-paid bill keeps its remainder —
+       dropping the whole line because half of it went out would forecast a
+       month that cannot happen. */
+    const stillToCome = (c: CashCell) =>
+      month === current ? Math.max(c.planned - c.actual, 0) : c.planned;
+
+    const planned_in = cells
+      .filter((x) => x.row.component.direction === "IN")
+      .reduce((s, x) => s + stillToCome(x.cell), 0);
+    const planned_out = cells
+      .filter((x) => x.row.component.direction === "OUT")
+      .reduce((s, x) => s + stillToCome(x.cell), 0);
+
+    running += planned_in - planned_out;
+
+    const actualRows = ledger.filter((t) => inMonth(t, month));
+    return {
+      month,
+      label: monthLabel(month),
+      is_past: month < current,
+      is_current: month === current,
+      planned_in,
+      planned_out,
+      actual_in: actualRows.filter((t) => t.direction === "IN").reduce((s, t) => s + t.amount_idr, 0),
+      actual_out: actualRows.filter((t) => t.direction === "OUT").reduce((s, t) => s + t.amount_idr, 0),
+      unplanned_out: unplanned[i].amount,
+      closing: running,
+    };
+  });
+
+  const short = monthViews.find((m) => m.closing < 0) ?? null;
+  const undated_obligations = state.vendors
+    .reduce((s, v) => s + vendorJourney(state, v.id).outstanding, 0);
+
+  const verdict = short
+    ? `On this plan the money runs out in ${short.label} — ${formatShort(Math.abs(short.closing))} short.`
+    : `The plan holds through ${monthViews[monthViews.length - 1].label}, ending at ${formatShort(monthViews[monthViews.length - 1].closing)}.`;
+
+  return {
+    generated_for: today,
+    opening_cash,
+    months: monthViews,
+    rows,
+    unplanned,
+    short_month: short?.month ?? null,
+    short_by: short ? Math.abs(short.closing) : 0,
+    undated_obligations,
+    verdict,
+  };
+}
+
+/** The reminder half: what falls due next, and what is already late. */
+export function cashDue(state: DemoState, now = new Date(), withinDays = 21): CashDue[] {
+  const plan = cashPlan(state, now);
+  const today = plan.generated_for;
+  const out: CashDue[] = [];
+  plan.rows.forEach((r) => {
+    r.cells.forEach((c) => {
+      if (c.state === "SKIPPED" || c.state === "PAID") return;
+      const days = daysBetween(today, c.due_date);
+      if (days > withinDays) return;
+      if (days < -90) return;
+      out.push({
+        component_id: r.component.id,
+        name: r.component.name,
+        direction: r.component.direction,
+        month: c.month,
+        due_date: c.due_date,
+        planned: c.planned,
+        actual: c.actual,
+        state: c.state,
+        days_away: days,
+        vendor_name: r.vendor_name,
+        account_code: r.account_code,
+      });
+    });
+  });
+  return out.sort((a, b) => a.due_date.localeCompare(b.due_date));
 }

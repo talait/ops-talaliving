@@ -8,6 +8,7 @@ import type {
 import type {
   Account, TransactionType, Transaction, TransactionLine,
   PaymentAllocation, EvidenceInboxRow,
+  CashComponent, CashOverride, CashSettlement,
 } from "@/services/accounting/contracts";
 import type { Attachment, AttachmentLink } from "@/services/documents/contracts";
 
@@ -84,6 +85,12 @@ export interface DemoState {
   transaction_lines: TransactionLine[];
   payment_allocations: PaymentAllocation[];
   evidence_inbox: EvidenceInboxRow[];
+
+  /** The payment calendar: what repeats, what changed in one month, and which
+   *  ledger row somebody says settled it. */
+  cash_components: CashComponent[];
+  cash_overrides: CashOverride[];
+  cash_settlements: CashSettlement[];
 
   attachments: Attachment[];
   attachment_links: AttachmentLink[];

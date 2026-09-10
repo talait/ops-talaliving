@@ -359,3 +359,151 @@ export interface FundingDetail extends FundingView {
   by_vendor: FundingSpendGroup[];
   by_project: FundingSpendGroup[];
 }
+
+/* ------------------------------------------------------------------ */
+/* Payment calendar — twelve months, planned against actual            */
+/* ------------------------------------------------------------------ */
+
+/** One thing that repeats: payroll, the electricity bill, a monthly instalment
+ *  — or, on the way in, the operating transfer leadership plans to make.
+ *
+ *  It carries the **day it is due**, which is what makes this a reminder as
+ *  well as a budget (owner: *kita punya daftar tagihan berulang bulanan
+ *  beserta tanggal pembayarannya*). One figure stands for every month, and a
+ *  month that differs is an override rather than a re-typing (D109).
+ *
+ *  `type_code` (with `vendor_id` when it narrows it further) is how the plan
+ *  finds what actually happened. Two components may not claim the same
+ *  category, because then no row could say which one it belongs to (D110).
+ */
+export interface CashComponent {
+  id: string;
+  name: string;
+  direction: Direction;
+  amount: number;
+  /** 1–31. Clamped to the length of each month, so 31 in February is the 28th
+   *  rather than a date that does not exist. */
+  due_day: number;
+  type_code: TransactionTypeCode | null;
+  vendor_id: string | null;
+  account_id: string | null;
+  /** `YYYY-MM`, inclusive. `ends_on` null means it keeps going. */
+  starts_on: string;
+  ends_on: string | null;
+  note: string | null;
+  active: boolean;
+  created_by: string;
+  created_at: string;
+}
+
+/** One month of one component, changed. `amount: null` means *not this month*
+ *  — a bill that skips a month is a fact, not a deletion. */
+export interface CashOverride {
+  id: string;
+  component_id: string;
+  /** `YYYY-MM` */
+  month: string;
+  amount: number | null;
+  due_day: number | null;
+  reason: string | null;
+  recorded_by: string;
+  recorded_at: string;
+}
+
+/** A person saying *this ledger row is that bill*. Matching by category is a
+ *  guess the screen is honest about; this is somebody deciding. */
+export interface CashSettlement {
+  id: string;
+  component_id: string;
+  month: string;
+  trx_no: string;
+  recorded_by: string;
+  recorded_at: string;
+}
+
+export type CashCellState =
+  | "PAID"        // something actually happened against it
+  | "PARTIAL"     // less than planned, so far
+  | "OVERDUE"     // due date has passed, nothing recorded
+  | "DUE"         // due within the week
+  | "PLANNED"     // still ahead
+  | "SKIPPED";    // an override said not this month
+
+export interface CashCell {
+  month: string;
+  due_date: string;
+  planned: number;
+  actual: number;
+  /** How the actual was arrived at — somebody's link, or a category match the
+   *  screen is not certain about. */
+  matched_by: "linked" | "category" | null;
+  trx_nos: string[];
+  state: CashCellState;
+  overridden: boolean;
+  reason: string | null;
+}
+
+export interface CashRow {
+  component: CashComponent;
+  vendor_name: string | null;
+  account_code: AccountCode | null;
+  cells: CashCell[];
+  planned_total: number;
+  actual_total: number;
+}
+
+/** Everything that actually left in a month with no component claiming its
+ *  category. The plan has to reconcile to the ledger or it is fiction, and
+ *  this row is where the difference lives until somebody plans for it. */
+export interface CashUnplanned {
+  month: string;
+  amount: number;
+  trx_nos: string[];
+  top_types: { type_code: string; amount: number }[];
+}
+
+export interface CashMonth {
+  /** `YYYY-MM` */
+  month: string;
+  label: string;
+  is_past: boolean;
+  is_current: boolean;
+  planned_in: number;
+  planned_out: number;
+  actual_in: number;
+  actual_out: number;
+  unplanned_out: number;
+  /** Cash across the paying accounts at the end of this month, on the plan.
+   *  Past months use what actually happened; future months use the plan. */
+  closing: number;
+}
+
+export interface CashPlan {
+  generated_for: string;
+  opening_cash: number;
+  months: CashMonth[];
+  rows: CashRow[];
+  unplanned: CashUnplanned[];
+  /** The first month the plan runs out of money, if it does. */
+  short_month: string | null;
+  short_by: number;
+  /** Obligations the system knows about that carry no date, so no month can
+   *  hold them (F30). Stated, never spread evenly to make the chart tidy. */
+  undated_obligations: number;
+  verdict: string;
+}
+
+/** One bill about to fall due — the reminder half of the calendar. */
+export interface CashDue {
+  component_id: string;
+  name: string;
+  direction: Direction;
+  month: string;
+  due_date: string;
+  planned: number;
+  actual: number;
+  state: CashCellState;
+  days_away: number;
+  vendor_name: string | null;
+  account_code: AccountCode | null;
+}

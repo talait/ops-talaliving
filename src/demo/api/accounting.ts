@@ -4,6 +4,7 @@ import type {
   Account, AccountBalance, Transaction, TransactionView, TransactionTypeCode,
   IncomingMoney, TransactionDetail, AllocationView, TransactionLine, TransactionType,
   VendorPayment, FundingView, FundingDetail,
+  CashPlan, CashDue, CashComponent, CashOverride, CashSettlement,
   Direction, PaymentAllocation, EvidenceInboxRow, InboxHealth, AllocMethod,
 } from "@/services/accounting/contracts";
 import { LOCALE } from "@/lib/format";
@@ -11,9 +12,9 @@ import { getState, apply, newId, nextDocNumber, writeAudit, writeOutbox } from "
 import type { AuditRow } from "../state";
 import {
   accountBalances, transactionView, allocatedTotal, inboxHealth, lineCoverage,
-  lineStatus, fundings, fundingView,
+  lineStatus, fundings, fundingView, cashPlan, cashDue,
 } from "../derive";
-import { latency, actingUser, requireAuthority, conflict, replayed, remember, paged } from "./_kit";
+import { latency, actingUser, requireAuthority, requireModule, conflict, replayed, remember, paged } from "./_kit";
 import { PRIMARY_DOC_KINDS, type DocKind } from "@/services/documents/contracts";
 import * as procurement from "./procurement";
 
@@ -822,4 +823,259 @@ export async function getFunding(trxNo: string): Promise<Result<FundingDetail>> 
   const trx = state.transactions.find((t) => t.trx_no === trxNo && t.direction === "IN");
   if (!trx) return notFound(SERVICE, "funding_not_found", `No incoming transfer ${trxNo}.`);
   return ok(SERVICE, fundingView(state, trx));
+}
+
+/* ------------------------------------------------------------------ */
+/* Payment calendar                                                    */
+/* ------------------------------------------------------------------ */
+
+/** Twelve months forward: what is planned, what actually happened, and
+ *  whether the money lasts (D109). */
+export async function getCashPlan(): Promise<Result<CashPlan>> {
+  await latency();
+  return ok(SERVICE, cashPlan(getState()));
+}
+
+/** What falls due next, and what is already late. */
+export async function listDue(): Promise<Result<CashDue[]>> {
+  await latency();
+  return ok(SERVICE, cashDue(getState()));
+}
+
+export async function listComponents(): Promise<Result<CashComponent[]>> {
+  await latency();
+  return ok(SERVICE, getState().cash_components);
+}
+
+/** Add something that repeats.
+ *
+ *  Refuses a category another component already claims (D110): with two
+ *  components on `RECCURING - PAYROLL`, no ledger row could say which of them
+ *  it belongs to, and the plan would show the same money twice.
+ */
+export async function addComponent(
+  input: {
+    name: string;
+    direction: Direction;
+    amount: number;
+    due_day: number;
+    type_code?: TransactionTypeCode | null;
+    vendor_id?: string | null;
+    account_id?: string | null;
+    starts_on?: string;
+    ends_on?: string | null;
+    note?: string | null;
+  },
+  idempotencyKey?: string,
+): Promise<Result<CashComponent>> {
+  await latency();
+  const cached = replayed<CashComponent>(SERVICE, "addComponent", idempotencyKey);
+  if (cached) return cached;
+
+  const denied = requireModule(SERVICE, "accounting");
+  if (denied) return denied;
+
+  if (!input.name.trim()) {
+    return invalid(SERVICE, "name_required", "A line on the calendar needs a name somebody will recognise.", { field: "name" });
+  }
+  if (!input.amount || input.amount <= 0) {
+    return invalid(SERVICE, "amount_required", "An estimate of zero plans nothing. Put the number you expect, even roughly.", { field: "amount" });
+  }
+  if (input.due_day < 1 || input.due_day > 31) {
+    return invalid(SERVICE, "due_day_out_of_range", "The day of the month it is due, between 1 and 31.", { field: "due_day" });
+  }
+
+  const state = getState();
+  const clash = state.cash_components.find(
+    (c) => c.active
+      && c.type_code === (input.type_code ?? null)
+      && (c.vendor_id ?? null) === (input.vendor_id ?? null)
+      && c.type_code !== null,
+  );
+  if (clash) {
+    return conflict(
+      SERVICE, "category_already_tracked",
+      `"${clash.name}" already tracks ${clash.type_code}${clash.vendor_id ? " for that vendor" : ""}. Two lines on one category means no ledger row can say which one it paid — change this one's category, or edit that line instead.`,
+      { component_id: clash.id },
+    );
+  }
+
+  const user = actingUser();
+  const now = new Date();
+  let created: CashComponent | null = null;
+  apply((draft) => {
+    created = {
+      id: newId("cmp"),
+      name: input.name.trim(),
+      direction: input.direction,
+      amount: Math.round(input.amount),
+      due_day: input.due_day,
+      type_code: input.type_code ?? null,
+      vendor_id: input.vendor_id ?? null,
+      account_id: input.account_id ?? null,
+      starts_on: input.starts_on ?? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`,
+      ends_on: input.ends_on ?? null,
+      note: input.note?.trim() || null,
+      active: true,
+      created_by: user.id,
+      created_at: now.toISOString(),
+    };
+    draft.cash_components.push(created);
+    writeAudit(draft, {
+      service: SERVICE, entity: "cash_component", entity_no: created.id,
+      action: "create", outcome: "ok", reason: null,
+      detail: { name: created.name, amount: created.amount, due_day: created.due_day, direction: created.direction },
+    });
+  });
+  remember(SERVICE, "addComponent", idempotencyKey, created);
+  return ok(SERVICE, created as unknown as CashComponent);
+}
+
+/** Change the estimate, the day, or the name. The audit row carries what it
+ *  was and what it became — a budget nobody can see the history of is a budget
+ *  people quietly bend (D84). */
+export async function updateComponent(
+  id: string,
+  patch: { name?: string; amount?: number; due_day?: number; ends_on?: string | null; note?: string | null; active?: boolean },
+): Promise<Result<CashComponent>> {
+  await latency();
+  const denied = requireModule(SERVICE, "accounting");
+  if (denied) return denied;
+
+  const state = getState();
+  const found = state.cash_components.find((c) => c.id === id);
+  if (!found) return notFound(SERVICE, "component_not_found", `No calendar line ${id}.`);
+  if (patch.amount !== undefined && patch.amount <= 0) {
+    return invalid(SERVICE, "amount_required", "An estimate of zero plans nothing.", { field: "amount" });
+  }
+  if (patch.due_day !== undefined && (patch.due_day < 1 || patch.due_day > 31)) {
+    return invalid(SERVICE, "due_day_out_of_range", "The day of the month it is due, between 1 and 31.", { field: "due_day" });
+  }
+
+  let updated: CashComponent | null = null;
+  apply((draft) => {
+    const row = draft.cash_components.find((c) => c.id === id);
+    if (!row) return;
+    const before = { name: row.name, amount: row.amount, due_day: row.due_day, active: row.active };
+    Object.assign(row, {
+      ...(patch.name !== undefined ? { name: patch.name.trim() } : {}),
+      ...(patch.amount !== undefined ? { amount: Math.round(patch.amount) } : {}),
+      ...(patch.due_day !== undefined ? { due_day: patch.due_day } : {}),
+      ...(patch.ends_on !== undefined ? { ends_on: patch.ends_on } : {}),
+      ...(patch.note !== undefined ? { note: patch.note?.trim() || null } : {}),
+      ...(patch.active !== undefined ? { active: patch.active } : {}),
+    });
+    updated = row;
+    writeAudit(draft, {
+      service: SERVICE, entity: "cash_component", entity_no: id,
+      action: patch.active === false ? "deactivate" : "update", outcome: "ok", reason: null,
+      detail: { before, after: { name: row.name, amount: row.amount, due_day: row.due_day, active: row.active } },
+    });
+  });
+  return ok(SERVICE, updated as unknown as CashComponent);
+}
+
+/** One month that is not like the others — a bigger payroll in December, a
+ *  month the bill does not arrive at all. `amount: null` means skipped. */
+export async function setOverride(
+  input: { component_id: string; month: string; amount: number | null; due_day?: number | null; reason?: string | null },
+): Promise<Result<CashOverride>> {
+  await latency();
+  const denied = requireModule(SERVICE, "accounting");
+  if (denied) return denied;
+
+  const state = getState();
+  if (!state.cash_components.some((c) => c.id === input.component_id)) {
+    return notFound(SERVICE, "component_not_found", `No calendar line ${input.component_id}.`);
+  }
+  if (!/^\d{4}-\d{2}$/.test(input.month)) {
+    return invalid(SERVICE, "month_invalid", "A month reads as YYYY-MM.", { field: "month" });
+  }
+  if (!input.reason?.trim()) {
+    return invalid(
+      SERVICE, "reason_required",
+      "A month that differs from every other month has a reason. Write it — in three months nobody will remember, including you.",
+      { field: "reason" },
+    );
+  }
+
+  const user = actingUser();
+  let saved: CashOverride | null = null;
+  apply((draft) => {
+    const existing = draft.cash_overrides.find(
+      (o) => o.component_id === input.component_id && o.month === input.month,
+    );
+    const row: CashOverride = existing ?? {
+      id: newId("cov"),
+      component_id: input.component_id,
+      month: input.month,
+      amount: null,
+      due_day: null,
+      reason: null,
+      recorded_by: user.id,
+      recorded_at: new Date().toISOString(),
+    };
+    const before = existing ? { amount: existing.amount, due_day: existing.due_day } : null;
+    row.amount = input.amount === null ? null : Math.round(input.amount);
+    row.due_day = input.due_day ?? null;
+    row.reason = input.reason?.trim() ?? null;
+    row.recorded_by = user.id;
+    row.recorded_at = new Date().toISOString();
+    if (!existing) draft.cash_overrides.push(row);
+    saved = row;
+    writeAudit(draft, {
+      service: SERVICE, entity: "cash_override", entity_no: `${input.component_id}:${input.month}`,
+      action: existing ? "update" : "create", outcome: "ok", reason: row.reason,
+      detail: { before, after: { amount: row.amount, due_day: row.due_day } },
+    });
+  });
+  return ok(SERVICE, saved as unknown as CashOverride);
+}
+
+/** Somebody pointing at a ledger row and saying: that one was this bill.
+ *  Matching by category is a guess; this is a decision, and it wins. */
+export async function linkPayment(
+  input: { component_id: string; month: string; trx_no: string },
+): Promise<Result<CashSettlement>> {
+  await latency();
+  const denied = requireModule(SERVICE, "accounting");
+  if (denied) return denied;
+
+  const state = getState();
+  if (!state.cash_components.some((c) => c.id === input.component_id)) {
+    return notFound(SERVICE, "component_not_found", `No calendar line ${input.component_id}.`);
+  }
+  const trx = state.transactions.find((t) => t.trx_no === input.trx_no);
+  if (!trx) return notFound(SERVICE, "transaction_not_found", `No ledger row ${input.trx_no}.`);
+  if (trx.status === "VOID") {
+    return invalid(SERVICE, "transaction_void", "That row was voided. A voided payment settles nothing.", { field: "trx_no" });
+  }
+  const taken = state.cash_settlements.find((s) => s.trx_no === input.trx_no);
+  if (taken) {
+    return conflict(
+      SERVICE, "already_linked",
+      `${input.trx_no} is already linked to another line on the calendar.`,
+      { component_id: taken.component_id, month: taken.month },
+    );
+  }
+
+  const user = actingUser();
+  let saved: CashSettlement | null = null;
+  apply((draft) => {
+    saved = {
+      id: newId("cst"),
+      component_id: input.component_id,
+      month: input.month,
+      trx_no: input.trx_no,
+      recorded_by: user.id,
+      recorded_at: new Date().toISOString(),
+    };
+    draft.cash_settlements.push(saved);
+    writeAudit(draft, {
+      service: SERVICE, entity: "cash_settlement", entity_no: input.trx_no,
+      action: "link", outcome: "ok", reason: null,
+      detail: { component_id: input.component_id, month: input.month, amount: trx.amount_idr },
+    });
+  });
+  return ok(SERVICE, saved as unknown as CashSettlement);
 }

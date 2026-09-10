@@ -70,19 +70,19 @@ Update the row, the date, and the note **in the same commit** as the work.
 **Deployment.** Vercel builds from GitHub directly, not from a developer's
 machine, so nothing in this repo has to hold a Vercel credential.
 
-- **Every push to this branch produces a Preview deployment** with its own URL.
-  That is the review surface for the fortnight.
-- **The Production URL only ever builds from the Production Branch**, which is
-  `main` by default. While Phase 1 lives on `claude/serene-euler-eq2qef`, the
-  production URL keeps serving whatever `main` last had — the empty shell.
+**Vercel's Production Branch is `claude/serene-euler-eq2qef`** (owner, 2026-09-11).
+Phase 1's whole output lives on one branch, so pointing production at it beats
+merging a half-finished phase into `main` to see it. Every push here now
+deploys to production, and the stable project URL always shows the latest work.
 
-Two ways to make the production URL show the current work, whenever that is
-wanted: merge the branch into `main`, or point Vercel's Production Branch at
-this branch in Project Settings → Git. The second needs no merge and suits a
-phase whose whole output lives on one branch.
+Consequences, so nothing is a surprise later:
 
-If a preview link asks for a Vercel login, that is Deployment Protection
-(Project Settings → Deployment Protection), on by default for team projects.
+- `main` deploys nowhere until this is changed back. It still holds the
+  original shell, and Phase 1 never merges into it — Phase 2 decides what
+  `main` should become.
+- Production deployments are public; Deployment Protection only gates previews
+  by default. The link can be shared with the team as-is.
+- Reversible in one setting, whenever `main` should take over again.
 
 ### Phase 2 — the backend (not scheduled yet)
 

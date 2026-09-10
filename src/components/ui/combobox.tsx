@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Search, ChevronDown, Check } from "lucide-react";
+import { Search, ChevronDown, Check, Plus } from "lucide-react";
 import { cn } from "@/lib/cn";
 
 export interface ComboboxOption {
@@ -21,12 +21,21 @@ export function Combobox({
   options,
   placeholder = "Search…",
   emptyOptionLabel,
+  onCreate,
+  createLabel = (q) => `Add “${q}”`,
 }: {
   value: string;
   onChange: (value: string) => void;
   options: ComboboxOption[];
   placeholder?: string;
   emptyOptionLabel?: string;
+  /** When given, a name the list does not contain can still be entered.
+   *  Some fields are a closed list — an account code, a unit — and passing
+   *  nothing here keeps them closed. Others are not: a vendor somebody typed
+   *  is always accepted, and refusing it would make the form lie about what
+   *  the business does. */
+  onCreate?: (name: string) => void | Promise<void>;
+  createLabel?: (query: string) => string;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -116,7 +125,25 @@ export function Combobox({
               {value === "" && <Check className="h-3.5 w-3.5 text-brand-600" />}
             </button>
           )}
-          {filtered.length === 0 && <p className="px-3 py-2 text-sm text-slate-400">Tidak ditemukan.</p>}
+          {filtered.length === 0 && !(onCreate && query.trim()) && (
+            <p className="px-3 py-2 text-sm text-slate-400">No match.</p>
+          )}
+          {onCreate && query.trim().length > 0 &&
+            !filtered.some((o) => o.label.toLowerCase() === query.trim().toLowerCase()) && (
+            <button
+              type="button"
+              onClick={async () => {
+                const name = query.trim();
+                setOpen(false);
+                setQuery("");
+                await onCreate(name);
+              }}
+              className="flex w-full items-center gap-2 border-b border-slate-100 px-3 py-2 text-left text-sm text-brand-700 hover:bg-brand-50"
+            >
+              <Plus className="h-3.5 w-3.5 shrink-0" />
+              <span className="min-w-0 truncate">{createLabel(query.trim())}</span>
+            </button>
+          )}
           {filtered.map((o, i) => (
             <button
               key={o.value}
@@ -137,7 +164,7 @@ export function Combobox({
             </button>
           ))}
           {options.length > MAX_VISIBLE && filtered.length === MAX_VISIBLE && (
-            <p className="px-3 py-1.5 text-[11px] text-slate-400">Menampilkan {MAX_VISIBLE} teratas — ketik untuk mempersempit.</p>
+            <p className="px-3 py-1.5 text-[11px] text-slate-400">Showing the first {MAX_VISIBLE} — type to narrow.</p>
           )}
         </div>
       )}

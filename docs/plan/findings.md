@@ -489,3 +489,47 @@ gets made by accident rather than chosen.
 **What surprised us.** The answer was already in the code and nobody had asked
 it that way. "Is auditing built?" is unanswerable in the abstract; "how many of
 our writes are audited?" takes one script and returns 21 of 23.
+
+## F11 · 2026-09-11 · M4 — the half of the curation rule that was owed
+
+**Paid off from F7.** M3 could show that uncurated things are "shown and
+marked" but not that they are "absent from dropdowns", because there was no
+dropdown. There is now, and it was verified by counting options rather than by
+looking:
+
+- uncurated item `BAUT L 8MM` — **not offered**
+- curated item `THINNER ND SUPER` — offered
+- uncurated vendor `UD SINAR ABADI` — **not offered**
+- a vendor name nobody has ever recorded — **still enterable**, and created
+  uncurated on the spot
+
+That last one needed a change to `Combobox`: an optional `onCreate`. Fields
+that are genuinely closed lists — a unit, an account code — pass nothing and
+stay closed. A vendor is not a closed list, and a form that refuses a name the
+buyer is standing in front of would be lying about what a workshop does.
+
+**A real bug the test caught by accident.** Adding a second line produced key
+`l7`, not `l2`. The cause was a module-level counter feeding React keys: React
+may run a `useState` initialiser for a render it then discards, so the count
+depended on how many times React changed its mind. Harmless in this instance —
+the keys were still unique — but identity should not rest on that, and two
+module instances would hand out the same keys. Now a `useRef` scoped to the
+form. **Module-scoped mutable state is not a safe source of identity**, and the
+symptom is invisible until it isn't.
+
+**A document has no honest single status.** The list shows *lines by status* as
+a set of pills rather than one status column, because a request with one line
+paid and one line still waiting cannot be summarised without lying about one of
+them. The document is a container; the line is the unit that carries status,
+approval and money. Every screen after this one inherits that shape.
+
+**Choosing a catalogue item is a hint being offered, not a value being set.**
+It fills description, unit, suggested price and last vendor — and every one
+stays editable. The rule "a hint, not a price list" stops being a sentence in
+`02-database.md` and becomes what the form does: the person standing in front
+of the vendor knows more than the record does.
+
+**What surprised us.** The most useful thing on the create page turned out to be
+the sentence under the total — *a draft is in nobody's queue; submitting is
+what puts these lines in front of the CEO*. Saving and asking are different
+acts, and nothing in the data model was going to tell anyone that.

@@ -766,7 +766,9 @@ function itemView(state: ReturnType<typeof getState>, i: Item): ItemView {
   };
 }
 
-export async function listItemViews(opts: { q?: string; category?: string } = {}): Promise<Result<ItemView[]>> {
+export async function listItemViews(
+  opts: { q?: string; category?: string; curated?: boolean } = {},
+): Promise<Result<ItemView[]>> {
   await latency();
   const state = getState();
   let rows = state.items.filter((i) => !i.merged_into);
@@ -775,6 +777,9 @@ export async function listItemViews(opts: { q?: string; category?: string } = {}
     rows = rows.filter((i) => i.name.toLowerCase().includes(q) || i.code.toLowerCase().includes(q));
   }
   if (opts.category) rows = rows.filter((i) => i.category_code === opts.category);
+  /* The other half of the curation rule: a list is where "not yet curated"
+   * means "shown and marked", and a DROPDOWN is where it means "absent". */
+  if (opts.curated !== undefined) rows = rows.filter((i) => i.is_curated === opts.curated);
   return ok(SERVICE, rows.map((i) => itemView(state, i)));
 }
 

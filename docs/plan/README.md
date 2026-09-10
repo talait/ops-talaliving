@@ -55,7 +55,7 @@ Update the row, the date, and the note **in the same commit** as the work.
 | M1 | Demo data layer + contracts | D1 | DONE | 2026-09-11 | deployed. Preview builds on every push to this branch |
 | M2 | Demo session: multi-module grants + four authorities | D2 | DONE | 2026-09-11 | grant picker; menu filtering verified in a browser |
 | M3 | Reference data: vendors, items, projects | D3 | DONE | 2026-09-11 | curation, merge, two-price model; verified in a browser |
-| M4 | PR: list, multi-line create, detail drawer | D4 | TODO | — | |
+| M4 | PR: list, multi-line create, detail drawer | D4 | DONE | 2026-09-11 | curation rule proved in dropdowns |
 | M5 | PR: the standing approval queue (CEO), approval trail | D5 | TODO | — | D19–D21 |
 | M6 | Payment rounds: sync, approve, transfer, close | D6 | TODO | — | |
 | M7 | **Checkpoint: walk Flow B on a phone, with the team** | D7 | TODO | — | week-1 review |

@@ -11,7 +11,7 @@ import { cn } from "@/lib/cn";
 
 export function Sidebar({ mobileOpen, onClose }: { mobileOpen: boolean; onClose: () => void }) {
   const pathname = usePathname();
-  const { can } = useSession();
+  const { can, hasAuthority } = useSession();
 
   // Seksi yang memuat rute aktif terbuka sendiri saat halaman dimuat, supaya
   // pengguna tidak perlu mencari di mana dirinya berada.
@@ -45,7 +45,9 @@ export function Sidebar({ mobileOpen, onClose }: { mobileOpen: boolean; onClose:
         {NAV.map((section) => {
           // Item yang tidak diizinkan tidak dirender sama sekali; seksi yang
           // jadi kosong ikut hilang, bukan tampil sebagai judul tanpa isi.
-          const visibleItems = section.items.filter((i) => can(i.permission));
+          const visibleItems = section.items.filter(
+            (i) => can(i.permission) && (!i.authority || hasAuthority(i.authority)),
+          );
           if (visibleItems.length === 0) return null;
 
           const isOpen = openSections.includes(section.title);

@@ -57,14 +57,14 @@ Update the row, the date, and the note **in the same commit** as the work.
 | M3 | Reference data: vendors, items, projects | D3 | DONE | 2026-09-11 | curation, merge, two-price model; verified in a browser |
 | M4 | Requests board: line-first, four meeting states, evidence | D4 | DONE | 2026-09-11 | redefined per owner — line is the unit (D48) |
 | M4b | Approved-against-paid: variance, explanation, pay-from-line | D4 | DONE | 2026-09-11 | D53–D57. Posting a payment from a line writes the ledger row (D32 delivered early) |
-| M5 | PR: the standing approval queue (CEO), approval trail | D5 | TODO | — | D19–D21 |
+| M5 | PR: the standing approval queue (CEO), approval trail | D5 | DONE | 2026-09-11 | `/procurement/approvals`; checkbox + reducible amount + trail + un-approve. Refusals verified in a browser (403 · 422 · 409) |
 | M6 | Payment rounds: sync, approve, transfer, close | D6 | TODO | — | |
 | M7 | **Checkpoint: walk Flow B on a phone, with the team** | D7 | TODO | — | week-1 review |
 | M8 | Ledger: list, drawer, attach from a row, void, complete | D8 | TODO | — | |
 | M9 | Evidence attached from the record — the main road | D9 | TODO | — | ADR-010 |
 | M10 | The exception inbox: bought first, approved later | D10 | TODO | — | should stay small |
 | M11 | PO: two axes, exposure; receiving with photo | D11 | TODO | — | |
-| M12 | Cashflow + dashboard on demo data | D12 | TODO | — | meeting board landed early, in M4 |
+| M12 | Cashflow + **liquidation report** + dashboard on demo data | D12 | TODO | — | meeting board landed early, in M4. Liquidation: money in vs where it went (owner, 2026-09-11) |
 | M13 | Polish: phone, empty states, refusals, demo reset | D13 | TODO | — | |
 | M14 | **Walkthrough + findings → the schema we actually need** | D14 | TODO | — | the payoff |
 

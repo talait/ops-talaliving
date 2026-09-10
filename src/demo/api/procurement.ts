@@ -4,7 +4,7 @@ import type {
   Vendor, Item, Uom, Project, ItemCategory,
   PrDocument, PrLine, PrLineView, PaymentRound, RoundSummary,
   PurchaseOrder, PoLine, PoStatusView, Receipt, ReceiptCondition, PrCategory, UomCode,
-  VendorView, ItemView, VarianceReason,
+  VendorView, ItemView, VarianceReason, PrApproval,
 } from "@/services/procurement/contracts";
 import type { PrLine as PrLineRow } from "@/services/procurement/contracts";
 import { PROBLEM_CONDITIONS, VARIANCE_REASON_LABEL } from "@/services/procurement/contracts";
@@ -246,6 +246,27 @@ export async function queue(): Promise<Result<PrLineView[]>> {
   return ok(SERVICE, approvalQueue(getState()));
 }
 
+/** Lines somebody has already decided, most recently decided first.
+ *
+ *  This exists so un-ticking is reachable. A decision that can be made but not
+ *  unmade is a trap: the CEO who ticks the wrong row would otherwise have to
+ *  ask somebody with database access to fix it (F9 — a control that only
+ *  reads is not built).
+ */
+export async function decidedLines(limit = 12): Promise<Result<PrLineView[]>> {
+  await latency();
+  const state = getState();
+  const rows = state.pr_lines
+    .filter((line) => {
+      const doc = state.pr_documents.find((d) => d.id === line.doc_id);
+      if (!doc || doc.status === "DRAFT" || doc.status === "CANCELLED") return false;
+      return !!currentApproval(state, line.id);
+    })
+    .map((line) => prLineView(state, line))
+    .sort((a, b) => (b.approval?.recorded_at ?? "").localeCompare(a.approval?.recorded_at ?? ""));
+  return ok(SERVICE, rows.slice(0, limit));
+}
+
 /** The whole decision. `approved_amount` may be reduced below what was asked
  *  and never raised — money can only shrink on its way through approval (A8).
  */
@@ -316,6 +337,22 @@ export async function approveLine(
   const view = prLineView(getState(), getState().pr_lines.find((l) => l.id === line.id)!);
   remember(SERVICE, endpoint, idempotencyKey, view);
   return ok(SERVICE, view);
+}
+
+/** The whole trail of decisions on one line, oldest first.
+ *
+ *  Append-only means the story is the rows, not the last row: "approved at
+ *  10:18, un-approved at 14:07" is a fact about how the decision was made and
+ *  the screen has no business hiding it behind the current value (D28).
+ */
+export async function lineHistory(lineNo: string): Promise<Result<PrApproval[]>> {
+  await latency();
+  const state = getState();
+  const line = state.pr_lines.find((l) => l.line_no_full === lineNo);
+  if (!line) return notFound(SERVICE, "line_not_found", `Line ${lineNo} not found.`);
+  return ok(SERVICE, state.pr_approvals
+    .filter((a) => a.line_id === line.id)
+    .sort((a, b) => a.recorded_at.localeCompare(b.recorded_at)));
 }
 
 /** Removed because it is no longer needed. No deadline, nothing ages out —

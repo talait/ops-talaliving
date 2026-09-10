@@ -305,7 +305,11 @@ export function approvalQueue(state: DemoState): PrLineView[] {
       if (line.removed_at) return false;
       return !isApproved(state, line.id);
     })
-    .map((line) => prLineView(state, line));
+    .map((line) => prLineView(state, line))
+    /* Oldest first. Nothing ages out and nothing is prioritised (D21), but a
+     * line that has waited a week should not be below one filed this morning
+     * just because the list happens to be built in table order. */
+    .sort((a, b) => (a.submitted_at ?? "").localeCompare(b.submitted_at ?? ""));
 }
 
 /* ------------------------------------------------------------------ */

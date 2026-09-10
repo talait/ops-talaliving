@@ -272,6 +272,14 @@ bought first and the approval came later.
 - `/procurement/rapat` — four columns: ✅ lunas · ⏳ disetujui belum bayar ·
   ⚠️ dibayar belum disetujui · • belum keduanya
 - `/accounting/cashflow` — five balances, movement chart, tie-out
+- **`/accounting/liquidation` — money in against where it went** (owner,
+  2026-09-11). Per period: what came in (client payments, transfers between
+  our own accounts excluded, because moving money is not receiving it), and
+  what left, broken down the way the business already thinks — by transaction
+  type, by project, by vendor, and by what carries a PR line behind it against
+  what does not. The last split is the one no spreadsheet gives today: it is
+  the difference between spending that went through a decision and spending
+  that simply happened
 - the dashboard rewired from its sample constants to the demo store
 
 > Read `docs/plan/README.md`. Do M12: the meeting board, cashflow, and the

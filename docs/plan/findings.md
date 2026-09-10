@@ -623,3 +623,36 @@ from an earlier session still held port 3100 and was serving a build made
 before the change. Checking `ps` before believing a screen costs five seconds;
 believing it cost twenty minutes of reading correct code.
 
+## F14 — the standing queue turns "paid, not approved" back into a decision
+
+M5 is one screen and a checkbox, and the interesting part was what the queue
+contained on the first render: **items somebody had already bought and paid
+for, sitting in the CEO's approval list.** Nothing engineered that. The queue
+is "every submitted line nobody has decided", and money reaching a line is not
+a decision — so the bench-repair screws that were bought the same afternoon
+are still waiting for a yes.
+
+That is the difference between a flag and a queue. The requests board shows
+*paid, not approved* as a red state, which is information. The approval queue
+shows the same line as a **thing to decide**: approve it after the fact and
+say so, or leave it unapproved and let it stay visible. Neither the old
+spreadsheet nor a status column could offer that, because both treated "paid"
+as the end of the story.
+
+Three smaller things the build taught:
+
+1. **Module access could not hide this screen.** Everyone in procurement holds
+   `procurement.read`, and the queue is the CEO's alone — so `NavItem` gained
+   an `authority` field (D60). The page stays readable without the controls,
+   which is the honest version: the team can see what is waiting, they just
+   cannot decide it.
+2. **A checkbox that springs back reads as "it did not take".** The tick has
+   to stay down while the write is in flight and only revert on a refusal.
+   Half a second is long enough to make somebody click twice.
+3. **`<input type="number">` cannot group thousands**, so the field reads
+   `4275000` under a label that reads `Rp 4,275,000`. On the one screen whose
+   entire job is reading amounts this is a real cost. Deliberately not fixed
+   here: it is one component used by every money field in the app, and
+   swapping it for a formatted text input is a change to make once, on
+   purpose, not inside a milestone about approvals.
+

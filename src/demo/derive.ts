@@ -27,6 +27,16 @@ import type { DocKind } from "@/services/documents/contracts";
  *  files, which is how `john-lau` ended up with three different tolerances. */
 export const PAYMENT_TOLERANCE_IDR = 1_000;
 
+/** Compare two timestamps as instants, never as strings.
+ *
+ *  The fixtures carry `+08:00` (the office is in WITA) and anything written
+ *  while the app runs carries `Z`. Sorted as text, `09:05:00+08:00` lands
+ *  after `06:45:00Z` even though it happened three hours earlier — and since
+ *  "the current decision is the latest row" is how approval, notes and
+ *  variances all work, that reads as the wrong answer rather than as a wrong
+ *  order. */
+export const byTime = (a: string, b: string) => Date.parse(a) - Date.parse(b);
+
 /* ------------------------------------------------------------------ */
 /* Approval                                                            */
 /* ------------------------------------------------------------------ */
@@ -41,7 +51,7 @@ export function currentApproval(
 ): PrApproval | null {
   const rows = state.pr_approvals
     .filter((a) => a.line_id === lineId && a.step === step)
-    .sort((a, b) => a.recorded_at.localeCompare(b.recorded_at));
+    .sort((a, b) => byTime(a.recorded_at, b.recorded_at));
   return rows.length ? rows[rows.length - 1] : null;
 }
 
@@ -50,7 +60,7 @@ export function currentApproval(
 export function currentNote(state: DemoState, lineId: string): LineNote | null {
   const rows = state.line_notes
     .filter((n) => n.line_id === lineId)
-    .sort((a, b) => a.recorded_at.localeCompare(b.recorded_at));
+    .sort((a, b) => byTime(a.recorded_at, b.recorded_at));
   return rows.length ? rows[rows.length - 1] : null;
 }
 
@@ -62,7 +72,7 @@ export function currentNote(state: DemoState, lineId: string): LineNote | null {
 export function pendingRequest(state: DemoState, lineId: string): ApprovalRequest | null {
   return state.approval_requests
     .filter((r) => r.line_id === lineId && !r.answered_at)
-    .sort((a, b) => a.sent_at.localeCompare(b.sent_at))
+    .sort((a, b) => byTime(a.sent_at, b.sent_at))
     .pop() ?? null;
 }
 
@@ -245,7 +255,7 @@ export function varianceOf(state: DemoState, line: PrLine): VarianceView {
 
   const explanation = state.line_variances
     .filter((v) => v.line_id === line.id)
-    .sort((a, b) => a.recorded_at.localeCompare(b.recorded_at))
+    .sort((a, b) => byTime(a.recorded_at, b.recorded_at))
     .pop() ?? null;
 
   return {
@@ -314,7 +324,7 @@ export function openLines(state: DemoState): PrLineView[] {
      * the board because the goods arrived is precisely how an overpayment
      * stops being anyone's problem. */
     .filter((l) => l.status !== "COMPLETED" || (l.variance.material && !l.variance.explanation))
-    .sort((a, b) => (b.submitted_at ?? "").localeCompare(a.submitted_at ?? ""));
+    .sort((a, b) => byTime(b.submitted_at ?? "", a.submitted_at ?? ""));
 }
 
 /** The standing queue (D21): every submitted line that is neither approved nor
@@ -332,7 +342,7 @@ export function approvalQueue(state: DemoState): PrLineView[] {
     /* Oldest first. Nothing ages out and nothing is prioritised (D21), but a
      * line that has waited a week should not be below one filed this morning
      * just because the list happens to be built in table order. */
-    .sort((a, b) => (a.submitted_at ?? "").localeCompare(b.submitted_at ?? ""));
+    .sort((a, b) => byTime(a.submitted_at ?? "", b.submitted_at ?? ""));
 }
 
 /* ------------------------------------------------------------------ */

@@ -6,7 +6,7 @@ import {
 import {
   PR_DOCUMENTS, PR_LINES, PR_APPROVALS, PAYMENT_ROUNDS, PAYMENT_ROUND_LINES,
   RECEIPTS, PURCHASE_ORDERS, PO_LINES, PO_SCHEDULE,
-  LINE_VARIANCES, LINE_SETTLEMENTS, LINE_NOTES, APPROVAL_REQUESTS,
+  LINE_VARIANCES, LINE_SETTLEMENTS, LINE_NOTES, APPROVAL_REQUESTS, APPROVAL_BATCHES,
 } from "./pr";
 import {
   TRANSACTIONS, TRANSACTION_LINES, PAYMENT_ALLOCATIONS, EVIDENCE_INBOX,
@@ -38,6 +38,7 @@ export function initialState(): DemoState {
     line_settlements: LINE_SETTLEMENTS,
     line_notes: LINE_NOTES,
     approval_requests: APPROVAL_REQUESTS,
+    approval_batches: APPROVAL_BATCHES,
     line_variances: LINE_VARIANCES,
 
     purchase_orders: PURCHASE_ORDERS,
@@ -61,6 +62,7 @@ export function initialState(): DemoState {
      * one already in the data. */
     doc_numbers: {
       "pr:2026-09-10": 2,
+      "ask:2026-09-10": 1,
       "trx:2026-09-09": 2,
       "pay:2026-09-09": 1,
       "po:2026-09-09": 1,

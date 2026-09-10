@@ -269,6 +269,10 @@ export interface LineNote {
 export interface ApprovalRequest {
   id: string;
   line_id: string;
+  /** The send this line went out in. Approval is asked for in batches because
+   *  that is how a meeting works — a list, a total, and one answer session
+   *  (D70). */
+  batch_id: string;
   token: string;
   /** Whose yes this is. The request is addressed, not broadcast. */
   sent_to: string;
@@ -299,6 +303,43 @@ export interface ApprovalRequestView extends ApprovalRequest {
   /** True once the line has been decided by any route — the card is stale and
    *  the screen says so rather than offering a button that will 409. */
   line_decided: boolean;
+  /** What the approver settled on, once they have. */
+  approved_amount: number | null;
+  /** Approved minus what has already reached this line. The number that has
+   *  to leave the bank if this is said yes to — not the same as the amount
+   *  approved, because part of it may already have been paid. */
+  to_pay: number;
+}
+
+/** One send: the list, and the three totals a person needs to answer it.
+ *
+ *  A card per line would ask the approver to add up fifteen numbers in their
+ *  head to know what they have just committed the company to. The batch says
+ *  it: this much asked, this much approved so far, this much has to be paid
+ *  (D70).
+ */
+export interface ApprovalBatch {
+  id: string;
+  batch_no: string;
+  token: string;
+  sent_to: string;
+  sent_to_email: string;
+  sent_by: string;
+  sent_by_email: string;
+  sent_at: string;
+  channel: Channel;
+}
+
+export interface ApprovalBatchView extends ApprovalBatch {
+  items: ApprovalRequestView[];
+  /** Every item as asked. */
+  requested_total: number;
+  /** Only the ones said yes to. */
+  approved_total: number;
+  /** Approved, minus whatever already reached those lines. */
+  to_pay_total: number;
+  answered: number;
+  pending: number;
 }
 
 export interface PaymentRound {

@@ -5,7 +5,7 @@ import type {
   PrDocument, PrLine, PrLineView, PaymentRound, RoundSummary,
   PurchaseOrder, PoLine, PoStatusView, Receipt, ReceiptCondition, PrCategory, UomCode,
   VendorView, ItemView, VarianceReason, PrApproval,
-  ApprovalRequestView,
+  ApprovalRequestView, ApprovalBatchView,
 } from "@/services/procurement/contracts";
 import type { PrLine as PrLineRow } from "@/services/procurement/contracts";
 import { PROBLEM_CONDITIONS, VARIANCE_REASON_LABEL } from "@/services/procurement/contracts";
@@ -14,7 +14,7 @@ import { getState, apply, newId, nextDocNumber, writeAudit, writeOutbox } from "
 import {
   prLineView, approvalQueue, lineCoverage, roundSummary, poStatus, isApproved,
   boughtCategories, itemsBoughtFrom, itemSources, purchaseFacts, openLines,
-  pendingRequest,
+  pendingRequest, byTime,
   varianceOf, currentApproval,
 } from "../derive";
 import {
@@ -126,7 +126,7 @@ export async function listAllLines(): Promise<Result<PrLineView[]>> {
       return doc && doc.status !== "CANCELLED";
     })
     .map((l) => prLineView(state, l))
-    .sort((a, b) => (b.submitted_at ?? b.doc_no).localeCompare(a.submitted_at ?? a.doc_no)));
+    .sort((a, b) => byTime(b.submitted_at ?? "", a.submitted_at ?? "") || b.doc_no.localeCompare(a.doc_no)));
 }
 
 function docView(docId: string): PrDocumentView | null {
@@ -151,7 +151,7 @@ export async function listPr(opts: { limit?: number; offset?: number } = {}): Pr
   const rows = getState().pr_documents
     .map((d) => docView(d.id))
     .filter((d): d is PrDocumentView => !!d)
-    .sort((a, b) => b.created_at.localeCompare(a.created_at));
+    .sort((a, b) => byTime(b.created_at, a.created_at));
   return paged(SERVICE, rows, opts.limit ?? 50, opts.offset ?? 0);
 }
 
@@ -265,7 +265,7 @@ export async function decidedLines(limit = 12): Promise<Result<PrLineView[]>> {
       return !!currentApproval(state, line.id);
     })
     .map((line) => prLineView(state, line))
-    .sort((a, b) => (b.approval?.recorded_at ?? "").localeCompare(a.approval?.recorded_at ?? ""));
+    .sort((a, b) => byTime(b.approval?.recorded_at ?? "", a.approval?.recorded_at ?? ""));
   return ok(SERVICE, rows.slice(0, limit));
 }
 
@@ -394,14 +394,14 @@ export async function lineHistory(lineNo: string): Promise<Result<PrApproval[]>>
   if (!line) return notFound(SERVICE, "line_not_found", `Line ${lineNo} not found.`);
   return ok(SERVICE, state.pr_approvals
     .filter((a) => a.line_id === line.id)
-    .sort((a, b) => a.recorded_at.localeCompare(b.recorded_at)));
+    .sort((a, b) => byTime(a.recorded_at, b.recorded_at)));
 }
 
 /* ------------------------------------------------------------------ */
 /* Approval asked for through chat (D69)                               */
 /* ------------------------------------------------------------------ */
 
-/** Send lines to the approver in Google Chat.
+/** Send lines to the approver in Google Chat, as one list.
  *
  *  This exists because of how the meeting actually runs: one laptop, open on
  *  whoever's account, and the CEO saying yes out loud. Ticking the box on that
@@ -409,17 +409,21 @@ export async function lineHistory(lineNo: string): Promise<Result<PrApproval[]>>
  *  that names the wrong person is worse than no trail, because it looks
  *  authoritative.
  *
- *  So the question leaves the room. Sending is an ordinary act anyone in
- *  procurement may do; answering is the decision, and only the addressee can
- *  take it.
+ *  Sent as a BATCH rather than a card per line (D70). A person answering
+ *  fifteen separate cards has no idea what they have committed to until they
+ *  add fifteen numbers up; a batch states the three totals that matter — asked,
+ *  approved, and what has to be paid.
+ *
+ *  Sending is an ordinary act anyone in procurement may do; answering is the
+ *  decision, and only the addressee can take it.
  */
 export async function requestApproval(
   input: { line_nos: string[]; to?: string },
   idempotencyKey?: string,
-): Promise<Result<ApprovalRequestView[]>> {
+): Promise<Result<ApprovalBatchView>> {
   await latency();
   const endpoint = `requestApproval:${input.line_nos.join(",")}`;
-  const cached = replayed<ApprovalRequestView[]>(SERVICE, endpoint, idempotencyKey);
+  const cached = replayed<ApprovalBatchView>(SERVICE, endpoint, idempotencyKey);
   if (cached) return cached;
 
   const state = getState();
@@ -443,17 +447,32 @@ export async function requestApproval(
   }
 
   if (fresh.length === 0) {
-    /* Not an error: asking again for something already asked or already
-       decided is a no-op, and saying so beats a silent success. */
-    return noop(SERVICE, [] as ApprovalRequestView[]);
+    return conflict(
+      SERVICE, "nothing_to_ask",
+      "Nothing to send — every one of those is already decided or already waiting for an answer.",
+    );
   }
 
+  let batchNo = "";
   apply((draft) => {
-    for (const lineNo of fresh) {
+    batchNo = nextDocNumber(draft, "ask");
+    const batchId = newId("abt");
+    /* Unguessable and unique, never derived from the batch number. The token
+     * is what the chat card carries back, so a predictable one would let
+     * anybody who can guess a document number answer somebody else's list —
+     * and two sends deriving the same token would answer each other's. */
+    const token = `tok_${newId("t").slice(2)}${Math.random().toString(36).slice(2, 10)}`;
+    draft.approval_batches.push({
+      id: batchId, batch_no: batchNo, token,
+      sent_to: approver.id, sent_to_email: approver.email,
+      sent_by: user.id, sent_by_email: user.email,
+      sent_at: new Date().toISOString(), channel: "chat",
+    });
+    fresh.forEach((lineNo, i) => {
       const line = draft.pr_lines.find((l) => l.line_no_full === lineNo)!;
-      const token = `tok_${newId("req").slice(4)}`;
       draft.approval_requests.push({
-        id: newId("arq"), line_id: line.id, token,
+        id: newId("arq"), batch_id: batchId, line_id: line.id,
+        token: `${token}~${i + 1}`,
         sent_to: approver.id, sent_to_email: approver.email,
         sent_by: user.id, sent_by_email: user.email,
         sent_at: new Date().toISOString(),
@@ -461,26 +480,37 @@ export async function requestApproval(
       });
       writeAudit(draft, {
         service: SERVICE, entity: "pr_line", entity_no: lineNo,
-        action: "request_approval", outcome: "ok", reason: approver.email,
+        action: "request_approval", outcome: "ok", reason: `${batchNo} → ${approver.email}`,
       });
-      /* The event IS the integration. A worker subscribes to this and posts
-       * the card; nothing here knows what Google Chat is (ADR-004, events). */
-      writeOutbox(draft, {
-        service: SERVICE, event_type: "procurement.approval.requested",
-        payload: { line_no: lineNo, token, to: approver.email, amount: line.item_total },
-      });
-    }
+    });
+    /* One event for one send. The worker that turns this into a chat card
+     * needs the list, not fifteen separate notifications (ADR-004). */
+    writeOutbox(draft, {
+      service: SERVICE, event_type: "procurement.approval.requested",
+      payload: {
+        batch_no: batchNo, token, to: approver.email,
+        line_nos: fresh,
+        requested_total: fresh.reduce((sum, no) => {
+          const l = draft.pr_lines.find((x) => x.line_no_full === no);
+          return sum + (l?.item_total ?? 0);
+        }, 0),
+      },
+    });
   });
 
-  const view = approvalRequestViews(getState()).filter((r) => fresh.includes(r.line_no_full));
+  const view = batchViews(getState()).find((b) => b.batch_no === batchNo)!;
   remember(SERVICE, endpoint, idempotencyKey, view);
   return ok(SERVICE, view);
 }
 
-function approvalRequestViews(state: ReturnType<typeof getState>): ApprovalRequestView[] {
+function requestViews(state: ReturnType<typeof getState>): ApprovalRequestView[] {
   return state.approval_requests.map((r) => {
     const line = state.pr_lines.find((l) => l.id === r.line_id)!;
     const doc = state.pr_documents.find((d) => d.id === line.doc_id);
+    const approval = currentApproval(state, line.id);
+    const decided = approval?.approved === true;
+    const approvedAmount = decided ? approval.approved_amount ?? line.item_total : null;
+    const covered = lineCoverage(state, line).covered;
     return {
       ...r,
       line_no_full: line.line_no_full,
@@ -493,20 +523,41 @@ function approvalRequestViews(state: ReturnType<typeof getState>): ApprovalReque
       vendor_name: state.vendors.find((v) => v.id === line.vendor_id)?.name ?? null,
       requested_by_name: state.users.find((u) => u.id === doc?.requested_by)?.full_name ?? "—",
       project_code: state.projects.find((p) => p.id === doc?.project_id)?.code ?? null,
-      line_decided: isApproved(state, line.id),
+      line_decided: decided,
+      approved_amount: approvedAmount,
+      /* What actually has to leave the bank: approved, less whatever already
+       * reached the line. Approving something already paid for commits no new
+       * money, and a total that ignores that is a total nobody can act on. */
+      to_pay: Math.max((approvedAmount ?? 0) - covered, 0),
     };
   });
 }
 
-/** The cards waiting in one person's chat. */
-export async function listApprovalRequests(
+function batchViews(state: ReturnType<typeof getState>): ApprovalBatchView[] {
+  const all = requestViews(state);
+  return state.approval_batches.map((b) => {
+    const items = all.filter((r) => r.batch_id === b.id);
+    return {
+      ...b,
+      items,
+      requested_total: items.reduce((s, i) => s + i.item_total, 0),
+      approved_total: items.reduce((s, i) => s + (i.approved_amount ?? 0), 0),
+      to_pay_total: items.reduce((s, i) => s + i.to_pay, 0),
+      answered: items.filter((i) => i.answered_at).length,
+      pending: items.filter((i) => !i.answered_at).length,
+    };
+  }).sort((a, b) => byTime(b.sent_at, a.sent_at));
+}
+
+/** The sends waiting in one person's chat, newest first. */
+export async function listApprovalBatches(
   opts: { for_email?: string; pending?: boolean } = {},
-): Promise<Result<ApprovalRequestView[]>> {
+): Promise<Result<ApprovalBatchView[]>> {
   await latency();
-  let rows = approvalRequestViews(getState());
-  if (opts.for_email) rows = rows.filter((r) => r.sent_to_email === opts.for_email);
-  if (opts.pending) rows = rows.filter((r) => !r.answered_at);
-  return ok(SERVICE, rows.sort((a, b) => b.sent_at.localeCompare(a.sent_at)));
+  let rows = batchViews(getState());
+  if (opts.for_email) rows = rows.filter((b) => b.sent_to_email === opts.for_email);
+  if (opts.pending) rows = rows.filter((b) => b.pending > 0);
+  return ok(SERVICE, rows);
 }
 
 /** The answer coming back from chat.
@@ -607,6 +658,73 @@ export async function answerFromChat(
   });
 
   const view = prLineView(getState(), getState().pr_lines.find((l) => l.id === line.id)!);
+  remember(SERVICE, endpoint, idempotencyKey, view);
+  return ok(SERVICE, view);
+}
+
+/** Yes to everything still open in one send, at the amounts asked.
+ *
+ *  The honest case for it: most items in a meeting are approved as asked, and
+ *  making the approver tap fifteen times to say so is how people stop reading
+ *  the fifteenth. Anything they want to change, they change first — this only
+ *  covers what is left (D70).
+ */
+export async function answerBatch(
+  input: { batch_token: string; answered_by_email: string },
+  idempotencyKey?: string,
+): Promise<Result<ApprovalBatchView>> {
+  await latency();
+  const endpoint = `answerBatch:${input.batch_token}`;
+  const cached = replayed<ApprovalBatchView>(SERVICE, endpoint, idempotencyKey);
+  if (cached) return cached;
+
+  const state = getState();
+  const batch = state.approval_batches.find((b) => b.token === input.batch_token);
+  if (!batch) return notFound(SERVICE, "batch_not_found", "That card does not match anything — it may have been withdrawn.");
+  if (input.answered_by_email !== batch.sent_to_email) {
+    apply((draft) => {
+      writeAudit(draft, {
+        service: SERVICE, entity: "pr_line", entity_no: batch.batch_no,
+        action: "answer_from_chat", outcome: "refused", reason: input.answered_by_email,
+      });
+    });
+    return refused(
+      SERVICE, "not_the_addressee",
+      `This was sent to ${batch.sent_to_email}. An answer from ${input.answered_by_email} is not that person's decision, and recording it as theirs is the mistake this whole route exists to prevent.`,
+    );
+  }
+
+  const open = state.approval_requests.filter((r) => r.batch_id === batch.id && !r.answered_at);
+  if (open.length === 0) {
+    return conflict(SERVICE, "already_answered", "Every item in this list has been answered already — nothing changed.");
+  }
+
+  apply((draft) => {
+    const now = new Date().toISOString();
+    for (const req of draft.approval_requests) {
+      if (req.batch_id !== batch.id || req.answered_at) continue;
+      const line = draft.pr_lines.find((l) => l.id === req.line_id);
+      if (!line || line.removed_at) continue;
+      req.answered_at = now;
+      req.outcome = "approved";
+      draft.pr_approvals.push({
+        id: newId("apr"), line_id: line.id, step: "GOODS",
+        approved: true, approved_qty: line.qty, approved_amount: line.item_total,
+        recorded_by: batch.sent_to, recorded_by_email: batch.sent_to_email,
+        recorded_at: now, channel: batch.channel,
+      });
+      writeAudit(draft, {
+        service: SERVICE, entity: "pr_line", entity_no: line.line_no_full,
+        action: "approve", outcome: "ok", reason: `chat · ${batch.sent_to_email} · ${batch.batch_no}`,
+      });
+      writeOutbox(draft, {
+        service: SERVICE, event_type: "procurement.line.approved",
+        payload: { line_no: line.line_no_full, approved: true, amount: line.item_total, channel: "chat" },
+      });
+    }
+  });
+
+  const view = batchViews(getState()).find((b) => b.id === batch.id)!;
   remember(SERVICE, endpoint, idempotencyKey, view);
   return ok(SERVICE, view);
 }

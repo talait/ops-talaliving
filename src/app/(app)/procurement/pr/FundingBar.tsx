@@ -34,11 +34,19 @@ export function FundingBar({ lines }: { lines: PrLineView[] }) {
     .filter((l) => l.approval?.approved && !l.coverage.settled && !l.removed_at)
     .reduce((s, l) => s + l.coverage.remaining, 0);
 
+  /* Not decided yet, so not owed yet — but it is the other half of the
+     question "how much will this week cost", and leaving it out makes the
+     top-up look smaller than it is going to be (D71). */
+  const undecided = lines
+    .filter((l) => !l.approval?.approved && !l.removed_at)
+    .reduce((s, l) => s + l.item_total, 0);
+
   const bca = accounts.status === "ready"
     ? accounts.data.find((a) => a.code === "BCA 271")
     : undefined;
   const balance = bca?.balance;
   const shortfall = balance === undefined ? null : Math.max(owed - balance, 0);
+  const shortfallIfAll = balance === undefined ? null : Math.max(owed + undecided - balance, 0);
 
   return (
     <div className="mb-4 flex flex-wrap items-center gap-x-6 gap-y-2 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-card">
@@ -51,22 +59,35 @@ export function FundingBar({ lines }: { lines: PrLineView[] }) {
       </p>
 
       <p className="text-[13px] text-slate-600">
-        Approved and unpaid <span className="tabular-nums font-medium text-slate-800">{formatIDR(owed)}</span>
+        Approved, still to pay{" "}
+        <span className="tabular-nums font-medium text-slate-800">{formatIDR(owed)}</span>
+      </p>
+
+      <p className="text-[13px] text-slate-600">
+        Waiting for a decision{" "}
+        <span className="tabular-nums font-medium text-slate-800">{formatIDR(undecided)}</span>
       </p>
 
       {shortfall === null ? (
         <p className="text-[13px] text-slate-400">balance unavailable</p>
       ) : shortfall > 0 ? (
-        <p className={cn(
-          "flex items-center gap-1.5 rounded-lg bg-amber-50 px-2.5 py-1 text-[13px] font-medium text-amber-800",
-        )}>
+        <p className="flex items-center gap-1.5 rounded-lg bg-amber-50 px-2.5 py-1 text-[13px] font-medium text-amber-800">
           <ArrowDownToLine className="h-3.5 w-3.5" />
-          Top up {formatIDR(shortfall)} to cover it
+          Top up {formatIDR(shortfall)} to cover what is already approved
         </p>
       ) : (
         <p className="flex items-center gap-1.5 rounded-lg bg-emerald-50 px-2.5 py-1 text-[13px] font-medium text-emerald-800">
           <CheckCircle2 className="h-3.5 w-3.5" />
           Covered — {formatIDR((balance ?? 0) - owed)} left after paying it all
+        </p>
+      )}
+
+      {/* The number the meeting actually needs: what a yes to everything on
+          the board would cost, not only what past decisions already cost. */}
+      {shortfallIfAll !== null && shortfallIfAll > shortfall! && (
+        <p className="w-full text-[12px] text-slate-500">
+          Approve everything still waiting and the shortfall becomes{" "}
+          <span className="font-medium text-amber-800">{formatIDR(shortfallIfAll)}</span>.
         </p>
       )}
     </div>

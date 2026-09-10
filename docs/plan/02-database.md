@@ -302,6 +302,7 @@ erDiagram
     pr_lines ||--o{ line_variances : "explained"
     pr_lines ||--o{ line_notes : "annotated"
     pr_lines ||--o{ approval_requests : "asked"
+    approval_batches ||--o{ approval_requests : "sent in"
 
     pr_documents {
         uuid id PK
@@ -385,8 +386,18 @@ erDiagram
         uuid recorded_by FK
         timestamptz recorded_at
     }
+    approval_batches {
+        uuid id PK
+        text batch_no UK "ask-26-09-10_01"
+        text token UK "random, never derived"
+        uuid sent_to FK
+        uuid sent_by FK
+        channel_t channel
+        timestamptz sent_at
+    }
     approval_requests {
         uuid id PK
+        uuid batch_id FK
         uuid line_id FK
         text token UK "identifies the REQUEST, never a person"
         uuid sent_to FK "whose yes this is"
@@ -429,6 +440,18 @@ could replay.
 
 The resulting `pr_approvals` row reads `chat · evin@talaliving.com · 14:00`,
 which is what actually happened.
+
+**Batched, because a meeting is a list** (D70). One send is one
+`approval_batches` row and one card, carrying every line in it and three
+totals: asked for, approved so far, and what has to be paid — that last one
+being approved *minus what already reached those lines*, since approving
+something already paid for commits no new money. Fifteen separate cards would
+ask the approver to add fifteen numbers up before knowing what they had just
+committed to.
+
+`token` is random on both tables and never derived from `batch_no`: it is a
+capability the card carries back, so a predictable one would let anybody who
+can guess a document number answer somebody else's list.
 
 **`line_variances` — why the money that moved is not the money approved**
 (D54, D55). Append-only, like every decision record here: a correction is a new

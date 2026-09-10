@@ -58,7 +58,7 @@ Update the row, the date, and the note **in the same commit** as the work.
 | M4 | Requests board: line-first, four meeting states, evidence | D4 | DONE | 2026-09-11 | redefined per owner — line is the unit (D48) |
 | M4b | Approved-against-paid: variance, explanation, pay-from-line | D4 | DONE | 2026-09-11 | D53–D57. Posting a payment from a line writes the ledger row (D32 delivered early) |
 | M5 | PR: approval on the board itself, approval trail | D5 | DONE | 2026-09-11 | merged into `/procurement/pr` (D67). Checkbox + reducible qty and amount + instructions/remark + trail + un-approve |
-| M5b | Approval asked for and answered in Google Chat | D5 | DONE | 2026-09-11 | D69. The identity on the record is the approver's, not the meeting laptop's. `/demo/chat` stands in for the signed webhook |
+| M5b | Approval asked for and answered in Google Chat | D5 | DONE | 2026-09-11 | D69–D72. Sent as a batch with its totals; the identity on the record is the approver's, not the meeting laptop's. `/demo/chat` stands in for the signed webhook |
 | M6 | Payment rounds: sync, approve, transfer, close | D6 | TODO | — | |
 | M7 | **Checkpoint: walk Flow B on a phone, with the team** | D7 | TODO | — | week-1 review |
 | M8 | Ledger: list, drawer, attach from a row, void, complete | D8 | TODO | — | |

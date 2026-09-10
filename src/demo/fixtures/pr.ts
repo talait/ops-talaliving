@@ -1,7 +1,7 @@
 import type {
   PrDocument, PrLine, PrApproval, PaymentRound, PaymentRoundLine, Receipt,
   PurchaseOrder, PoLine, PoScheduleTerm, PrCategory, UomCode,
-  LineVariance, LineSettlement, LineNote, ApprovalRequest,
+  LineVariance, LineSettlement, LineNote, ApprovalRequest, ApprovalBatch,
 } from "@/services/procurement/contracts";
 import { itemIdByCode } from "./reference";
 
@@ -170,9 +170,25 @@ export const LINE_NOTES: LineNote[] = [
  * this morning. The whole point of the row: `sent_by` is Putri, and whatever
  * comes back will be recorded as Evin's decision, because Evin is who answers
  * it (D69). */
+export const APPROVAL_BATCHES: ApprovalBatch[] = [
+  {
+    id: "abt_01", batch_no: "ask-26-09-10_01", token: "tok_seed01_a7f3d2",
+    sent_to: "usr_evin", sent_to_email: "evin@talaliving.com",
+    sent_by: "usr_putri", sent_by_email: "putri@talaliving.com",
+    sent_at: "2026-09-10T09:05:00+08:00", channel: "chat",
+  },
+];
+
 export const APPROVAL_REQUESTS: ApprovalRequest[] = [
   {
-    id: "arq_01", line_id: "prl_0503", token: "tok_26-09-10_01",
+    id: "arq_01", batch_id: "abt_01", line_id: "prl_0503", token: "tok_seed01_a7f3d2~1",
+    sent_to: "usr_evin", sent_to_email: "evin@talaliving.com",
+    sent_by: "usr_putri", sent_by_email: "putri@talaliving.com",
+    sent_at: "2026-09-10T09:05:00+08:00",
+    channel: "chat", answered_at: null, outcome: null,
+  },
+  {
+    id: "arq_02", batch_id: "abt_01", line_id: "prl_0502", token: "tok_seed01_a7f3d2~2",
     sent_to: "usr_evin", sent_to_email: "evin@talaliving.com",
     sent_by: "usr_putri", sent_by_email: "putri@talaliving.com",
     sent_at: "2026-09-10T09:05:00+08:00",

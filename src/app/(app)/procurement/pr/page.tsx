@@ -47,6 +47,28 @@ const STATE_META: Record<MeetingState, { icon: typeof Circle; tone: string; chip
 
 const STATE_ORDER: MeetingState[] = ["neither", "approved_unpaid", "paid_unapproved", "settled"];
 
+/** Three piles, in the order the money moves through them.
+ *
+ *  "Not approved" and "approved" are different kinds of work — one needs a
+ *  decision, the other needs cash — and the two totals worth stating are
+ *  exactly the ones a single mixed table cannot show: what is still to decide,
+ *  and what the decisions already taken will cost to pay (D71).
+ */
+type GroupKey = "waiting" | "to_pay" | "done";
+
+const GROUPS: { key: GroupKey; title: string; icon: typeof Circle }[] = [
+  { key: "waiting", title: "Waiting for approval", icon: Circle },
+  { key: "to_pay", title: "Approved — waiting for payment", icon: Clock },
+  { key: "done", title: "Finished", icon: CheckCircle2 },
+];
+
+function groupOf(l: PrLineView): GroupKey {
+  /* Paid without a yes belongs with the undecided, not with the finished: the
+     money is gone but the decision is still owed (A6). */
+  if (!l.approval?.approved) return "waiting";
+  return l.coverage.settled ? "done" : "to_pay";
+}
+
 export default function RequestsBoardPage() {
   const { can, hasAuthority } = useSession();
   const { toast } = useToast();
@@ -151,8 +173,8 @@ export default function RequestsBoardPage() {
     if (res.error) { toast("warning", "Not sent", res.error.message); return; }
     toast(
       "success",
-      `Sent ${res.data.length} to chat`,
-      res.data.length ? `Waiting on ${res.data[0].sent_to_email}` : "",
+      `Sent ${res.data.items.length} item(s) as ${res.data.batch_no}`,
+      `${formatIDR(res.data.requested_total)} for ${res.data.sent_to_email} to decide`,
     );
     refresh();
   }
@@ -400,59 +422,83 @@ export default function RequestsBoardPage() {
                 </p>
               )}
 
-              <Card>
-                <CardHeader
-                  title={
-                    varianceOnly ? "Paid ≠ approved"
-                      : stateFilter ? MEETING_STATE_LABEL[stateFilter] : "All open items"
-                  }
-                  subtitle={mayDecide
-                    ? "One row per item. Change the quantity or the amount, then tick — approval can only reduce."
-                    : "One row per item, not per document, across every submission and every supplier."}
-                  icon={ClipboardList}
-                  action={
-                    <div className="flex flex-wrap items-center gap-2">
-                      {mayEdit && rows.some((l) => !l.approval?.approved && !l.removed_at && !l.pending_request) && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          icon={Send}
-                          disabled={sending}
-                          onClick={() => askForApproval(rows)}
-                        >
-                          {sending ? "Sending…" : "Ask on Chat"}
-                        </Button>
-                      )}
-                      <SourceBadge state={lines} />
-                      <label className="flex items-center gap-1.5 text-xs text-slate-500">
-                        <input
-                          id="show-settled"
-                          type="checkbox"
-                          checked={showSettled}
-                          onChange={(e) => setShowSettled(e.target.checked)}
-                          className="h-3.5 w-3.5 rounded border-slate-300"
-                        />
-                        Include finished
-                      </label>
-                      <input
-                        id="line-search"
-                        value={q}
-                        onChange={(e) => setQ(e.target.value)}
-                        placeholder="Item, purpose, vendor…"
-                        className="h-9 w-44 rounded-lg border border-slate-200 px-3 text-sm text-slate-700 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none"
-                      />
-                    </div>
-                  }
+              {/* The toolbar sits above the groups, not inside one of them:
+                  the search and the "include finished" switch apply to all
+                  three. */}
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <SourceBadge state={lines} />
+                <label className="flex items-center gap-1.5 text-xs text-slate-500">
+                  <input
+                    id="show-settled"
+                    type="checkbox"
+                    checked={showSettled}
+                    onChange={(e) => setShowSettled(e.target.checked)}
+                    className="h-3.5 w-3.5 rounded border-slate-300"
+                  />
+                  Include finished
+                </label>
+                <input
+                  id="line-search"
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  placeholder="Item, purpose, vendor…"
+                  className="ml-auto h-9 w-52 rounded-lg border border-slate-200 px-3 text-sm text-slate-700 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none"
                 />
-                <DataTable
-                  dense
-                  columns={columns}
-                  rows={rows}
-                  rowKey={(l) => l.id}
-                  onRowClick={setSelected}
-                  empty={q || stateFilter || varianceOnly ? "Nothing matches those filters." : "Nothing outstanding."}
-                />
-              </Card>
+              </div>
+
+              {/* Not approved and approved are different piles of work, and
+                  keeping them in one table hid the only two totals anybody
+                  asks for: what is still to decide, and what that decision
+                  will cost (D71). */}
+              {GROUPS.map((g) => {
+                const groupRows = rows.filter((l) => groupOf(l) === g.key);
+                if (groupRows.length === 0 && g.key === "done") return null;
+
+                const asked = groupRows.reduce((s, l) => s + l.item_total, 0);
+                const approvedTotal = groupRows.reduce(
+                  (s, l) => s + (l.approval?.approved ? l.approval.approved_amount ?? l.item_total : 0), 0);
+                const toPay = groupRows.reduce((s, l) => s + (l.approval?.approved ? l.coverage.remaining : 0), 0);
+                const askable = groupRows.filter((l) => !l.approval?.approved && !l.removed_at && !l.pending_request);
+
+                return (
+                  <Card key={g.key} className="mb-5">
+                    <CardHeader
+                      title={g.title}
+                      subtitle={
+                        g.key === "waiting"
+                          ? `${groupRows.length} item(s) · ${formatIDR(asked)} asked for. Nothing moves until these are decided.`
+                          : g.key === "to_pay"
+                            ? `${groupRows.length} item(s) · ${formatIDR(approvedTotal)} approved · ${formatIDR(toPay)} still to pay — this is the money that has to be in the account.`
+                            : `${groupRows.length} item(s) · ${formatIDR(approvedTotal)} approved and settled.`
+                      }
+                      icon={g.icon}
+                      action={
+                        g.key === "waiting" && mayEdit && askable.length > 0 ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            icon={Send}
+                            disabled={sending}
+                            onClick={() => askForApproval(askable)}
+                          >
+                            {sending ? "Sending…" : `Ask on Chat · ${askable.length}`}
+                          </Button>
+                        ) : undefined
+                      }
+                    />
+                    <DataTable
+                      dense
+                      columns={columns}
+                      rows={groupRows}
+                      rowKey={(l) => l.id}
+                      onRowClick={setSelected}
+                      empty={q || stateFilter || varianceOnly
+                        ? "Nothing here matches those filters."
+                        : g.key === "waiting" ? "Everything has been decided." : "Nothing waiting to be paid."}
+                    />
+                  </Card>
+                );
+              })}
             </>
           );
         }}

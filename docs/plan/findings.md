@@ -719,3 +719,40 @@ The route is already event-shaped: `procurement.approval.requested` goes to
 the outbox, a worker turns it into a card, and the answer comes back through
 one endpoint. Phase 2 changes the worker, not procurement.
 
+## F17 — two bugs that only a second batch could reveal
+
+Grouping the board and batching the chat card were the owner's asks. Building
+them surfaced two defects that had been sitting in the demo layer since M1,
+both invisible until a second row of the same kind existed.
+
+**Timestamps were being sorted as text.** The fixtures carry `+08:00` — the
+office is in WITA — and everything written while the app runs carries `Z`.
+Compared as strings, `09:05:00+08:00` sorts *after* `06:45:00Z`, though it
+happened three hours earlier. That mattered far beyond the chat list: "the
+current decision is the latest row" is how approval, notes, variance
+explanations and pending requests all work, so on any day where a fixture row
+and a live row met, the screen would confidently show the older answer as the
+current one. One `byTime` comparator, applied at every place a timestamp was
+ordered.
+
+**A token derived from a document number is not a token.** The batch token was
+built from the batch number, so the second send of the day produced the same
+token as a seeded one and answers landed on the wrong list. The fix is the
+rule, not the patch: a token is a capability the card carries back, so it must
+be random and unique. Deriving it from anything guessable would let somebody
+who can count document numbers answer a list addressed to the CEO.
+
+Neither bug was reachable with one batch in the data. Both appeared the moment
+a second one existed — which is the argument for fixtures that contain two of
+everything interesting, not one.
+
+**And the reason the batch card earns its place.** A card per line asks the
+approver to hold a running total in their head; by the fifteenth they have
+stopped. The list states what a single line cannot: *asked for*, *approved so
+far*, *has to be paid* — that last one being approved minus what already
+reached those lines, because approving something already paid for commits no
+new money. Beside it sits the BCA 271 balance, so "yes" and "we can afford
+it" stop being the same click. The board answers the same question from the
+other side: what is still to decide, and what the decisions already taken will
+cost.
+

@@ -158,8 +158,7 @@ export function DecisionPanel({
               const res = await procurement.requestApproval({ line_nos: [line.line_no_full] });
               setBusy(false);
               if (res.error) { toast("warning", "Not sent", res.error.message); return; }
-              const to = res.data[0]?.sent_to_email;
-              toast("success", "Sent to chat", to ? `Waiting on ${to}` : "Nothing to send");
+              toast("success", `Sent as ${res.data.batch_no}`, `Waiting on ${res.data.sent_to_email}`);
               const again = await procurement.listOpenLines();
               const updated = again.data?.find((l) => l.id === line.id);
               if (updated) onChanged(updated);

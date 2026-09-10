@@ -52,7 +52,7 @@ Update the row, the date, and the note **in the same commit** as the work.
 | # | Milestone | Day | Status | Updated | Note |
 |---|---|---|---|---|---|
 | M0 | Plan and design documents | D1 | DONE | 2026-09-10 | this document set |
-| M1 | Demo data layer + contracts | D1 | DONE | 2026-09-11 | built, typechecked, lint-clean, verified in a browser. **Vercel not connected yet** — see below |
+| M1 | Demo data layer + contracts | D1 | DONE | 2026-09-11 | deployed. Preview builds on every push to this branch |
 | M2 | Demo session: multi-module grants + four authorities | D2 | TODO | — | D22–D24; needs the grant picker |
 | M3 | Reference data: vendors, items, projects | D3 | TODO | — | |
 | M4 | PR: list, multi-line create, detail drawer | D4 | TODO | — | |
@@ -67,13 +67,22 @@ Update the row, the date, and the note **in the same commit** as the work.
 | M13 | Polish: phone, empty states, refusals, demo reset | D13 | TODO | — | |
 | M14 | **Walkthrough + findings → the schema we actually need** | D14 | TODO | — | the payoff |
 
-**M1 is code-complete but not deployed.** This environment has no Vercel
-credentials, so the build was verified locally instead: `npm run build` clean,
-`next lint` clean, `tsc --noEmit` clean, and the page rendered in headless
-Chromium with all six refusal probes passing and all eight line statuses
-present. Connecting the repo to Vercel is a one-time step for the owner —
-import `talait/ops-talaliving`, framework preset Next.js, no environment
-variables — after which every push deploys and every PR gets a preview link.
+**Deployment.** Vercel builds from GitHub directly, not from a developer's
+machine, so nothing in this repo has to hold a Vercel credential.
+
+- **Every push to this branch produces a Preview deployment** with its own URL.
+  That is the review surface for the fortnight.
+- **The Production URL only ever builds from the Production Branch**, which is
+  `main` by default. While Phase 1 lives on `claude/serene-euler-eq2qef`, the
+  production URL keeps serving whatever `main` last had — the empty shell.
+
+Two ways to make the production URL show the current work, whenever that is
+wanted: merge the branch into `main`, or point Vercel's Production Branch at
+this branch in Project Settings → Git. The second needs no merge and suits a
+phase whose whole output lives on one branch.
+
+If a preview link asks for a Vercel login, that is Deployment Protection
+(Project Settings → Deployment Protection), on by default for team projects.
 
 ### Phase 2 — the backend (not scheduled yet)
 

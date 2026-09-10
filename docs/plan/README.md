@@ -69,7 +69,7 @@ Update the row, the date, and the note **in the same commit** as the work.
 | M12a | Liquidation: one transfer in, and where it went | D12 | DONE | 2026-09-11 | `/accounting/liquidation` — per transfer, not per month (D106). Cashflow dropped: the ledger already is it (D108) |
 | M12b | Payment calendar: 12 months, projected against actual, with due dates | D12 | DONE | 2026-09-11 | `/accounting/calendar` — one estimate per line with the day it is due (D109), *not in the plan* reconciles it to the ledger (D111), and the verdict names the month the money runs out |
 | M12c | Calendar: weekly / monthly / one-off, and a month opened day by day | D12 | DONE | 2026-09-11 | three shapes per line, `amount` per occurrence (D113); a month expands into its dated movements with the first day it goes under and the lowest point (D115). Counting paydays moved the failure from December to **November** |
-| M13 | Polish: phone, empty states, refusals, demo reset | D13 | TODO | — | |
+| M13 | Polish: phone, empty states, refusals, demo reset, guided tour | D13 | DONE | 2026-09-11 | every screen checked at 390px (no horizontal scroll anywhere, drawers full-screen with a pinned action bar); every table carries an empty state that says what to do; the guided walk is `?tour=flow-b` (D117); the dashboard now reads the demo store instead of the shell's sample data (D118) |
 | M14 | **Walkthrough + findings → the schema we actually need** | D14 | TODO | — | the payoff |
 
 **Deployment.** Vercel builds from GitHub directly, not from a developer's

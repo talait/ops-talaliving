@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
-  Database, ShieldAlert, Wallet, ListChecks, FileStack, GitBranch, RotateCcw,
+  Database, ShieldAlert, Wallet, ListChecks, FileStack, GitBranch, RotateCcw, Footprints,
 } from "lucide-react";
 import {
   Badge, Button, Card, CardHeader, PageHeader, StatCard, type Tone,
@@ -14,6 +15,7 @@ import { accountBalances, prLineView, poStatus, inboxHealth } from "@/demo/deriv
 import { procurement, accounting, identity, isOk } from "@/demo/api";
 import type { LineStatus } from "@/services/procurement/contracts";
 import { useToast } from "@/store/toast";
+import { FLOW_B, tourHref } from "@/lib/tour";
 
 /** M1 diagnostic surface.
  *
@@ -45,6 +47,7 @@ interface Probe {
 }
 
 export default function DemoDiagnosticsPage() {
+  const router = useRouter();
   const state = useDemo();
   const reset = useDemoReset();
   const acting = useActingUser();
@@ -172,6 +175,9 @@ export default function DemoDiagnosticsPage() {
         description="A working page, not a product page. What the store holds, what derive.ts computes from it, and proof that the refusals are real."
         actions={
           <>
+            <Button variant="outline" size="sm" icon={Footprints} onClick={() => router.push(tourHref(FLOW_B, 0))}>
+              Walk Flow B
+            </Button>
             <Button variant="outline" size="sm" icon={RotateCcw} onClick={() => { reset(); toast("info", "Demo data reset", "The sandbox is back to its starting state."); }}>
               Reset demo data
             </Button>
@@ -234,7 +240,7 @@ export default function DemoDiagnosticsPage() {
             </div>
           }
         />
-        <DataTable columns={lineColumns} rows={lines} rowKey={(r) => r.id} dense />
+        <DataTable columns={lineColumns} rows={lines} rowKey={(r) => r.id} dense empty="The sandbox holds no request lines. Reset the demo data to bring the fixtures back." />
       </Card>
 
       <div className="grid gap-4 lg:grid-cols-2">

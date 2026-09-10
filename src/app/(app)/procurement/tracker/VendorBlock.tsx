@@ -152,6 +152,7 @@ export function VendorBlock({
             ] as Column<PoJourney>[]}
             rows={journey.pos}
             rowKey={(p) => p.po_no}
+            empty="No order has been issued to this supplier yet."
             footer={
               <>
                 <tr>
@@ -296,7 +297,13 @@ function OrderBlock({ po, onChanged }: { po: PoJourney; onChanged: () => void })
           </div>
         }
       />
-      <DataTable dense columns={columns} rows={po.lines} rowKey={(l) => l.po_line_id} />
+      <DataTable
+        dense
+        columns={columns}
+        rows={po.lines}
+        rowKey={(l) => l.po_line_id}
+        empty="This order has no lines on it — an order with nothing on it is not an order."
+      />
 
       {po.note && (
         <p className="border-t border-slate-100 px-4 py-2.5 text-[12px] text-slate-500">{po.note}</p>

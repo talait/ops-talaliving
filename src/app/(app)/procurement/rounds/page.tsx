@@ -323,6 +323,7 @@ export default function RoundsPage() {
                       dense
                       columns={lineColumns}
                       rows={released.lines}
+                      empty="This round released nothing — it closed with no lines on it."
                       rowKey={(l) => l.id}
                     />
                   )}

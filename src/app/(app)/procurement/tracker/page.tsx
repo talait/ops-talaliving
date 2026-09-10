@@ -179,6 +179,7 @@ export default function TrackerPage() {
                       columns={columns}
                       rows={settled}
                       rowKey={(v) => v.vendor_id}
+                      empty="Nothing is fully settled yet."
                       onRowClick={(v) => { window.location.href = `/procurement/tracker/${v.vendor_id}`; }}
                     />
                   )}

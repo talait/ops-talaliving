@@ -1267,3 +1267,33 @@ figure says it ends Rp 89,7 juta down. The day view says it **breaks on the
 different problems: one is *the month is too expensive*, the other is *the
 money is in the wrong order*. Only the second one is fixed by moving a
 transfer.
+
+## F32 — the landing page was the last place that could lie
+
+M13 was meant to be polish: phone widths, empty states, a guided walk. The
+phone audit came back clean on every screen — no horizontal scroll at 390px,
+drawers already full-screen with their action bar pinned — which was a relief
+and not a finding.
+
+The finding was on the page nobody had looked at since D1. The dashboard was
+still the shell's sample page: invented sales orders for customers that do not
+exist, a timber-yield chart for a business that has no timber yield **in this
+system**, and a production trend in rupiah that came from nowhere. Every other
+screen had been rebuilt on real derivations. That one had not, and it is the
+first thing anybody sees — including anybody being walked through the demo.
+
+The general shape: **the pages nobody argues about are the pages nobody
+checks.** Every screen in this app got attention because somebody had a
+question it could not answer. The dashboard was never wrong about anything,
+because nobody ever asked it anything.
+
+Rebuilt on the same store as the rest (D118), it now says: cash today, the
+month the money runs out, what waits on a decision, what suppliers could
+invoice, the twelve-month cash line, what falls due next, and the last rows
+out. Its first sentence is *nothing on this page is invented* — which was
+worth writing down precisely because it had not been true.
+
+One small thing the tour found on its way past: the walk's **Next** button
+collided with the ledger's own pagination **Next**. Two controls with the same
+name on one screen is a real defect for anybody reading by keyboard or screen
+reader, not a test artifact. Renamed to *Next step* / *Previous step*.

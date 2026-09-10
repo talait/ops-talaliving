@@ -1,180 +1,242 @@
 "use client";
 
-import { useState } from "react";
-import { Boxes, ClipboardList, FolderKanban, Hammer, Receipt, TreePine, Wallet } from "lucide-react";
-import { Badge, Button, Card, CardHeader, PageHeader, StatCard, type Tone } from "@/components/ui/primitives";
+import Link from "next/link";
+import {
+  AlertTriangle, ArrowRight, Banknote, Bell, CalendarDays, Inbox, Route, Wallet,
+} from "lucide-react";
+import { Badge, Button, Card, CardHeader, PageHeader, StatCard } from "@/components/ui/primitives";
 import { DataTable, type Column } from "@/components/ui/data-table";
-import { Drawer } from "@/components/ui/drawer";
-import { AreaTrend, BarSeries } from "@/components/charts/charts";
-import { formatIDR, formatM3 } from "@/lib/format";
+import { Loaded, useLoad } from "@/components/ui/loaded";
+import { AreaTrend } from "@/components/charts/charts";
+import { formatIDR } from "@/lib/format";
+import { cn } from "@/lib/cn";
+import { accounting, procurement } from "@/demo/api";
+import type { CashDue } from "@/services/accounting/contracts";
+import type { TransactionView } from "@/services/accounting/contracts";
 
-/* CONTOH — bukan data nyata.
+/** The first screen, on the same data as every other screen.
  *
- * Ini satu-satunya halaman berisi di kerangka, dan ada untuk satu alasan:
- * memperlihatkan design system-nya bekerja pada data yang berbentuk sungguhan
- * sebelum backend tersambung. Angkanya dikarang tapi bentuknya realistis
- * (volume kayu m3 tiga desimal, rupiah tanpa desimal), supaya keputusan tata
- * letak diambil terhadap sesuatu yang menyerupai kenyataan. Hapus saat data
- * asli masuk. */
-
-const TREN_PRODUKSI = [
-  { label: "Mar", nilai: 412_000_000 },
-  { label: "Apr", nilai: 468_000_000 },
-  { label: "May", nilai: 395_000_000 },
-  { label: "Jun", nilai: 521_000_000 },
-  { label: "Jul", nilai: 604_000_000 },
-  { label: "Aug", nilai: 588_000_000 },
-  { label: "Sep", nilai: 655_000_000 },
-];
-
-const RENDEMEN = [
-  { label: "Jati", nilai: 58 },
-  { label: "Mahoni", nilai: 52 },
-  { label: "Sungkai", nilai: 47 },
-  { label: "Mindi", nilai: 44 },
-];
-
-type StatusOrder = "Design" | "Production" | "Delivery" | "Installation" | "Done";
-
-interface Order {
-  id: string;
-  nomor: string;
-  pelanggan: string;
-  produk: string;
-  qty: number;
-  nilai: number;
-  status: StatusOrder;
-  tenggat: string;
-}
-
-const STATUS_TONE: Record<StatusOrder, Tone> = {
-  Design: "slate",
-  Production: "brand",
-  Delivery: "violet",
-  Installation: "amber",
-  Done: "green",
-};
-
-const ORDERS: Order[] = [
-  { id: "1", nomor: "SO/2609/0041", pelanggan: "Hotel Padma Bandung", produk: "Bedside table", qty: 120, nilai: 384_000_000, status: "Production", tenggat: "24 Sep 2026" },
-  { id: "2", nomor: "SO/2609/0040", pelanggan: "Grha Wisata Nusantara", produk: "Teak lobby chair set", qty: 24, nilai: 216_000_000, status: "Installation", tenggat: "18 Sep 2026" },
-  { id: "3", nomor: "SO/2609/0038", pelanggan: "Kantor Notaris Wijaya", produk: "4-door filing cabinet", qty: 8, nilai: 62_400_000, status: "Delivery", tenggat: "15 Sep 2026" },
-  { id: "4", nomor: "SO/2609/0036", pelanggan: "Restoran Bumi Sangkuriang", produk: "8-seat dining table", qty: 15, nilai: 172_500_000, status: "Design", tenggat: "02 Oct 2026" },
-  { id: "5", nomor: "SO/2608/0031", pelanggan: "Apartemen Skyline", produk: "Custom kitchen set", qty: 6, nilai: 294_000_000, status: "Done", tenggat: "05 Sep 2026" },
-];
-
+ *  It used to be the shell's sample page — invented sales orders and a timber
+ *  yield chart for a business that has neither in this system. That was
+ *  defensible while it was proving the design system worked, and indefensible
+ *  once every other screen was reading real derivations: the landing page was
+ *  the only place in the app that could not be trusted (D118).
+ *
+ *  Five questions, in the order somebody actually asks them: how much money is
+ *  there, does it last, what falls due next, what is waiting on a decision,
+ *  and what is stuck. Every figure links to the screen that can act on it —
+ *  a dashboard that cannot be acted on is a poster.
+ */
 export default function DashboardPage() {
-  const [selected, setSelected] = useState<Order | null>(null);
+  const [plan, reloadPlan] = useLoad(() => accounting.getCashPlan(), []);
+  const [due] = useLoad(() => accounting.listDue(), []);
+  const [queue] = useLoad(() => procurement.queue(), []);
+  const [vendors] = useLoad(() => procurement.listVendorJourneys(), []);
+  const [health] = useLoad(() => accounting.getInboxHealth(), []);
+  const [rows] = useLoad(() => accounting.listTransactions({ limit: 8 }), []);
 
-  const columns: Column<Order>[] = [
+  const waiting = queue.status === "ready" ? queue.data : [];
+  const waitingValue = waiting.reduce((s, l) => s + (l.item_total ?? 0), 0);
+  const billable = vendors.status === "ready"
+    ? vendors.data.reduce((s, v) => s + v.billable_now, 0)
+    : 0;
+  const stuck = health.status === "ready" ? health.data.unresolved : 0;
+
+  const dueColumns: Column<CashDue>[] = [
     {
-      key: "nomor",
-      header: "Order No.",
-      render: (r) => <span className="font-mono text-sm font-semibold text-brand-700">{r.nomor}</span>,
+      key: "date",
+      header: "Due",
+      render: (d) => <span className="whitespace-nowrap font-mono text-[12px] text-slate-500">{d.date}</span>,
     },
     {
-      key: "pelanggan",
-      header: "Customer",
-      render: (r) => (
-        <div>
-          <p className="font-medium text-slate-800">{r.pelanggan}</p>
-          <p className="text-xs text-slate-400">{r.produk}</p>
-        </div>
+      key: "what",
+      header: "What",
+      className: "whitespace-normal",
+      render: (d) => (
+        <span className="text-[13px] text-slate-800">
+          {d.name}
+          {d.vendor_name && <span className="text-slate-500"> · {d.vendor_name}</span>}
+        </span>
       ),
     },
-    { key: "qty", header: "Qty", align: "right", render: (r) => <span className="tabular-nums">{r.qty}</span> },
     {
-      key: "nilai",
-      header: "Value",
+      key: "amount",
+      header: "Amount",
       align: "right",
-      render: (r) => <span className="font-medium tabular-nums text-slate-700">{formatIDR(r.nilai)}</span>,
+      render: (d) => (
+        <span className={cn(
+          "whitespace-nowrap tabular-nums",
+          d.direction === "IN" ? "text-emerald-700" : "text-slate-800",
+        )}>
+          {d.direction === "IN" ? "+ " : ""}{formatIDR(d.planned)}
+        </span>
+      ),
     },
     {
-      key: "status",
-      header: "Status",
-      align: "center",
-      render: (r) => <Badge tone={STATUS_TONE[r.status]} dot>{r.status}</Badge>,
+      key: "state",
+      header: "",
+      align: "right",
+      render: (d) => d.state === "OVERDUE"
+        ? <Badge tone="red">{Math.abs(d.days_away)} day(s) late</Badge>
+        : <Badge tone={d.days_away <= 7 ? "amber" : "slate"}>in {d.days_away} day(s)</Badge>,
     },
-    { key: "tenggat", header: "Due", align: "right", render: (r) => <span className="text-slate-500">{r.tenggat}</span> },
+  ];
+
+  const ledgerColumns: Column<TransactionView>[] = [
+    { key: "date", header: "Date", render: (t) => <span className="whitespace-nowrap font-mono text-[12px] text-slate-500">{t.trx_date}</span> },
+    {
+      key: "what", header: "What", className: "whitespace-normal",
+      render: (t) => (
+        <span className="block max-w-[420px] whitespace-normal break-words text-[13px] text-slate-700">
+          {t.description}
+          <span className="block text-[11px] text-slate-500">{t.type_code} · {t.account_code}</span>
+        </span>
+      ),
+    },
+    {
+      key: "amount", header: "Amount", align: "right",
+      render: (t) => (
+        <span className={cn(
+          "whitespace-nowrap tabular-nums",
+          t.direction === "IN" ? "text-emerald-700" : "text-slate-800",
+        )}>
+          {t.direction === "IN" ? "+ " : "− "}{formatIDR(t.amount_idr)}
+        </span>
+      ),
+    },
   ];
 
   return (
     <div>
       <PageHeader
-        breadcrumb="Dashboard"
-        title="Operations Overview"
-        description="The numbers on this page are still sample data, used to judge the layout before real data is connected."
-        actions={<Button icon={ClipboardList}>New order</Button>}
+        breadcrumb="Overview"
+        title="Today"
+        description="Everything here is computed from the same demo data as the rest of the app — nothing on this page is invented."
       />
 
-      <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Active orders" value="18" icon={FolderKanban} delta="+3 this month" hint="4 of them past due" />
-        <StatCard label="Production value this month" value={formatIDR(655_000_000)} icon={Hammer} delta="+11.4%" tone="green" />
-        <StatCard label="Logs ready to mill" value={formatM3(184.376)} icon={TreePine} delta="-12.1%" deltaTone="red" tone="amber" hint="Below this week’s cutting plan" />
-        <StatCard label="Awaiting verification" value="7" icon={Receipt} delta="from Google Chat" deltaTone="slate" tone="violet" hint="Receipts not yet matched by accounting" />
-      </div>
+      <Loaded state={plan} onRetry={reloadPlan}>
+        {(p) => (
+          <>
+            <div className="mb-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <StatCard
+                label="Cash today"
+                value={formatIDR(p.opening_cash)}
+                icon={Wallet}
+                hint="across the accounts that pay people"
+              />
+              <StatCard
+                label={p.short_month ? "Money runs out" : "Plan holds until"}
+                value={p.short_month
+                  ? p.months.find((m) => m.month === p.short_month)?.label ?? "—"
+                  : p.months[p.months.length - 1].label}
+                icon={CalendarDays}
+                tone={p.short_month ? "red" : "green"}
+                hint={p.short_month ? `short ${formatIDR(p.short_by)}` : "on the current plan"}
+              />
+              <StatCard
+                label="Waiting for a decision"
+                value={waiting.length}
+                icon={Bell}
+                tone="amber"
+                hint={waitingValue > 0 ? `${formatIDR(waitingValue)} asked for` : "nothing pending"}
+              />
+              <StatCard
+                label="Billable by suppliers"
+                value={formatIDR(billable)}
+                icon={Route}
+                tone={billable > 0 ? "amber" : "slate"}
+                hint="goods here that nobody has paid for"
+              />
+            </div>
 
-      <div className="mb-5 grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
-          <CardHeader title="Production value" subtitle="Last seven months" icon={Wallet} />
-          <div className="px-3 py-4">
-            <AreaTrend data={TREN_PRODUKSI} dataKey="nilai" />
-          </div>
+            {(p.short_month || stuck > 0) && (
+              <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3 text-[13px] text-amber-900">
+                <AlertTriangle className="h-4 w-4 shrink-0" />
+                <span className="flex-1">
+                  {p.short_month && <>{p.verdict} </>}
+                  {stuck > 0 && <>{stuck} document(s) in the inbox still need a decision.</>}
+                </span>
+                {p.short_month && (
+                  <Link href="/accounting/calendar">
+                    <Button size="sm" variant="outline" icon={ArrowRight}>Open the calendar</Button>
+                  </Link>
+                )}
+                {stuck > 0 && (
+                  <Link href="/accounting/verifikasi">
+                    <Button size="sm" variant="outline" icon={Inbox}>Open the inbox</Button>
+                  </Link>
+                )}
+              </div>
+            )}
+
+            <Card className="mb-4">
+              <CardHeader
+                title="Cash at the end of each month"
+                subtitle="On the current plan, twelve months forward. Where the line crosses zero is the month to act on."
+                icon={CalendarDays}
+                action={
+                  <Link href="/accounting/calendar" className="text-[13px] text-brand-700 underline">
+                    the calendar
+                  </Link>
+                }
+              />
+              <div className="px-2 pb-3 pt-1">
+                <AreaTrend
+                  data={p.months.map((m) => ({ label: m.label.replace(" 20", " '"), closing: m.closing }))}
+                  dataKey="closing"
+                  height={220}
+                />
+              </div>
+            </Card>
+          </>
+        )}
+      </Loaded>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader
+            title="Due next"
+            subtitle="From the payment calendar — anything late comes first."
+            icon={Bell}
+            action={
+              <Link href="/accounting/calendar" className="text-[13px] text-brand-700 underline">all of it</Link>
+            }
+          />
+          <Loaded state={due} onRetry={() => {}} skeletonRows={4}>
+            {(all) => (
+              <DataTable
+                dense
+                columns={dueColumns}
+                rows={all.slice(0, 6)}
+                rowKey={(d) => `${d.component_id}:${d.date}`}
+                empty="Nothing falls due in the next three weeks."
+              />
+            )}
+          </Loaded>
         </Card>
 
         <Card>
-          <CardHeader title="Log yield" subtitle="Percent of board recovered from log volume" icon={Boxes} />
-          <div className="px-3 py-4">
-            <BarSeries data={RENDEMEN} dataKey="nilai" currency={false} />
-          </div>
+          <CardHeader
+            title="Last money out"
+            subtitle="The most recent rows in the ledger."
+            icon={Banknote}
+            action={
+              <Link href="/accounting/ledger" className="text-[13px] text-brand-700 underline">the ledger</Link>
+            }
+          />
+          <Loaded state={rows} onRetry={() => {}} skeletonRows={4}>
+            {(all) => (
+              <DataTable
+                dense
+                columns={ledgerColumns}
+                rows={all.slice(0, 6)}
+                rowKey={(t) => t.trx_no}
+                empty="Nothing has been posted yet."
+              />
+            )}
+          </Loaded>
         </Card>
       </div>
-
-      <Card>
-        <CardHeader
-          title="Active orders"
-          subtitle="Click a row for detail"
-          icon={FolderKanban}
-          action={<Button variant="outline" size="sm">View all</Button>}
-        />
-        <DataTable columns={columns} rows={ORDERS} rowKey={(r) => r.id} onRowClick={setSelected} />
-      </Card>
-
-      {/* Detail dibuka di panel kanan, bukan halaman baru — tabel di belakang
-          tetap terlihat, dan menutup panel mengembalikan pengguna persis ke
-          tempatnya semula. */}
-      <Drawer
-        open={!!selected}
-        onClose={() => setSelected(null)}
-        title={selected?.nomor ?? ""}
-        subtitle={selected?.pelanggan}
-        footer={
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setSelected(null)}>Close</Button>
-            <Button>Open order</Button>
-          </div>
-        }
-      >
-        {selected && (
-          <dl className="space-y-4 text-sm">
-            {[
-              ["Product", selected.produk],
-              ["Quantity", `${selected.qty} unit`],
-              ["Contract value", formatIDR(selected.nilai)],
-              ["Due", selected.tenggat],
-            ].map(([k, v]) => (
-              <div key={k} className="flex justify-between gap-4 border-b border-slate-100 pb-3">
-                <dt className="text-slate-500">{k}</dt>
-                <dd className="text-right font-medium text-slate-800">{v}</dd>
-              </div>
-            ))}
-            <div className="flex items-center justify-between gap-4">
-              <dt className="text-slate-500">Status</dt>
-              <dd><Badge tone={STATUS_TONE[selected.status]} dot>{selected.status}</Badge></dd>
-            </div>
-          </dl>
-        )}
-      </Drawer>
     </div>
   );
 }

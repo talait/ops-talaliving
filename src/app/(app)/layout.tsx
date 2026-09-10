@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 import { useSession } from "@/store/session";
+import { TourBar } from "@/components/tour-bar";
 
 /** The application shell.
  *
@@ -44,6 +45,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <div className="mx-auto max-w-[1400px] px-4 py-6 md:px-6 lg:px-8">{children}</div>
         </main>
       </div>
+      {/* useSearchParams needs a boundary; the bar is absent until it resolves,
+          which is the right absence — nothing on the page depends on it. */}
+      <Suspense fallback={null}>
+        <TourBar />
+      </Suspense>
     </div>
   );
 }

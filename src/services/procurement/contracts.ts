@@ -455,6 +455,10 @@ export interface RoundSummary {
   round_no: string;
   status: RoundStatus;
   requested_total: number;
+  /** What actually moved, and the ledger row that says so. Null until the
+   *  transfer is recorded — and a funded round still pays nobody (A10). */
+  transferred_amount: number | null;
+  transferred_trx_no: string | null;
   paying_balance: number;
   to_transfer: number;
   remaining_after_payment: number;

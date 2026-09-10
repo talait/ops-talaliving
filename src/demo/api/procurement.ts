@@ -976,7 +976,14 @@ export async function approveRound(roundNo: string, idempotencyKey?: string): Pr
 }
 
 /** Money reaching the accounting account. Deliberately does NOT make any line
- *  PAID: "send money ≠ payment" (A10). */
+ *  PAID: "send money ≠ payment" (A10).
+ *
+ *  Guarded by `post_ledger`, not `approve_funds` (D78). The funds decision was
+ *  approving the round; this is the bookkeeping that follows it, and it is the
+ *  same act as writing the two ledger legs — the person who can do one can do
+ *  the other. Closing the round is a decision again, so it goes back to
+ *  `approve_funds`.
+ */
 export async function transferRound(
   roundNo: string, input: { amount: number; trx_no: string }, idempotencyKey?: string,
 ): Promise<Result<RoundView>> {
@@ -984,7 +991,7 @@ export async function transferRound(
   const cached = replayed<RoundView>(SERVICE, `transferRound:${roundNo}`, idempotencyKey);
   if (cached) return cached;
 
-  const denied = requireAuthority(SERVICE, "approve_funds");
+  const denied = requireAuthority(SERVICE, "post_ledger");
   if (denied) return denied;
 
   const round = getState().payment_rounds.find((r) => r.round_no === roundNo);

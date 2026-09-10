@@ -60,7 +60,7 @@ Update the row, the date, and the note **in the same commit** as the work.
 | M5 | PR: approval — decided on the meeting board, trail on the line | D5 | DONE | 2026-09-11 | D74. Checkbox + reducible qty and amount + instructions/remark + trail + un-approve |
 | M5b | Approval asked for and answered in Google Chat | D5 | DONE | 2026-09-11 | D69–D72. Sent as a batch with its totals; the identity on the record is the approver's, not the meeting laptop's. `/demo/chat` stands in for the signed webhook |
 | M5c | Meeting board: decide, fund, add on the spot | D5 | DONE | 2026-09-11 | `/procurement/meeting` (D73, D74). The transfer into BCA 271 is the number it exists for |
-| M6 | Payment rounds: sync, approve, transfer, close | D6 | TODO | — | |
+| M6 | Payment rounds: sync, approve, transfer, close | D6 | DONE | 2026-09-11 | `/procurement/rounds`. A funded round pays nobody — proved on screen (A10) |
 | M7 | **Checkpoint: walk Flow B on a phone, with the team** | D7 | TODO | — | week-1 review |
 | M8 | Ledger: list, drawer, attach from a row, void, complete | D8 | TODO | — | |
 | M9 | Evidence attached from the record — the main road | D9 | TODO | — | ADR-010 |

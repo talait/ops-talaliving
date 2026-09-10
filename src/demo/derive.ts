@@ -479,6 +479,8 @@ export function roundSummary(state: DemoState, roundId: string): RoundSummary {
     round_no: round?.round_no ?? "",
     status: round?.status ?? "OPEN",
     requested_total,
+    transferred_amount: round?.transferred_amount ?? null,
+    transferred_trx_no: round?.transferred_trx_no ?? null,
     paying_balance,
     /* Never negative, and a shortfall never blocks approval — the balance is
      * information, not a gate. */

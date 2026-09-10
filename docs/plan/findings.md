@@ -823,3 +823,40 @@ exactly the distinction the chat route was built to keep.
 And the small one: the "to pay" total moved from the foot of the table to the
 top of it. It is the answer; the rows are the working.
 
+## F20 — the round screen's whole job is one sentence the old system could not say
+
+M6 needed almost no new machinery: `syncRound`, `approveRound`, `transferRound`
+and `closeRound` were written in M1 against the contracts. What the screen adds
+is the vocabulary, and one sentence in particular:
+
+> **The money is in BCA 271, and nothing is paid yet.**
+
+In the sheet, "transferred" and "paid" were the same tick. A funded round
+therefore looked like a set of settled invoices, and the suppliers who had not
+been paid out of it stayed invisible until they called. Here the round reaches
+TRANSFERRED and every line under it still reads `WAITING FOR PAYMENT`, on the
+same screen, three centimetres apart. That is the demonstration the milestone
+asked for, and it costs one banner because the model already refused to
+conflate them.
+
+Three things the build settled:
+
+1. **A transfer is two ledger legs, not one.** Out of the leadership account,
+   into BCA 271. The screen writes both through accounting and then tells
+   procurement the round is funded (D79) — composing two services rather than
+   letting either reach into the other. The out leg goes first on purpose: if
+   the second fails, the books show money that left and has not landed, which
+   somebody can see and fix. The reverse would show money appearing from
+   nowhere.
+2. **Recording the transfer is `post_ledger`, not `approve_funds`** (D78). The
+   funds decision was approving the round; writing down that the money moved
+   is bookkeeping, and it is literally the same act as writing the legs.
+3. **There can be two live rounds**, one being funded and one already
+   collecting behind it. The first draft rendered `.find()` — the first
+   non-closed round — and would have hidden whichever one somebody was waiting
+   on. The fixtures had both from day one, which is the only reason it showed
+   up before deployment.
+
+Closing still answers with what it released: two items, Rp 13.430.000, back in
+the queue rather than quietly settled.
+

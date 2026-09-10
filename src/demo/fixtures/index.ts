@@ -17,6 +17,24 @@ export * from "./reference";
 
 /** A fresh sandbox. `Reset demo data` rebuilds from here, so this function
  *  must never return shared references — every caller gets its own copy. */
+/** A fingerprint of the shape and the reference data.
+ *
+ *  The sandbox is kept in `localStorage`, and a saved snapshot from before a
+ *  change quietly wins over the fixtures — which is how a newly added account
+ *  can be in the code and absent from the screen (F24). Anything that changes
+ *  the tables, the accounts or the people invalidates what is stored, so the
+ *  demo starts from the fixtures again rather than from a shape that no longer
+ *  exists.
+ */
+export function stateSignature(state: DemoState): string {
+  return [
+    Object.keys(state).sort().join(","),
+    state.accounts.map((a) => a.code).join(","),
+    state.users.map((u) => u.email).join(","),
+    state.transaction_types.map((t) => t.code).join(","),
+  ].join("|");
+}
+
 export function initialState(): DemoState {
   return structuredClone({
     session_user_id: "usr_putri",

@@ -985,3 +985,32 @@ BCA 064's balance is shown only to whoever holds `approve_funds`, and marked
 *leadership only* rather than left blank — a blank where an account should be
 reads as a bug, and people file bugs about rules.
 
+## F24 — the code had the account; the browser did not
+
+"JAGO belum kelihatan." It was in the fixtures, in the contract, in the build —
+and absent from the screen, because the sandbox lives in `localStorage` and a
+snapshot saved before the account existed quietly won.
+
+`hydrate()` merged the saved state over the fixtures table by table
+(`{...initialState(), ...saved}`), so any table present in the snapshot
+replaced the new one wholesale. Every visitor who had ever clicked anything
+was carrying an `accounts` array from before, and would keep carrying it
+forever — the demo would drift further from the code with every change to
+reference data.
+
+The fix is not to bump a version by hand, which is a thing to forget. The
+stored snapshot now carries a **signature** of the shape and the reference
+data — table names, account codes, user emails, transaction types — and is
+discarded when it no longer matches. Anything that changes those invalidates
+it automatically.
+
+And the reset says so: *"the fixtures changed since your last visit, so the
+sandbox started over."* Silently losing somebody's demo edits makes the app
+look broken; naming the reason makes it look updated.
+
+The general lesson is bigger than the demo. **Any client-held copy of
+server-shaped data needs a way to know it is stale.** In Phase 2 the same
+class of bug is a cached response, a service worker, or a stale local
+database — and the same answer applies: store what shape the data was, and
+throw it away when the shape moves.
+

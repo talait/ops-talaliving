@@ -9,10 +9,21 @@
  *  surface a `fetch` will present in Phase 2 — the store is what that API
  *  happens to be sitting on today.
  */
-import { initialState } from "./fixtures";
+import { initialState, stateSignature } from "./fixtures";
 import type { DemoState, AuditRow, OutboxRow } from "./state";
 
-const STORAGE_KEY = "ops-v2-demo/v1";
+const STORAGE_KEY = "ops-v2-demo/v2";
+
+/** Set when hydrate threw away a snapshot because the fixtures had moved on.
+ *  Read once by the shell, which says so — otherwise somebody's demo edits
+ *  vanish with no explanation and the app looks broken rather than updated. */
+let resetOnLoad = false;
+
+export function consumeResetNotice(): boolean {
+  const was = resetOnLoad;
+  resetOnLoad = false;
+  return was;
+}
 
 let state: DemoState = initialState();
 let hydrated = false;
@@ -21,7 +32,10 @@ const listeners = new Set<() => void>();
 function persist() {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      sig: stateSignature(state),
+      state,
+    }));
   } catch {
     /* Private windows, cleared site data, browsers that block storage. The
      * demo still works; it just forgets. Never let this throw. */
@@ -35,7 +49,20 @@ export function hydrate() {
   hydrated = true;
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (raw) state = { ...initialState(), ...(JSON.parse(raw) as DemoState) };
+    if (raw) {
+      const saved = JSON.parse(raw) as { sig?: string; state?: DemoState };
+      const fresh = initialState();
+      /* A snapshot from before the fixtures moved is worse than no snapshot:
+       * it looks like the app, and it is missing whatever was just added
+       * (F24). Keep it only while the shape and the reference data match. */
+      if (saved.state && saved.sig === stateSignature(fresh)) {
+        state = { ...fresh, ...saved.state };
+      } else {
+        state = fresh;
+        resetOnLoad = true;
+        window.localStorage.removeItem(STORAGE_KEY);
+      }
+    }
   } catch {
     state = initialState();
   }

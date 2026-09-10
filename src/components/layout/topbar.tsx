@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Menu, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/primitives";
 import { GrantPicker, GrantPickerButton } from "./grant-picker";
 import { useSession } from "@/store/session";
 import { useDemoReset } from "@/demo/provider";
+import { consumeResetNotice } from "@/demo/store";
 import { useToast } from "@/store/toast";
 
 export function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
@@ -13,6 +14,19 @@ export function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
   const reset = useDemoReset();
   const { toast } = useToast();
   const [pickerOpen, setPickerOpen] = useState(false);
+
+  /* Said once, because otherwise somebody's demo edits vanish with no
+     explanation and the app looks broken rather than updated (F24). */
+  useEffect(() => {
+    if (consumeResetNotice()) {
+      toast(
+        "info",
+        "Demo data refreshed",
+        "The fixtures changed since your last visit, so the sandbox started over.",
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     /* The drawer is a SIBLING of the header, never a child of it.

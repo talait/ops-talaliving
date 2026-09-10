@@ -135,12 +135,47 @@ erDiagram
     }
 ```
 
-**Roles seeded in v1** (from §6, narrowed to who actually exists):
-`it_admin` (everything) · `director` (read all, approve goods) ·
-`finance` (accounting **and** procurement — deliberately one role: "splitting
-it produces someone who can approve a purchase without ever seeing the cash",
-§6.3) · `purchasing` (create PR, receive) · `warehouse` (receive) ·
-`employee` (create PR, read own).
+**Access is two separate things** (owner, 2026-09-11, answering Q2 and Q3).
+Conflating them is what made "who may post?" invisible to the web app in
+`john-lau`, where the button showed for anyone with `finance`, `director` or
+`it_admin` and the bridge then returned 403 from an environment variable the
+screen could not see (§3.3).
+
+**1. Module access — what you can open.** A user holds *several*:
+procurement + accounting + HRD is a normal combination, not an exception.
+
+```sql
+core.user_modules (user_id, module, level)
+  module ∈ procurement · accounting · hrd · inventory · production · it
+  level  ∈ read · write · admin
+```
+
+**Ledger visibility is exactly accounting-module access** — not "everyone
+signed in", which is what `john-lau` does today.
+
+**2. Authorities — a small set of named decision rights**, granted on their
+own and never implied by a module level:
+
+| Authority | Who, today | Guards |
+|---|---|---|
+| `approve_goods` | **CEO only** | every PR line decision. One authority, not "any director" |
+| `approve_funds` | finance | approving and closing a payment round |
+| `post_ledger` | finance | creating a transaction |
+| `resolve_inbox` | finance | resolving an exception document |
+
+An authority is a grant on a user, so the screen and the database read the
+same fact and cannot disagree. A user without `approve_goods` does not see
+the approve control **and** is refused by RLS if they call the API anyway.
+
+**A tension that dissolves.** `john-lau` deliberately fused accounting and
+procurement into one `finance` role, because "splitting it produces someone
+who can approve a purchase without ever seeing the cash" (§6.3). Composable
+module grants would bring that risk back — except that `approve_goods` now
+belongs to the CEO alone, so the person approving purchases is not a module
+grant at all. The safeguard is no longer needed in that shape.
+
+`src/lib/roles.ts` remains the reviewable seed source (see `03-api.md`), but
+what it seeds is this: modules, levels, and four authorities.
 
 `core.audit_log` is append-only and has **no** hash chain in v1. §10.2 q8
 records that the audit triggers were written and never run because they touch
@@ -263,11 +298,13 @@ erDiagram
         uuid po_line_id FK "null unless funding a PO"
         text category "RAW MATERIAL|MACHINING|..."
         date need_by
+        timestamptz removed_at "withdrawn by the requester"
+        uuid removed_by FK
     }
     pr_approvals {
         uuid id PK
         uuid line_id FK
-        approval_step_t step "IT|GOODS|FUNDS"
+        approval_step_t step "GOODS|FUNDS"
         approval_decision_t decision "APPROVED|HOLD|REJECTED"
         numeric approved_qty
         bigint approved_amount "CHECK not above item_total"
@@ -513,6 +550,12 @@ guess that no longer has to be made.
 names that JSON blob as the only home statement lines had, which is why they
 could not be queried.
 
+`transaction_types.auto_complete` ships **inert** (Q9). Fuel and utility rows
+will never receive goods and should be born `COMPLETED`, and `john-lau`
+already encodes exactly that — but the owner's call is to complete them by
+hand for now and turn the rule on once we have watched which types really
+never get a delivery. The column exists so that switch is a data change.
+
 ---
 
 ## Evidence: the main road and the exception road
@@ -569,6 +612,7 @@ does today — proposes, and never posts.
 | `v_po_status` | procure | `contract_value`, `paid_to_date`, `outstanding`, `value_received`, **`exposure` = paid − received**, and the two independent axes |
 | `v_po_line_status` | procure | per-line delivery and payment |
 | `v_round_summary` | procure | REQUESTED, paying-account balance, TO TRANSFER, remaining after payment |
+| `v_approval_queue` | procure | **every requested line that is neither approved nor removed** (Q4). A `HOLD` does not leave the queue; only an approval, a rejection or a withdrawal does |
 | `v_unlinked_transactions` | acct | money with no PR line — shown, never hidden |
 | `v_inbox_health` | acct | how many context-free documents arrived this week, and how many are still unresolved. The exception road should stay small (ADR-010) |
 | `v_meeting_board` | procure | the four states: lunas · disetujui belum bayar · dibayar belum disetujui · belum keduanya |

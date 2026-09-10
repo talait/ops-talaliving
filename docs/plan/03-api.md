@@ -87,12 +87,12 @@ All three or none. Never a business row without its audit row.
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/me` | user, roles, resolved permission list. The frontend `can()` is fed from here — replacing the dev role dropdown (README says delete it) |
+| GET | `/me` | user, **module grants**, **authorities**, resolved permission list. The frontend `can()` is the union of these (D23, D24) |
 | GET | `/users` | `it.manage_users` |
 | POST | `/users` | invite; Supabase Auth handles the credential |
-| PUT | `/users/{id}/roles` | `it.manage_roles`; append-only history in audit |
-| GET | `/roles` | role → permission map, read from the database, not from `src/lib/roles.ts` |
-| GET | `/permissions` | the catalog |
+| PUT | `/users/{id}/modules` | grant or revoke a module and its level. `it.manage_roles`; append-only history in audit |
+| PUT | `/users/{id}/authorities` | grant or revoke `approve_goods` · `approve_funds` · `post_ledger` · `resolve_inbox`. **Separate from modules, deliberately** (D24) |
+| GET | `/modules`, `/authorities` | the catalogs, read from the database |
 
 **Note on `src/lib/roles.ts`.** Today the catalog lives in code, which the
 existing README defends well: a fresh database can be bootstrapped without
@@ -123,7 +123,9 @@ PR chain:
 | PUT | `/pr/{doc_no}/lines` | edit while DRAFT; after submit → supersede |
 | POST | `/pr/{doc_no}/submit` | DRAFT → SUBMITTED, lines get `-LNN` |
 | POST | `/pr/{doc_no}/reopen` | only while no gate has decided |
-| POST | `/pr/lines/{line_no}/approve` | `{step, decision, approved_qty, approved_amount, reason}`. **422 if approved > requested** (A8). 403 if the step is not yours. 409 if this line already has that step decided by you |
+| POST | `/pr/lines/{line_no}/approve` | `{step, decision, approved_qty, approved_amount, reason}`; `step` ∈ `GOODS` · `FUNDS` — **there is no IT step** (D20). **422 if approved > requested** (A8). **403 without the matching authority** — `approve_goods` is the CEO's alone (D19). 409 if you already decided this line at this step |
+| GET | `/pr/queue` | the standing approval queue: every requested line neither approved, rejected nor withdrawn (D21). A `HOLD` stays in it |
+| POST | `/pr/lines/{line_no}/withdraw` | the requester takes their own line back, before any decision (Q17). Soft — the row stays, with who and when |
 | GET | `/pr/lines/{line_no}/history` | approvals, revisions, allocations, receipts — the full trail |
 
 Rounds:

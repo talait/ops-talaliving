@@ -48,7 +48,7 @@ Three things make it work:
 | When | Prompt |
 |---|---|
 | Something is wrong on the deployed demo | *"On `/procurement/pr/baru`, the running total does not include the last line until I blur the field. Fix it, push, and tell me when the preview is up."* |
-| You want to answer an open question | *"Q4: two levels only, normal and urgent, and only the IT gate may set it. Move it to Decisions and change the code."* |
+| You want to answer an open question | *"Q18: grant approve_goods to the operations director as well, so lines do not wait when the CEO travels. Move it to Decisions and change the code."* |
 | You want to see a choice rather than decide it in the abstract | *"Build both versions of the approval screen behind `?v=1` and `?v=2` and send me the links."* |
 | You lost the thread | *"Read `docs/plan/README.md` and tell me where we are, what is next, and what is blocked."* |
 | Something feels wrong but you cannot say why | *"Walk Flow B on the demo yourself and tell me the three worst things about it."* |

@@ -53,10 +53,10 @@ Update the row, the date, and the note **in the same commit** as the work.
 |---|---|---|---|---|---|
 | M0 | Plan and design documents | D1 | DONE | 2026-09-10 | this document set |
 | M1 | Demo data layer + contracts + **live on Vercel** | D1 | TODO | — | a URL on day one |
-| M2 | Demo session: role switching, permission gating | D2 | TODO | — | |
+| M2 | Demo session: multi-module grants + four authorities | D2 | TODO | — | D22–D24 |
 | M3 | Reference data: vendors, items, projects | D3 | TODO | — | |
 | M4 | PR: list, multi-line create, detail drawer | D4 | TODO | — | |
-| M5 | PR: IT gate, goods approval, approval trail | D5 | TODO | — | |
+| M5 | PR: the standing approval queue (CEO), approval trail | D5 | TODO | — | D19–D21 |
 | M6 | Payment rounds: sync, approve, transfer, close | D6 | TODO | — | |
 | M7 | **Checkpoint: walk Flow B on a phone, with the team** | D7 | TODO | — | week-1 review |
 | M8 | Ledger: list, drawer, attach from a row, void, complete | D8 | TODO | — | |

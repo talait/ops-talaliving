@@ -86,3 +86,50 @@ cover goods and receiving but not fund decisions (Q16); attaching a payment
 proof to a line with no transaction offers to post one in the same panel
 (Q14).
 
+
+## F2 · 2026-09-11 · before any code — five answers, and what they moved
+
+**Answered.** PR approval is the CEO's alone (Q2). The ledger is visible to
+whoever has accounting-module access, and a user holds several accesses at
+once (Q3). The IT gate is gone and there is no urgency field — every requested
+line stays in the queue until it is approved, rejected or withdrawn (Q4).
+Service lines complete on payment proof, and auto-complete stays manual for
+now (Q9). The Vercel URL is enough (Q12).
+
+**What moved beyond the questions asked.**
+
+Q3 is not really about the ledger. "A user can have multiple access like
+procurement + Accounting + HRD" replaces a single-role session with a set of
+grants, which changes `src/store/session.tsx`, the topbar control, and how
+`can()` resolves. The demo gets better for it: a grant picker demonstrates
+permissions far more convincingly than a dropdown.
+
+Q2 and Q3 together forced a split we had not made: **module access and
+authority are different things**. Access says which screens open; authority
+says which decisions you may take. Keeping them fused is exactly the bug
+`john-lau` has — the confirm button showed for three roles and the bridge then
+refused it from an environment variable the screen could not read. Four
+authorities now: `approve_goods`, `approve_funds`, `post_ledger`,
+`resolve_inbox`.
+
+**A tension that resolved itself.** `john-lau` fused accounting and
+procurement into one role on purpose, so nobody could approve a purchase
+without seeing the cash. Composable grants would have reopened that — except
+CEO-only approval takes purchase approval out of the module system entirely.
+The safeguard is no longer needed in that shape.
+
+**A word that needed a definition.** Q4 says a line stays until "removed or
+approved". *Removed* had no meaning in the model, so it now has one: the
+requester withdraws their own line before any decision, softly, with a name
+and a timestamp. After a decision the only exit is a rejection (Q17).
+
+**What surprised us.** Dropping urgency makes the queue simpler, not poorer.
+A queue that shows every outstanding line at once needs no priority column —
+the CEO is reading the whole list either way. The rekap's whole apparatus of
+daily digests, 48-hour re-pings and 72-hour escalations existed to work around
+a queue nobody could see in full.
+
+**Three new questions**, each with a default so nothing blocks: who may
+withdraw and until when (Q17), what happens when the CEO is away (Q18), and
+whether `HOLD` survives without a digest to reappear in (Q19). Q18 is the one
+worth a real answer before somebody is on a plane.

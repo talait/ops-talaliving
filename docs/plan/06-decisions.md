@@ -32,6 +32,15 @@ gets had twice.
 | 16 | 2026-09-10 | **Google Chat is notification, confirmation, and the interface for people without web access** — not the intake door for evidence | owner, 2026-09-10. Chat is good at reaching someone who will never open the web app; it is bad at recording what a document belongs to |
 | 17 | 2026-09-10 | A Chat action is a real action: the bot calls the same API as the browser, as the identified person. **Channel membership is never authorization** | the rekap's rule survives and sharpens — a *person* in Chat may act within their role; the *bot* may not act at all |
 | 18 | 2026-09-10 | One document covering several parents is a **first-class action** (*juga mencakup…*), not a repair | it is why 674 files sit parked today as unnameable |
+| 19 | 2026-09-11 | **PR approval belongs to one authority: the CEO.** Not "any director", no value threshold, no second tier | owner, answering Q2 |
+| 20 | 2026-09-11 | **The IT gate is removed.** There is no routing step before the CEO | owner, answering Q4 |
+| 21 | 2026-09-11 | **No urgency field.** Every requested line stays in the approval queue until it is approved, rejected or withdrawn | owner, answering Q4. A queue that shows everything outstanding needs no priority column — the CEO is looking at the whole list either way |
+| 22 | 2026-09-11 | **Ledger visibility = accounting-module access**, not "everyone signed in" | owner, answering Q3 |
+| 23 | 2026-09-11 | **A user holds several module accesses** — procurement + accounting + HRD is normal. Access is per module, per user | owner, answering Q3 |
+| 24 | 2026-09-11 | **Module access and authority are separate grants.** Four authorities: `approve_goods` (CEO), `approve_funds`, `post_ledger`, `resolve_inbox` | inferred from 19 + 23. It also fixes a real `john-lau` bug: the screen could not see who was allowed to post, so it offered a button the bridge then refused |
+| 25 | 2026-09-11 | **Service lines need no receiving report** — payment proof completes them | owner, answering Q9 |
+| 26 | 2026-09-11 | **Auto-complete ships inert.** Fuel and utilities get marked complete by hand for now; the rule is turned on later as a data change | owner, answering Q9: "for now lets leave it manual" |
+| 27 | 2026-09-11 | **No custom domain in Phase 1.** The Vercel URL is the review surface | owner, answering Q12 |
 
 ---
 
@@ -43,28 +52,26 @@ them**: the demo can show two versions of a screen and let the owner point.
 
 | # | Question | Default we take | Cost of changing later |
 |---|---|---|---|
-| Q1 | Is the IT gate a mandatory recorded step, or skippable when IT is absent? | **Mandatory and recorded** as a named fact, not just a click. Skippable by an `it_admin` with a reason | low — one step in a chain |
-| Q2 | Can every director approve every PR, or is it split by project or value? Is there a value threshold needing higher approval? | **Any director may approve any PR**, no threshold. The approval table is a rules table from day one, so a threshold is data, not code | low if designed as a rules table — which it is |
-| Q3 | Who may see the ledger — all of it? Per account? | **Everyone signed in**, as today. `finance` and `it_admin` may post | low in Phase 1, higher once RLS enforces it |
-| Q4 | Urgency: a new column, how many levels, who sets it? Deadline: need-by date or vendor due date? | **Three levels** (normal / urgent / critical), set by the requester, changeable by the IT gate. `need_by` = the date the goods are needed | low |
 | Q5 | BOM: per product or per order? Layered or flat? Are PRs made *from* a BOM? | **Not modelled at all.** The standing instruction is "do not invent it" | n/a — deliberately absent |
 | Q6 | May `shared@` post to the ledger? | **Yes** — the owner has stated `it@` is an alias of `shared@` and both are executors | low |
 | Q7 | How is `PAID_UNAPPROVED` handled — recover or write off? | **Neither automatically.** It is terminal, flagged to leadership, never deleted. The policy is the owner's | low |
 | Q8 | Which of `WAITING APPROVAL` / `WAITING FOR APPROVAL` is canonical? | **`WAITING FOR APPROVAL`**, the view's spelling. The other is a legacy sheet string | trivial now, annoying later |
-| Q9 | Do service lines (mowing, a bill) need a receiving report, or is payment proof enough? | **Payment proof is enough** for `kind='service'`. Today those lines are stuck at PAID forever | medium — it changes a status predicate |
 | Q14 | When accounting attaches a payment proof from a PR line, should the ledger transaction be **created in the same step**, or attached to one that already exists? | **Both, offered on the same panel**: if the line has no transaction yet, attaching a payment proof offers to post one, prefilled from the line; if it has one, the document links to it. The person never navigates away to do the other half | low — it is one panel, two states |
 | Q15 | Who may resolve something in the exception inbox — anyone in `finance`, or a named few? | **`finance` and `it_admin`**, matching who may post today. The resolution is recorded with their name either way | low |
+| Q17 | **Who may withdraw a requested line, and until when?** Q4 says a line stays in the queue until approved or *removed*. | **The requester may withdraw their own line until the CEO has decided it.** After a decision the only way out is a rejection. Withdrawal is soft — the row stays, with who and when | low |
+| Q18 | **What happens when the CEO is away?** `approve_goods` is one authority; nobody substitutes today. | **No substitute.** The authority can be granted to a second account if you want one, but that is a deliberate grant, not an automatic fallback. Lines simply wait — which is what "stays in the queue" already implies | low, but worth a deliberate answer before someone is on a plane |
+| Q19 | **Does `HOLD` still exist**, now that there is no urgency and no digest? | **Yes**, as a marker meaning "seen, not yet decided" — it keeps the line in the queue and records that the CEO looked at it. Without it, "not yet reviewed" and "reviewed and parked" are indistinguishable | low |
 | Q16 | Should a Chat approval be possible for **money** decisions, or only for goods and receiving? | **Goods and receiving only** in the first cut. Fund approval and closing a round stay on the web, where the balances are visible next to the decision | low now, higher once people are used to it |
 | Q10 | What is transaction type `EJO` — 77 transactions, Rp529 M, unclassified? | **Carried as-is, unclassified, and shown**. Never quietly folded into `OTHERS` | low |
 | Q11 | Does the demo need an Indonesian UI, or is the current mix fine? | **The current mix**: Indonesian labels and stored vocabulary, basic English structure — the owner's 2026-08-27 direction. Screens where people *decide* get translated first | low |
-| Q12 | Custom domain: does `dev-ops.talaliving.com` point at Vercel now? | **Not yet.** The Vercel URL is enough for Phase 1; a DNS record adds it whenever asked | trivial |
 | Q13 | What is the app actually called, and what is the brand colour? | **Placeholders stay** (`MANUFAKTUR OS`, `#2f6b52`), isolated in `src/lib/brand.ts` and the `brand` scale. Changing the colour means deriving the whole 50–950 scale, plus `BRAND` in `charts.tsx` and `themeColor` in `layout.tsx` | trivial while it stays in one place |
 
 ## Answering one from a phone
 
-Reply with the number and the answer. For example: *"Q4: two levels only,
-normal and urgent, and only the IT gate may set it."* The next session moves
-the row into Decisions, notes the date, and changes the code.
+Reply with the number and the answer. For example: *"Q18: grant
+`approve_goods` to the operations director as well, so lines do not wait when
+the CEO travels."* The next session moves the row into Decisions, notes the
+date, and changes the code.
 
 ## Facts to record here as they appear
 

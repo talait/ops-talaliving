@@ -96,17 +96,23 @@ The existing dev role dropdown stops being a crutch and becomes the point:
 in a demo, switching role is how you show that permissions work.
 
 - session from the demo identity API, not from local state
-- topbar role switcher labelled as a demo control, with the role's permission
-  list visible
+- **a user holds several module accesses at once** (D23) — the topbar control
+  is a grant picker, not a single-choice dropdown: toggle procurement,
+  accounting, HRD, and toggle the four authorities separately (D24)
+- `can()` becomes the union of what the grants allow
 - `/masuk` and `/tanpa-akses` in the existing design system
-- a role with no modules lands on `/tanpa-akses`, and the menu is genuinely
+- a user with no modules lands on `/tanpa-akses`, and the menu is genuinely
   empty rather than disabled
+- the ledger is visible only with accounting access (D22) — demonstrable by
+  toggling it off and watching the menu entry disappear
 
-> Read `docs/plan/README.md`. Do M2: wire `src/store/session.tsx` to the demo
-> identity API, make the topbar role switcher an explicit demo control that
-> shows the current role's permissions, and add `/masuk` and `/tanpa-akses`.
-> Prove that an unpermitted menu item is not rendered at all. Update the board
-> and commit.
+> Read `docs/plan/README.md` and decisions 22–24 in `06-decisions.md`. Do M2:
+> wire `src/store/session.tsx` to the demo identity API with the two-part
+> access model — several module grants plus four separate authorities. Make
+> the topbar control a grant picker showing what each grant unlocks. Add
+> `/masuk` and `/tanpa-akses`. Prove that turning off accounting removes the
+> ledger from the menu entirely, and that an unpermitted item is not rendered
+> at all. Update the board and commit.
 
 ## D3 — Sat 12 Sep · M3 reference data
 
@@ -139,19 +145,22 @@ but do not appear in dropdowns; `standard_price` is never auto-written, and
 
 ## D5 — Mon 14 Sep · M5 approval chain
 
-The IT gate, then goods approval, then the trail that shows both.
+One gate: the CEO decides goods. No IT step (D20), no urgency (D21).
 
-- `/procurement/persetujuan` — the queue for whoever is signed in
+- `/procurement/persetujuan` — a **standing queue**: every requested line that
+  is neither approved, rejected, nor withdrawn. A `HOLD` keeps it in the list
 - per line: APPROVED · HOLD · REJECTED; an editable approved amount that
   **cannot exceed requested**; a mandatory reason on HOLD and REJECTED
 - `<ApprovalTrail>` — who, when, through which door, append-only
-- `<RefusalToast>` — approving someone else's step gives a readable refusal,
-  not "Forbidden"
+- `<RefusalToast>` — a user without `approve_goods` does not see the control,
+  and is refused readably if they call the API anyway
 
-> Read `docs/plan/README.md`. Do M5: the approval queue and the approval
-> trail. The demo API must actually refuse — 422 above requested, 403 for a
-> step that is not your role, 409 on a repeat. Approval and payment never
-> share a card. Append to `findings.md`. Update the board and commit.
+> Read `docs/plan/README.md`. Do M5: the standing approval queue and the
+> approval trail. Only the `approve_goods` authority may decide a line. The
+> demo API must actually refuse — 422 above requested, 403 without the
+> authority, 409 on a repeat. A HOLD keeps the line in the queue. Approval and
+> payment never share a card. Append to `findings.md`. Update the board and
+> commit.
 
 ## D6 — Tue 15 Sep · M6 payment rounds
 
@@ -170,7 +179,7 @@ The IT gate, then goods approval, then the trail that shows both.
 ## D7 — Wed 16 Sep · M7 checkpoint — no new features
 
 Open the URL on a phone. Walk **Flow B** from `00-context.md` end to end:
-request → IT gate → goods approval → round → transfer → receiving. Do it with
+request → CEO approval → round → transfer → receiving. Do it with
 whoever will actually use it.
 
 Write `docs/plan/checkpoints/2026-09-16.md`: what worked, what confused

@@ -61,9 +61,9 @@ Copied from §7. These strings are data. Do not translate, re-spell, or
 - **Review queue**: `PENDING` · `CONFIRMED` · `ATTACHED` · `REJECTED` ·
   `CANCELLED` · `NOTED`. `CONFIRMED` means this row *produced* a transaction;
   `ATTACHED` means it hangs on one that already existed.
-- **Approval**: step `IT` · `GOODS` (EJO) · `FUNDS` (Finance);
-  decision `APPROVED` · `HOLD` · `REJECTED`; channel `web` · `chat` ·
-  `sheet` · `script` · `api`.
+- **Approval**: step `GOODS` (CEO) · `FUNDS` (finance) — **the IT gate is
+  gone** (owner, 2026-09-11); decision `APPROVED` · `HOLD` · `REJECTED`;
+  channel `web` · `chat` · `sheet` · `script` · `api`.
 - **Units** (18): pcs · buah · kg · gr · meter · m2 · m3 · cm · sak · box ·
   roll · set · pack · ltr · lembar · batang · unit · lusin.
 - **Id formats** (§7.2): `trx-YY-MM-DD_NNN` · `pr-YY-MM-DD_NN` ·

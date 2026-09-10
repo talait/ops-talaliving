@@ -29,7 +29,7 @@ number of components that have to be added.
 
 | Change | File | Why | Milestone |
 |---|---|---|---|
-| **Keep the role switcher — as a labelled demo control** | `src/components/layout/topbar.tsx` | the README says to delete it, and in production that is right: a role must come from the session, not a dropdown anyone can change. In Phase 1 it is the opposite — switching role is *how you demonstrate that permissions work*. So it stays, explicitly marked as a demo control that shows the current role's permissions, and **it is deleted in Phase 2** along with the demo layer | M2 / P2 |
+| **Replace the role dropdown with a grant picker** | `src/components/layout/topbar.tsx` | access is now several module grants plus four separate authorities (D23, D24), so a single-choice dropdown cannot express it. In Phase 1 it becomes a demo control that toggles modules and authorities and shows what each unlocks — which demonstrates permissions far better than a dropdown did. **Deleted in Phase 2** with the rest of the demo layer | M2 / P2 |
 | Session from the demo identity API | `src/store/session.tsx` | the provider keeps its shape, so `can()` callers do not change when it becomes `/api/v1/identity/me` | M2 |
 | Sign-in and no-access pages | new `/masuk`, `/tanpa-akses` | an account with no module lands on a page that says so, rather than bouncing | M2 |
 | Brand values | `src/lib/brand.ts`, `tailwind.config.ts` | still placeholders. When the real colour arrives, derive the **whole** 50–950 scale, and update `BRAND` in `charts.tsx` and `themeColor` in `layout.tsx` | owner |
@@ -56,25 +56,29 @@ addition is a thing to maintain; these nine each answer a rule.
 
 Carried from what works today, plus what the money rules demand:
 
-1. **Details in the drawer.** Navigation between pages is for changing module.
+1. **A menu entry a user has no access to is not rendered.** Accounting off
+   means no ledger entry, not a disabled one (D22). The union of a user's
+   module grants decides the menu; their authorities decide the controls
+   inside it.
+2. **Details in the drawer.** Navigation between pages is for changing module.
    A PR line, a transaction, a vendor, a PO — all open in the right panel.
-2. **On a phone the drawer is full height and full width**, with the action
+3. **On a phone the drawer is full height and full width**, with the action
    bar pinned to the bottom. This is the one responsive addition, and it is
    the difference between usable and not on a 6-inch screen.
-3. **Never optimistic on money.** A row that is being posted shows a pending
+4. **Never optimistic on money.** A row that is being posted shows a pending
    state and stays put. Optimistic UI on an approval means showing a decision
    that may be refused by the database a moment later.
-4. **Every mutation ends in a toast** that names what happened, including
+5. **Every mutation ends in a toast** that names what happened, including
    "nothing changed".
-5. **Warnings are amber and never disable anything** (A6).
-6. **Refusals are readable** — the name of the role that may act, not
+6. **Warnings are amber and never disable anything** (A6).
+7. **Refusals are readable** — the name of the role that may act, not
    "Forbidden" (A7).
-7. **Approval and payment are never the same button, on any screen** (A1).
+8. **Approval and payment are never the same button, on any screen** (A1).
    They are not even in the same card.
-8. **Evidence is attached from the thing it belongs to.** Every PR line and
+9. **Evidence is attached from the thing it belongs to.** Every PR line and
    every ledger row carries an attach affordance; no screen asks a person to
    pick a parent off a list unless the parent is genuinely unknown (ADR-010).
-9. **A number the database owns is never recomputed in the browser.** If a
+10. **A number the database owns is never recomputed in the browser.** If a
    balance does not load, show `—` and the source badge. Never a substitute
    computed client-side, which is how a screen ends up disagreeing with the
    books.
@@ -90,7 +94,7 @@ Every new route is one line in `nav.ts`.
 |---|---|---|
 | ▸ `/procurement/pr` | PR list: filter bar, table, row → drawer with lines, coverage, trail, evidence. Line actions: **attach a document here**. Header: **Buat PR** | M4 |
 | ✚ `/procurement/pr/baru` | multi-line create. A full page, not a drawer — this is the one place people type for ten minutes. Item combobox with last price and unit, vendor type-ahead that accepts a new name, running total | M4 |
-| ✚ `/procurement/persetujuan` | approval queue for the signed-in approver, grouped by document. Per line: APPROVED · HOLD · REJECTED, an editable approved amount that **cannot exceed requested**, a mandatory reason on HOLD/REJECTED | M5 |
+| ✚ `/procurement/persetujuan` | **the standing queue** — every requested line not yet approved, rejected or withdrawn, grouped by document. Per line: APPROVED · HOLD · REJECTED, an editable approved amount that **cannot exceed requested**, a mandatory reason on HOLD/REJECTED. Visible only with `approve_goods` | M5 |
 | ✚ `/procurement/ronde` | the OPEN round: requested, paying-account balances, TO TRANSFER, remaining after payment. Approve round · record transfer · **close round** (with the list of what closing releases) | M6 |
 | ✚ `/procurement/rapat` | meeting board, four columns: ✅ lunas · ⏳ disetujui belum bayar · ⚠️ dibayar belum disetujui · • belum keduanya | M12 |
 | ▸ `/procurement/po` | PO list + detail drawer: **two separate progress bars**, payment and delivery, never merged. Exposure stated in words | M11 |

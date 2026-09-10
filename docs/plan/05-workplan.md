@@ -329,8 +329,10 @@ review mechanism for the next fortnight.
 ## Definition of done, per milestone
 
 1. the screen works, on the deployed URL, at phone width
-2. every refusal path is demonstrable — not just the happy one
-3. derived state is derived, never stored
-4. what it taught us is appended to `findings.md`
-5. the milestone board is updated **in the same commit**
-6. anything decided along the way is appended to `06-decisions.md`
+2. **every field is reachable** — created, edited and refused, not merely
+   displayed. A field that only reads is not built (F9)
+3. every refusal path is demonstrable — not just the happy one
+4. derived state is derived, never stored
+5. what it taught us is appended to `findings.md`
+6. the milestone board is updated **in the same commit**
+7. anything decided along the way is appended to `06-decisions.md`

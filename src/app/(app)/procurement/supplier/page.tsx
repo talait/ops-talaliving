@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Truck, Plus, Check, Merge, Search, UserRound, Phone, MapPin, Landmark, Boxes } from "lucide-react";
+import { Truck, Plus, Check, Merge, Search, UserRound, Phone, MapPin, Landmark, Boxes, Pencil, Save } from "lucide-react";
 import {
   Badge, Button, Card, CardHeader, PageHeader, StatCard,
 } from "@/components/ui/primitives";
@@ -23,6 +23,45 @@ import { useSession } from "@/store/session";
  *  kept out of dropdowns until somebody says it is the real name. Auto-curating
  *  would feed every spelling variant into the catalogue as if it were canonical.
  */
+interface VendorDraft {
+  pic_name: string;
+  pic_phone: string;
+  phone: string;
+  address: string;
+  bank_account: string;
+  bank_account_secondary: string;
+  npwp: string;
+  supplied_categories: string[];
+}
+
+const emptyDraft: VendorDraft = {
+  pic_name: "", pic_phone: "", phone: "", address: "",
+  bank_account: "", bank_account_secondary: "", npwp: "", supplied_categories: [],
+};
+
+function Field({
+  id, label, value, onChange, placeholder, mono,
+}: {
+  id: string; label: string; value: string;
+  onChange: (v: string) => void; placeholder?: string; mono?: boolean;
+}) {
+  return (
+    <div>
+      <label htmlFor={id} className="block text-xs text-slate-500">{label}</label>
+      <input
+        id={id}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className={cn(
+          "mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none",
+          mono && "font-mono text-[13px]",
+        )}
+      />
+    </div>
+  );
+}
+
 export default function SuppliersPage() {
   const { can } = useSession();
   const { toast } = useToast();
@@ -32,11 +71,60 @@ export default function SuppliersPage() {
   const [newName, setNewName] = useState("");
   const [merging, setMerging] = useState<VendorView | null>(null);
   const [saving, setSaving] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<VendorDraft>(emptyDraft);
 
   const [state, reload] = useLoad(() => procurement.listVendorViews({ q }), [q]);
+  const [cats] = useLoad(() => procurement.listCategories(), []);
   const mayEdit = can("procurement.update");
 
-  const refresh = () => { reload(); setSelected(null); };
+  const refresh = () => { reload(); setSelected(null); setEditing(false); };
+
+  /** Opening a vendor always lands in read mode. Details are read far more
+   *  often than they are changed, and a form that opens by default invites
+   *  edits nobody meant to make. */
+  function open(v: VendorView) {
+    setSelected(v);
+    setEditing(false);
+  }
+
+  function startEditing(v: VendorView) {
+    setDraft({
+      pic_name: v.pic_name ?? "",
+      pic_phone: v.pic_phone ?? "",
+      phone: v.phone ?? "",
+      address: v.address ?? "",
+      bank_account: v.bank_account ?? "",
+      bank_account_secondary: v.bank_account_secondary ?? "",
+      npwp: v.npwp ?? "",
+      supplied_categories: [...v.supplied_categories],
+    });
+    setEditing(true);
+  }
+
+  async function saveContact() {
+    if (!selected) return;
+    setSaving(true);
+    /* Empty means "not on record", not an empty string — a blank that reads as
+     * a value is how a field stops being answerable. */
+    const blankToNull = (s: string) => (s.trim() === "" ? null : s.trim());
+    const res = await procurement.updateVendorContact(selected.id, {
+      pic_name: blankToNull(draft.pic_name),
+      pic_phone: blankToNull(draft.pic_phone),
+      phone: blankToNull(draft.phone),
+      address: blankToNull(draft.address),
+      bank_account: blankToNull(draft.bank_account),
+      bank_account_secondary: blankToNull(draft.bank_account_secondary),
+      npwp: blankToNull(draft.npwp),
+      supplied_categories: draft.supplied_categories,
+    });
+    setSaving(false);
+    if (res.error) { toast("critical", "Not saved", res.error.message); return; }
+    toast("success", "Vendor updated", `Contact details for "${res.data.name}" are on record.`);
+    setSelected(res.data);
+    setEditing(false);
+    reload();
+  }
 
   async function addVendor() {
     if (!newName.trim()) return;
@@ -47,7 +135,7 @@ export default function SuppliersPage() {
       toast(res.error.status === 409 ? "warning" : "critical", "Not added", res.error.message);
       return;
     }
-    toast("success", "Vendor added", `"${res.data.name}" is recorded, and not yet curated — it will not appear in dropdowns until someone curates it.`);
+    toast("success", "Vendor added", `"${res.data.name}" is recorded and not yet curated. Open it to add a contact and bank details.`);
     setNewName("");
     setAdding(false);
     reload();
@@ -174,7 +262,7 @@ export default function SuppliersPage() {
                   columns={columns}
                   rows={vendors}
                   rowKey={(v) => v.id}
-                  onRowClick={setSelected}
+                  onRowClick={open}
                   empty={q ? `Nothing matches “${q}”.` : "No vendors yet."}
                 />
               </Card>
@@ -187,26 +275,125 @@ export default function SuppliersPage() {
         open={!!selected}
         onClose={() => setSelected(null)}
         title={selected?.name ?? ""}
-        subtitle={selected?.code}
+        subtitle={editing ? `${selected?.code} · editing` : selected?.code}
         footer={
           selected && mayEdit ? (
-            <div className="flex flex-wrap justify-end gap-2">
-              <Button variant="outline" size="sm" icon={Merge} onClick={() => setMerging(selected)}>
-                Merge into another
-              </Button>
-              <Button
-                size="sm"
-                icon={Check}
-                variant={selected.is_curated ? "outline" : "primary"}
-                onClick={() => curate(selected, !selected.is_curated)}
-              >
-                {selected.is_curated ? "Move back to uncurated" : "Curate"}
-              </Button>
-            </div>
+            editing ? (
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" size="sm" onClick={() => setEditing(false)} disabled={saving}>
+                  Cancel
+                </Button>
+                <Button size="sm" icon={Save} onClick={saveContact} disabled={saving}>
+                  {saving ? "Saving…" : "Save details"}
+                </Button>
+              </div>
+            ) : (
+              <div className="flex flex-wrap justify-end gap-2">
+                <Button variant="outline" size="sm" icon={Merge} onClick={() => setMerging(selected)}>
+                  Merge
+                </Button>
+                <Button variant="outline" size="sm" icon={Pencil} onClick={() => startEditing(selected)}>
+                  Edit details
+                </Button>
+                <Button
+                  size="sm"
+                  icon={Check}
+                  variant={selected.is_curated ? "outline" : "primary"}
+                  onClick={() => curate(selected, !selected.is_curated)}
+                >
+                  {selected.is_curated ? "Uncurate" : "Curate"}
+                </Button>
+              </div>
+            )
           ) : null
         }
       >
-        {selected && (
+        {selected && editing && (
+          <div className="space-y-6 text-sm">
+            <p className="rounded-lg bg-slate-50 px-3 py-2.5 text-[13px] text-slate-600">
+              Leave anything blank that is genuinely unknown. A blank field reads as
+              &ldquo;not on record&rdquo; and the screen will say so; a placeholder
+              typed in to fill the gap reads as an answer.
+            </p>
+
+            <section className="space-y-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Contact</p>
+              <Field id="v-pic" label="PIC name" value={draft.pic_name}
+                     onChange={(v) => setDraft({ ...draft, pic_name: v })}
+                     placeholder="e.g. Hendra Wijaya" />
+              <Field id="v-picphone" label="PIC phone" value={draft.pic_phone}
+                     onChange={(v) => setDraft({ ...draft, pic_phone: v })}
+                     placeholder="e.g. 0812-3811-4402" mono />
+              <Field id="v-phone" label="Office phone" value={draft.phone}
+                     onChange={(v) => setDraft({ ...draft, phone: v })}
+                     placeholder="e.g. 0361-812445" mono />
+              <div>
+                <label htmlFor="v-address" className="block text-xs text-slate-500">Address</label>
+                <textarea
+                  id="v-address"
+                  value={draft.address}
+                  onChange={(e) => setDraft({ ...draft, address: e.target.value })}
+                  rows={2}
+                  placeholder="Street, city"
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none"
+                />
+              </div>
+            </section>
+
+            <section className="space-y-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Payment details</p>
+              <Field id="v-bank" label="Bank account" value={draft.bank_account}
+                     onChange={(v) => setDraft({ ...draft, bank_account: v })}
+                     placeholder="e.g. BCA 145-0882-771" mono />
+              <Field id="v-bank2" label="Second account" value={draft.bank_account_secondary}
+                     onChange={(v) => setDraft({ ...draft, bank_account_secondary: v })}
+                     placeholder="Only if they really have two" mono />
+              <Field id="v-npwp" label="NPWP" value={draft.npwp}
+                     onChange={(v) => setDraft({ ...draft, npwp: v })}
+                     placeholder="00.000.000.0-000.000" mono />
+            </section>
+
+            <section>
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                What they supply
+              </p>
+              <p className="mb-2 text-xs text-slate-500">
+                A claim on the record, useful before we have bought anything. Once we
+                have, the screen shows what we actually bought instead — that one
+                cannot go stale.
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {cats.status === "ready" && cats.data
+                  .filter((c) => c.code !== "uncurated")
+                  .map((c) => {
+                    const on = draft.supplied_categories.includes(c.code);
+                    return (
+                      <button
+                        key={c.code}
+                        type="button"
+                        onClick={() => setDraft({
+                          ...draft,
+                          supplied_categories: on
+                            ? draft.supplied_categories.filter((x) => x !== c.code)
+                            : [...draft.supplied_categories, c.code],
+                        })}
+                        className={cn(
+                          "rounded-lg border px-2.5 py-1.5 text-xs transition-colors",
+                          on
+                            ? "border-brand-300 bg-brand-50 font-medium text-brand-800"
+                            : "border-slate-200 text-slate-600 hover:bg-slate-50",
+                        )}
+                      >
+                        {c.name}
+                      </button>
+                    );
+                  })}
+              </div>
+            </section>
+          </div>
+        )}
+
+        {selected && !editing && (
           <div className="space-y-6 text-sm">
             {!selected.is_curated && (
               <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-800">
@@ -370,7 +557,8 @@ export default function SuppliersPage() {
           <p className="text-xs text-slate-500">
             Whatever you type is accepted. It is saved as <strong>not yet curated</strong>,
             which means it is on record and searchable but will not be offered in
-            dropdowns until someone confirms it is the real name.
+            dropdowns until someone confirms it is the real name. Contact and bank
+            details are added afterwards, from the vendor&rsquo;s own panel.
           </p>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={() => setAdding(false)}>Cancel</Button>

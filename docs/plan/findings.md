@@ -421,3 +421,33 @@ printing a dash. A blank field is a fact nobody acts on; a sentence is a task.
 not just a row. Two accounts on a vendor is not extra detail, it is a trap —
 so the drawer says which one to check and why. That line came from the request
 itself; nobody would have written it from the schema.
+
+## F9 · 2026-09-11 · a field with no way to fill it
+
+**Caught by the owner, and worth recording rather than quietly fixing.** The
+previous session added `pic_name`, `pic_phone`, `bank_account_secondary` and
+`supplied_categories` to the vendor model, seeded them in the fixtures, and
+wrote `updateVendorContact` in the service. There was no edit form. Every one
+of those fields was readable and none of them was fillable — the demo looked
+complete because the fixtures were already populated.
+
+**Why the fixtures hid it.** Seeded data is the enemy of noticing a missing
+write path: nine of twelve vendors already had a contact, so the screen looked
+finished from every angle except the one that mattered. The three uncurated
+vendors with no contact were the honest signal, and they read as "data we do
+not have" rather than "data you cannot enter".
+
+**The rule this suggests for the rest of Phase 1.** A milestone is not done
+when the data is visible; it is done when the data is *reachable* — created,
+edited and refused. From here, any field added to a model gets its write path
+in the same change, or it does not get added.
+
+**What the edit form itself taught us.** Empty has to mean "not on record",
+not an empty string. The panel says so out loud — *leave anything blank that is
+genuinely unknown* — because the alternative is somebody typing a dash or "n/a"
+to fill the gap, and then no screen can ever ask the question again. The save
+converts blanks to null deliberately.
+
+**Verified**: UD SINAR ABADI starts with no contact, the form fills PIC, phone,
+address and both accounts, the second-account warning appears once there are
+two, and it survives a reload.

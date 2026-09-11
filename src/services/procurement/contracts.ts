@@ -267,6 +267,14 @@ export interface PrLine {
    *  cost, "2 pail lem putih — laminating meja HOTEL UBUD" is a decision. */
   purpose: string | null;
   need_by: string | null;
+  /** The work order whose bill of material produced this line (D151).
+   *
+   *  This is what closes the loop the owner asked for: a BOM says what a piece
+   *  *should* cost in materials, and a PR raised from it is what somebody
+   *  actually went out and bought. With the SPK number on the line, projected
+   *  and actual are two sums over the same set of rows rather than two numbers
+   *  nobody can reconcile. Null for everything raised the ordinary way. */
+  source_wo_no: string | null;
   /** Removal is soft and audited (D29). Refused once money has reached it. */
   removed_at: string | null;
   removed_by: string | null;

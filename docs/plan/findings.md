@@ -2001,3 +2001,66 @@ order and nobody wrote it down against the order. The last row is a job signed
 three weeks ago that nobody has started. Neither was visible anywhere in this
 system, or in the spreadsheets it replaces, until these two tables sat next to
 each other.
+
+---
+
+## F45 — one column closes the loop
+
+The owner's question was two sentences: can a BOM line become a PR, so that at
+the end of a project we can compare actual production cost against the
+projection. Both halves were nearly there already — the BOM knows what a unit
+needs, procurement knows what was bought — and the thing missing between them
+was a single column.
+
+### Why matching afterwards does not work
+
+Without a link, reconciling means matching by item code and date: *this
+plywood bought on 3 September was probably for the BABY ISLAND tables*.
+Probably. The moment two orders run at once — which is the normal state of this
+workshop, six open work orders on a Friday — the same plywood is plausibly for
+either, and any split is invented. Worse, it is invented **afterwards**, by
+whoever is preparing the report, which is exactly when the answer is least
+checkable.
+
+`pr_lines.source_wo_no` costs one column and removes the guesswork entirely:
+projected and actual become two sums over the same set of rows.
+
+### Draft, not submitted
+
+The button creates a **draft** purchase request. That is deliberate and it is
+the difference between a useful tool and a dangerous one: a bill of material
+says what a piece *should* need. It does not know that half the plywood is
+already in the rack, that the client changed the finish, or that the last
+delivery was short. A list that went straight into the approval queue would
+put the workshop's assumptions in front of the CEO with somebody else's name
+on them.
+
+So it lands where a person has to read it, price it and ask for it — the same
+place any other request starts.
+
+### The comparison has to compare like with like
+
+The tempting screen subtracts *everything booked to this project* from *the
+material projection* and prints the difference. It would be wrong every single
+time: the ledger total includes installation, delivery, subcontracted metalwork
+and whatever else the project touched, none of which is in a bill of material.
+
+So the report puts **materials against materials** — projection against what
+was asked, approved and paid on lines traceable to this project's work orders —
+and shows the ledger's whole project spend **separately**, saying in words what
+it contains. Two honest numbers beside each other beat one dishonest
+subtraction.
+
+The same restraint applies to labour: it is in **neither** side. The BOM does
+not price hours (Q38), so putting overtime into the actual column would make
+every project look like it beat its projection by exactly the amount of work
+nobody costed.
+
+### What the demo shows about its own numbers
+
+Raise a PR from a BOM and the asked total matches the projection **exactly** —
+because both read the same catalogue price. That is not a bug and the screen
+says so: divergence appears later, when a quantity is edited, a vendor quotes
+differently, or a second request goes in because something ran out. Which is
+the honest description of where an overrun actually comes from, and a system
+that showed a variance at draft time would be inventing one.

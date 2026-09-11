@@ -636,6 +636,7 @@ erDiagram
     }
     pr_lines {
         uuid id PK
+        text source_wo_no "the SPK whose BOM produced this line (D151)"
         uuid doc_id FK
         int line_no "-> pr-26-09-10_01-L03"
         text line_no_full UK "generated column"
@@ -1443,6 +1444,7 @@ numbers and a workshop that conflates them runs out on a Saturday.
 
 | View | Answers |
 |---|---|
+| `v_project_cost` | per project: **projected** material cost (BOM × ordered qty), **asked · approved · paid** over the request lines whose `source_wo_no` belongs to that project's work orders, and separately the ledger's whole project spend. Materials against materials; labour is in neither, and the wider ledger figure is never subtracted from the narrower one (D151) |
 | `v_product_bom` | per product: each component resolved to a name and a price — the catalogue's **standard price**, falling back to the **last price paid**, and the view says which — plus `qty_with_waste`, a subtotal, the material cost per unit, and how many components could not be priced. Computed on read, never stored (A3, D149) |
 | `v_work_order` | per order: `done` per stage, `current_stage` (the furthest with anything finished), `completed` (through the last stage), `percent` — counted as **stages finished across the quantity**, not as the furthest stage reached — `days_left`, `late`, and the warnings in words |
 

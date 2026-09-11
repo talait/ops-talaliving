@@ -41,6 +41,9 @@ export async function listTypeRows(): Promise<Result<TransactionType[]>> {
 export async function listTransactions(
   opts: {
     account_id?: string; type_code?: string; q?: string;
+    /** By project **code**, resolved here — the caller crosses the seam with
+     *  the public identifier, never an internal id (ADR-004). */
+    project_code?: string;
     include_void?: boolean; limit?: number; offset?: number;
   } = {},
 ): Promise<Result<TransactionView[]>> {
@@ -51,6 +54,10 @@ export async function listTransactions(
      rows the reader will actually see. */
   if (!opts.include_void) rows = rows.filter((t) => t.status !== "VOID");
   if (opts.account_id) rows = rows.filter((t) => t.account_id === opts.account_id);
+  if (opts.project_code) {
+    const project = state.projects.find((p) => p.code === opts.project_code);
+    rows = project ? rows.filter((t) => t.project_id === project.id) : [];
+  }
   if (opts.type_code) rows = rows.filter((t) => t.type_code === opts.type_code);
   if (opts.q) {
     const q = opts.q.toLowerCase();

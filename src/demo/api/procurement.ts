@@ -307,6 +307,20 @@ export async function removeProjectLine(
   return listProjectLines(project.code);
 }
 
+/** Every request line raised from one work order's bill of material.
+ *
+ *  The other half of D151: the BOM projected what a run should cost, these are
+ *  what somebody actually asked to buy for it. Two sums over the same rows. */
+export async function listLinesForWorkOrder(woNo: string): Promise<Result<PrLineView[]>> {
+  await latency();
+  const state = getState();
+  const rows = state.pr_lines
+    .filter((l) => l.source_wo_no === woNo)
+    .map((l) => prLineView(state, l))
+    .sort((a, b) => a.line_no_full.localeCompare(b.line_no_full));
+  return ok(SERVICE, rows);
+}
+
 export async function listCategories(): Promise<Result<ItemCategory[]>> {
   await latency();
   return ok(SERVICE, getState().item_categories);
@@ -388,16 +402,27 @@ export interface NewLineInput {
   category?: PrCategory | null;
   purpose?: string | null;
   need_by?: string | null;
+  /** The work order whose BOM produced this line (D151). */
+  source_wo_no?: string | null;
 }
 
 export async function createPr(
-  input: { project_id?: string | null; lines: NewLineInput[] },
+  /** `project_code` is the seam-friendly way in: another service knows the
+   *  code, never the internal id (ADR-004). Resolved here. */
+  input: { project_id?: string | null; project_code?: string | null; lines: NewLineInput[] },
   idempotencyKey?: string,
 ): Promise<Result<PrDocumentView>> {
   await latency();
   const cached = replayed<PrDocumentView>(SERVICE, "createPr", idempotencyKey);
   if (cached) return cached;
   if (!input.lines.length) return invalid(SERVICE, "lines_required", "A purchase request needs at least one line.", { field: "lines" });
+
+  const byCode = input.project_code
+    ? getState().projects.find((p) => p.code === input.project_code)
+    : null;
+  if (input.project_code && !byCode) {
+    return notFound(SERVICE, "project_not_found", `No project ${input.project_code}.`);
+  }
 
   const user = actingUser();
   let docNo = "";
@@ -406,7 +431,7 @@ export async function createPr(
     const docId = newId("doc");
     draft.pr_documents.push({
       id: docId, doc_no: docNo, doc_type: "PR", status: "DRAFT",
-      requested_by: user.id, project_id: input.project_id ?? null,
+      requested_by: user.id, project_id: input.project_id ?? byCode?.id ?? null,
       created_at: new Date().toISOString(), submitted_at: null,
     });
     input.lines.forEach((l, i) => {
@@ -420,6 +445,7 @@ export async function createPr(
         vendor_id: l.vendor_id ?? null, po_line_id: null,
         category: l.category ?? null, purpose: l.purpose ?? null,
         need_by: l.need_by ?? null,
+        source_wo_no: l.source_wo_no ?? null,
         removed_at: null, removed_by: null,
       });
     });
@@ -1940,6 +1966,7 @@ export async function addDraftLine(docNo: string, input: NewLineInput): Promise<
     draft.pr_lines.push({
       id: newId_, doc_id: doc.id, line_no: lineNo,
       line_no_full: `${docNo}-L${String(lineNo).padStart(2, "0")}`,
+      source_wo_no: input.source_wo_no ?? null,
       item_id: input.item_id ?? null, description: input.description.trim(),
       qty: input.qty ?? null, uom: input.uom ?? null, unit_price: input.unit_price ?? null,
       item_total: input.item_total ?? Math.round((input.qty ?? 0) * (input.unit_price ?? 0)),

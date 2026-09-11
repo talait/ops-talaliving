@@ -5,7 +5,7 @@ import {
   Megaphone, UserRound, Target, HandCoins,
   FolderKanban, Hammer, Truck, Wrench, Stamp,
   PencilRuler, ListTree, CalendarClock,
-  Cpu, ScrollText, Activity, UserCog, KeyRound, Clock,
+  Cpu, ScrollText, Activity, UserCog, KeyRound, Clock, Scale,
   Settings, FlaskConical, MessagesSquare, Route, type LucideIcon,
 } from "lucide-react";
 
@@ -102,7 +102,7 @@ export const NAV: NavSection[] = [
     icon: FolderKanban,
     items: [
       { label: "Projects", href: "/proyek/order", icon: FolderKanban, permission: "project.read", badge: "core" },
-      { label: "Production", href: "/proyek/produksi", icon: Hammer, permission: "project.read" },
+      { label: "Cost vs projection", href: "/proyek/produksi", icon: Scale, permission: "project.read", badge: "new" },
       { label: "Delivery", href: "/proyek/pengiriman", icon: Truck, permission: "project.read" },
       { label: "Installation", href: "/proyek/instalasi", icon: Wrench, permission: "project.read" },
       { label: "Handover", href: "/proyek/serah-terima", icon: Stamp, permission: "project.handover" },

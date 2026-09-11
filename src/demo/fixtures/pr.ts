@@ -80,6 +80,7 @@ export const PR_LINES: PrLine[] = LINE_SEEDS.map(
     doc_id,
     line_no,
     line_no_full: `${DOC_NO[doc_id]}-L${String(line_no).padStart(2, "0")}`,
+    source_wo_no: null,
     item_id: item_code ? itemIdByCode(item_code) : null,
     description,
     qty,

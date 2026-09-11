@@ -175,10 +175,16 @@ PO and receiving:
 |---|---|---|
 | GET | `/projects` | newest code first |
 | GET | `/projects/{code}` | |
+| GET | `/pr/lines?source_wo_no=` | every request line raised from one work order's BOM — the actual side of *proyeksi vs aktual* (D151) |
 | GET | `/projects/{code}/lines` | what the client ordered, line by line |
 | POST | `/projects/{code}/lines` | add or change a line: `{product_code?, description, qty, uom, unit_price?}`. The product code is **not** validated against the catalogue — an order is typed the day it is signed, often before anybody has drawn the thing (A6, D150) |
 | DELETE | `/projects/{code}/lines/{id}` | |
 | POST | `/projects` | create or update: `{code, name, client_name?, location?, pic?, started_on?, target_date?, contract_value?, is_active?}`. The **code is never edited** — request lines, work orders and ledger rows all reference it as text at the seam (D149). 422 when the target date is before the start |
+
+`POST /pr` accepts `project_code` as well as `project_id`: another service
+knows the public code, never the internal id (ADR-004). A request created from
+a bill of material arrives as a **draft** with `source_wo_no` on every line —
+it is a requirement, not a decision to spend (D151).
 
 `contract_value` is the agreed order value. It is **not** an invoice and not a
 quotation, and nothing in this system produces either yet (Q37).
@@ -319,6 +325,7 @@ anybody opening the app).
 | GET | `/work-orders` | `?include_done=1`. **Late first, then by due date** — the board's job is to put the thing somebody has to deal with at the top |
 | GET | `/work-orders/{wo_no}` | the order with per-stage progress, `current_stage`, `percent`, `days_left`, `late`, and the warnings in words |
 | POST | `/work-orders` | `{item_name, qty, uom, due_date, project_code?}`. **422 with no due date**: an order that cannot be late is one nobody can tell is late |
+| GET | `/work-orders/{wo_no}/materials` | what the whole run needs, waste included — the list a PR gets built from (D151) |
 | GET | `/work-orders/{wo_no}/progress` | every entry, newest first — including the ones a signed lembur sheet posted |
 | POST | `/work-orders/{wo_no}/progress` | `{stage, qty, work_date, worked_by?, note?, source?, source_ref?}`. Append-only; a correction is a **negative qty with a note**. 422 over the ordered quantity; a stage ahead of the previous one is accepted and **warned about** (A6). Idempotent on `(source_ref, wo, stage)` |
 | POST | `/work-orders/{wo_no}/close` | 422 with no reason when the quantity is not finished |

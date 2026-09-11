@@ -4,6 +4,7 @@ import { useState } from "react";
 import { AlertTriangle, CalendarClock, Hammer, Plus } from "lucide-react";
 import { Badge, Button, Card, CardHeader, PageHeader } from "@/components/ui/primitives";
 import { Loaded, SourceBadge, useLoad } from "@/components/ui/loaded";
+import { Paged } from "@/components/ui/pager";
 import { formatNumber } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { production } from "@/demo/api";
@@ -81,12 +82,17 @@ export default function ProductionSchedulePage() {
                   icon={Hammer}
                   action={<SourceBadge state={orders} />}
                 />
-                <ul className="divide-y divide-slate-100">
-                  {all.map((w) => <Row key={w.id} wo={w} onOpen={() => setOpen(w.wo_no)} />)}
-                  {all.length === 0 && (
-                    <li className="px-5 py-8 text-[13px] text-slate-500">Belum ada pesanan kerja.</li>
+                {/* Pesanan kerja menumpuk sepanjang tahun — dipaginasi (D157). */}
+                <Paged rows={all} pageSize={15} unit="pesanan">
+                  {(shown) => (
+                    <ul className="divide-y divide-slate-100">
+                      {shown.map((w) => <Row key={w.id} wo={w} onOpen={() => setOpen(w.wo_no)} />)}
+                      {all.length === 0 && (
+                        <li className="px-5 py-8 text-[13px] text-slate-500">Belum ada pesanan kerja.</li>
+                      )}
+                    </ul>
                   )}
-                </ul>
+                </Paged>
                 <p className="flex flex-wrap items-center gap-3 border-t border-slate-100 px-5 py-2 text-[11px] text-slate-500">
                   Tahap:
                   {PROCESS_STAGES.map((s) => (

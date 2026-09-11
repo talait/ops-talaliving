@@ -5,6 +5,7 @@ import { Upload, FileSpreadsheet, AlertTriangle } from "lucide-react";
 import { Modal } from "@/components/ui/drawer";
 import { Button } from "@/components/ui/primitives";
 import { hr } from "@/demo/api";
+import { parseCsv } from "@/lib/csv";
 import { useToast } from "@/store/toast";
 
 /** Taking the fingerprint machine's own export.
@@ -35,14 +36,16 @@ function parseStamp(raw: string): string | null {
   return `${y}-${p(mo)}-${p(d)}T${p(h)}:${p(mi)}:${p(s ?? "00")}+08:00`;
 }
 
-/** The export is plain comma-separated with a trailing run of empty columns.
- *  No quoting appears in it, and a name with a comma in it would be a different
- *  problem than this file has. */
-function parseCsv(text: string): { rows: ParsedRow[]; skipped: number } {
-  const lines = text.split(/\r?\n/).filter((l) => l.trim() !== "");
+/** The reader's export: a header row, then one row per tap, with a trailing run
+ *  of empty columns. */
+function parseFile(text: string): { rows: ParsedRow[]; skipped: number } {
+  /* Quote-aware for the same reason the overtime form needs it: a name or a
+     location with a comma in it would otherwise shift every later column
+     (F47). */
+  const lines = parseCsv(text);
   if (lines.length === 0) return { rows: [], skipped: 0 };
 
-  const header = lines[0].split(",").map((h) => h.trim().toLowerCase());
+  const header = lines[0].map((h) => h.trim().toLowerCase());
   const col = (...names: string[]) => {
     for (const n of names) {
       const i = header.indexOf(n);
@@ -58,8 +61,7 @@ function parseCsv(text: string): { rows: ParsedRow[]; skipped: number } {
 
   const rows: ParsedRow[] = [];
   let skipped = 0;
-  for (const line of lines.slice(1)) {
-    const c = line.split(",");
+  for (const c of lines.slice(1)) {
     const at = iAt >= 0 ? parseStamp(c[iAt] ?? "") : null;
     const ref = (iNo >= 0 ? c[iNo] : "")?.trim() ?? "";
     if (!at || !ref) { skipped += 1; continue; }
@@ -84,7 +86,7 @@ export function ImportScans({ onClose, onDone }: { onClose: () => void; onDone: 
 
   async function read(f: File) {
     const text = await f.text();
-    const { rows, skipped } = parseCsv(text);
+    const { rows, skipped } = parseFile(text);
     setResult(null);
     setFile({ name: f.name, rows, skipped });
     if (rows.length === 0) {

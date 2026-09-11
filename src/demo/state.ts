@@ -14,6 +14,7 @@ import type { Attachment, AttachmentLink } from "@/services/documents/contracts"
 import type { LogPurchase, LogPiece, SawnBoard } from "@/services/inventory/contracts";
 import type {
   Employee, AttendanceScan, DayMark, OvertimeSheet, OvertimeLine, PayrollRun,
+  PayrollAdjustment,
 } from "@/services/hr/contracts";
 import type {
   WorkOrder, ProgressEntry, Product, BomComponent,
@@ -117,6 +118,8 @@ export interface DemoState {
   overtime_sheets: OvertimeSheet[];
   overtime_lines: OvertimeLine[];
   payroll_runs: PayrollRun[];
+  /** Added or taken off a payslip by a person, with a reason (D155). */
+  payroll_adjustments: PayrollAdjustment[];
 
   /* --- production ------------------------------------------------- */
   /** What is being made, in what quantity, by when (D148). */

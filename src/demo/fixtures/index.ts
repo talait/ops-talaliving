@@ -13,7 +13,10 @@ import {
 } from "./ledger";
 import { ATTACHMENTS, ATTACHMENT_LINKS } from "./documents";
 import { CASH_COMPONENTS, CASH_OVERRIDES, CASH_SETTLEMENTS } from "./cash";
-import { EMPLOYEES, ATTENDANCE_SCANS, DAY_MARKS, OVERTIME_SHEETS, OVERTIME_LINES, PAYROLL_RUNS } from "./hr";
+import {
+  EMPLOYEES, ATTENDANCE_SCANS, DAY_MARKS, OVERTIME_SHEETS, OVERTIME_LINES,
+  PAYROLL_RUNS, PAYROLL_ADJUSTMENTS,
+} from "./hr";
 import { WORK_ORDERS, PRODUCTION_PROGRESS } from "./production";
 import { PRODUCTS, BOM_COMPONENTS } from "./products";
 import { LOG_PURCHASES, LOG_PIECES, SAWN_BOARDS } from "./timber";
@@ -36,7 +39,7 @@ export * from "./reference";
  *  changes every count, and their own work is exactly what the snapshot is
  *  for. A version somebody types when they edit the fixtures separates "the
  *  demo data moved" from "somebody used the demo". */
-export const FIXTURE_VERSION = "2026-09-11.13";
+export const FIXTURE_VERSION = "2026-09-11.15";
 
 export function stateSignature(state: DemoState): string {
   return [
@@ -95,6 +98,7 @@ export function initialState(): DemoState {
     overtime_sheets: OVERTIME_SHEETS,
     overtime_lines: OVERTIME_LINES,
     payroll_runs: PAYROLL_RUNS,
+    payroll_adjustments: PAYROLL_ADJUSTMENTS,
 
     work_orders: WORK_ORDERS,
     production_progress: PRODUCTION_PROGRESS,

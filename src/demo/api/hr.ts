@@ -4,6 +4,7 @@ import type {
   Employee, AttendanceScan, TimesheetDay, DayMark, DayMarkKind,
   OvertimeSheet, OvertimeLine, OvertimeSheetView, OvertimeKind,
   PayrollRun, PayrollView, PayBasis,
+  AdjustmentKind, PayrollAdjustmentView,
 } from "@/services/hr/contracts";
 import { getState, apply, newId, nextDocNumber, writeAudit, writeOutbox } from "../store";
 import {
@@ -482,6 +483,8 @@ export async function addOvertimeLine(
     wo_no?: string | null;
     stage?: string | null;
     qty_done?: number | null;
+    /** The GAJI column of the paper form, when the sheet carries one (D154). */
+    form_amount?: number | null;
   },
 ): Promise<Result<OvertimeSheetView>> {
   await latency();
@@ -517,6 +520,7 @@ export async function addOvertimeLine(
       wo_no: input.wo_no?.trim() || null,
       stage: input.stage?.trim() || null,
       qty_done: input.qty_done ?? null,
+      form_amount: input.form_amount ?? null,
     };
     draft.overtime_lines.push(row);
     writeAudit(draft, {
@@ -675,6 +679,200 @@ export async function decideOvertimeSheet(
   return getOvertimeSheet(input.sheet_no);
 }
 
+/** Reading the company's own overtime form.
+ *
+ *  The paper already exists — *FORM LEMBUR KARYAWAN PT TALAHOME*, with NO ·
+ *  NAMA · DESCRIPTION · GAJI · JAM · TTD and twenty numbered rows — so the
+ *  system reads that rather than asking anybody to retype it into a different
+ *  shape (D154).
+ *
+ *  People are matched **by name**, which is the only identifier the form
+ *  carries. A name nobody recognises is reported back, never created and never
+ *  guessed at: two people called Sumiati is a question for HRD, not something
+ *  for an importer to resolve (the same rule as D143 for machine numbers).
+ */
+export async function importOvertimeForm(
+  input: {
+    sheet_no: string;
+    filename: string;
+    rows: { no: string; name: string; description: string; gaji: number | null; jam: number | null }[];
+  },
+  idempotencyKey?: string,
+): Promise<Result<{ added: number; skipped: number; unknown: string[]; sheet: OvertimeSheetView }>> {
+  await latency();
+  const cached = replayed<{ added: number; skipped: number; unknown: string[]; sheet: OvertimeSheetView }>(
+    SERVICE, "importOvertimeForm", idempotencyKey,
+  );
+  if (cached) return cached;
+
+  const denied = requireModule(SERVICE, "hrd");
+  if (denied) return denied;
+
+  const state = getState();
+  const sheet = state.overtime_sheets.find((x) => x.sheet_no === input.sheet_no);
+  if (!sheet) return notFound(SERVICE, "sheet_not_found", `No sheet ${input.sheet_no}.`);
+  if (sheet.hrd_checked_at || sheet.leader_approved_at) {
+    return conflict(
+      SERVICE, "sheet_closed",
+      `${sheet.sheet_no} sudah diperiksa — form baru masuk lembar baru.`,
+    );
+  }
+  if (input.rows.length === 0) {
+    return invalid(SERVICE, "empty_form", "Tidak ada baris berisi nama dan jam di form itu.", { field: "rows" });
+  }
+
+  /* Matched on a normalised name: the form is filled in by hand and the
+     capitalisation is nobody's fault. */
+  const norm = (v: string) => v.trim().toLowerCase().replace(/\s+/g, " ");
+  const byName = new Map(state.employees.map((e) => [norm(e.full_name), e]));
+
+  const user = actingUser();
+  let added = 0;
+  let skipped = 0;
+  const unknown: string[] = [];
+
+  apply((draft) => {
+    for (const row of input.rows) {
+      const emp = byName.get(norm(row.name));
+      if (!emp) { unknown.push(row.name.trim()); continue; }
+      if (draft.overtime_lines.some((l) => l.sheet_id === sheet.id && l.employee_id === emp.id)) {
+        skipped += 1;
+        continue;
+      }
+      added += 1;
+      draft.overtime_lines.push({
+        id: newId("lbl"), sheet_id: sheet.id, employee_id: emp.id,
+        hours: row.jam ?? 0,
+        task: row.description.trim() || "—",
+        wo_no: null, stage: null, qty_done: null,
+        form_amount: row.gaji ?? null,
+      });
+    }
+    writeAudit(draft, {
+      service: SERVICE, entity: "overtime_sheet", entity_no: sheet.sheet_no,
+      action: "import_form", outcome: "ok", reason: input.filename,
+      detail: { rows: input.rows.length, added, skipped, unknown, by: user.email },
+    });
+  });
+
+  const after = await getOvertimeSheet(sheet.sheet_no);
+  if (after.error) return after as unknown as Result<never>;
+  const result = { added, skipped, unknown, sheet: after.data };
+  remember(SERVICE, "importOvertimeForm", idempotencyKey, result);
+  return ok(SERVICE, result);
+}
+
+/** Something added to or taken off one person's payslip, by a person, with a
+ *  reason (D155).
+ *
+ *  The amount is **signed and typed**: this system computes no deduction it
+ *  was not told about. What a minute of lateness costs, what an SP costs, what
+ *  was left over last time — all of them are decisions, and a decision with no
+ *  name and no sentence behind it is the thing an employee cannot argue with.
+ */
+export async function saveAdjustment(
+  input: {
+    run_no: string;
+    employee_no: string;
+    kind: AdjustmentKind;
+    amount: number;
+    reason: string;
+    adjustment_id?: string | null;
+  },
+): Promise<Result<PayrollAdjustmentView[]>> {
+  await latency();
+  const denied = requireModule(SERVICE, "payroll");
+  if (denied) return denied;
+
+  const state = getState();
+  const run = state.payroll_runs.find((r) => r.run_no === input.run_no);
+  if (!run) return notFound(SERVICE, "run_not_found", `No payroll run ${input.run_no}.`);
+  if (run.status !== "DRAFT") {
+    return conflict(
+      SERVICE, "run_closed",
+      `${run.run_no} sudah ${run.status}. Perubahan setelah disetujui masuk periode berikutnya sebagai selisih.`,
+    );
+  }
+  const emp = state.employees.find((e) => e.employee_no === input.employee_no);
+  if (!emp) return notFound(SERVICE, "employee_not_found", `No employee ${input.employee_no}.`);
+  if (!input.amount) {
+    return invalid(SERVICE, "amount_required", "Nol bukan penyesuaian.", { field: "amount" });
+  }
+  if (!input.reason.trim()) {
+    return invalid(
+      SERVICE, "reason_required",
+      "Potongan tanpa kalimat adalah potongan yang tidak bisa dibantah karyawan.",
+      { field: "reason" },
+    );
+  }
+
+  const user = actingUser();
+  apply((draft) => {
+    const row = input.adjustment_id
+      ? draft.payroll_adjustments.find((a) => a.id === input.adjustment_id)
+      : null;
+    if (row) {
+      row.kind = input.kind;
+      row.amount = Math.round(input.amount);
+      row.reason = input.reason.trim();
+    } else {
+      draft.payroll_adjustments.push({
+        id: newId("adj"), run_no: run.run_no, employee_id: emp.id,
+        kind: input.kind, amount: Math.round(input.amount),
+        reason: input.reason.trim(),
+        created_by: user.id, created_at: new Date().toISOString(),
+      });
+    }
+    writeAudit(draft, {
+      service: SERVICE, entity: "payroll", entity_no: run.run_no,
+      action: row ? "update_adjustment" : "add_adjustment", outcome: "ok",
+      reason: input.reason.trim(),
+      detail: { employee: emp.employee_no, kind: input.kind, amount: input.amount, by: user.email },
+    });
+  });
+  return listAdjustments(run.run_no);
+}
+
+export async function removeAdjustment(
+  input: { run_no: string; adjustment_id: string },
+): Promise<Result<PayrollAdjustmentView[]>> {
+  await latency();
+  const denied = requireModule(SERVICE, "payroll");
+  if (denied) return denied;
+
+  const state = getState();
+  const row = state.payroll_adjustments.find((a) => a.id === input.adjustment_id);
+  if (!row) return notFound(SERVICE, "adjustment_not_found", "Penyesuaian itu tidak ada.");
+  const run = state.payroll_runs.find((r) => r.run_no === row.run_no);
+  if (run && run.status !== "DRAFT") {
+    return conflict(SERVICE, "run_closed", `${run.run_no} sudah ${run.status}.`);
+  }
+
+  const user = actingUser();
+  apply((draft) => {
+    draft.payroll_adjustments = draft.payroll_adjustments.filter((a) => a.id !== input.adjustment_id);
+    writeAudit(draft, {
+      service: SERVICE, entity: "payroll", entity_no: row.run_no,
+      action: "remove_adjustment", outcome: "ok", reason: row.reason,
+      detail: { kind: row.kind, amount: row.amount, by: user.email },
+    });
+  });
+  return listAdjustments(input.run_no);
+}
+
+export async function listAdjustments(runNo: string): Promise<Result<PayrollAdjustmentView[]>> {
+  await latency();
+  const state = getState();
+  const rows = state.payroll_adjustments
+    .filter((a) => a.run_no === runNo)
+    .map((a) => {
+      const emp = state.employees.find((e) => e.id === a.employee_id);
+      return { ...a, employee_no: emp?.employee_no ?? "—", full_name: emp?.full_name ?? "—" };
+    })
+    .sort((a, b) => a.full_name.localeCompare(b.full_name));
+  return ok(SERVICE, rows);
+}
+
 export async function listOvertimeSheets(): Promise<Result<OvertimeSheetView[]>> {
   await latency();
   const state = getState();
@@ -757,6 +955,46 @@ export async function getPayroll(runNo: string): Promise<Result<PayrollView>> {
   const run = state.payroll_runs.find((r) => r.run_no === runNo);
   if (!run) return notFound(SERVICE, "run_not_found", `No payroll run ${runNo}.`);
   return ok(SERVICE, payrollView(state, run));
+}
+
+/** Any week, run or no run.
+ *
+ *  The workshop is paid weekly, and the question HRD actually asks is *what
+ *  does this week look like* — not *what does run pyr-26-09-06_01 look like*
+ *  (owner). So a period can be read on its own: the figures are derived from
+ *  the days either way (A3), and opening a run adds a document, not a
+ *  calculation.
+ *
+ *  When a run already covers the period, that run is returned — with its
+ *  status and its hand-written adjustments, which belong to the run and not to
+ *  the week (D155). Otherwise the same figures come back under an empty run
+ *  number, and the screen says plainly that nothing has been opened yet.
+ */
+export async function previewPayroll(
+  input: { period_start: string; period_end: string },
+): Promise<Result<PayrollView & { opened: boolean }>> {
+  await latency();
+  if (input.period_end < input.period_start) {
+    return invalid(SERVICE, "period_invalid", "The period ends before it starts.", { field: "period_end" });
+  }
+  const state = getState();
+  const run = state.payroll_runs.find(
+    (r) => r.period_start === input.period_start && r.period_end === input.period_end,
+  );
+  if (run) return ok(SERVICE, { ...payrollView(state, run), opened: true });
+
+  /* A period nobody has opened. The run number is empty on purpose: there is
+     no document, and inventing one here would make a payslip printable for a
+     run that does not exist. */
+  const virtual: PayrollRun = {
+    id: "", run_no: "",
+    period_start: input.period_start, period_end: input.period_end,
+    status: "DRAFT",
+    created_at: new Date().toISOString(), created_by: "",
+    approved_at: null, approved_by: null, paid_trx_no: null,
+    note: null,
+  };
+  return ok(SERVICE, { ...payrollView(state, virtual), opened: false });
 }
 
 /** Opening a run for a period. It computes immediately — there is nothing to

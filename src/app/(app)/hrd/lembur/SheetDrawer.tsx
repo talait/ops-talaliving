@@ -1,17 +1,18 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Check, FileText, Factory, Paperclip, X } from "lucide-react";
+import { Check, FileText, Factory, Paperclip, Upload, X } from "lucide-react";
 import Link from "next/link";
 import { Drawer } from "@/components/ui/drawer";
 import { Badge, Button } from "@/components/ui/primitives";
 import { Loaded, useLoad } from "@/components/ui/loaded";
-import { formatNumber } from "@/lib/format";
+import { formatIDR, formatNumber } from "@/lib/format";
 import { documents, hr, production } from "@/demo/api";
 import {
   OVERTIME_KIND_LABEL, OVERTIME_STAGE_LABEL, type OvertimeSheetView,
 } from "@/services/hr/contracts";
 import { STAGE_NAME } from "@/services/production/contracts";
+import { ImportForm } from "./ImportForm";
 import { useSession } from "@/store/session";
 import { useToast } from "@/store/toast";
 
@@ -39,6 +40,7 @@ export function SheetDrawer({
   const [sheet, reload] = useLoad(() => hr.getOvertimeSheet(sheetNo), [sheetNo]);
   const [busy, setBusy] = useState(false);
   const [reason, setReason] = useState("");
+  const [importing, setImporting] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const mayHrd = can("hrd.update");
@@ -157,6 +159,7 @@ export function SheetDrawer({
                   <tr className="border-b border-slate-200 bg-slate-50/70 text-[11px] uppercase tracking-wide text-slate-500">
                     <th className="px-3 py-2 text-left">Nama</th>
                     <th className="px-3 py-2 text-right">Jam</th>
+                    <th className="px-3 py-2 text-right">Gaji (form)</th>
                     <th className="px-3 py-2 text-left">Pekerjaan</th>
                     {s.kind === "production" && <th className="px-3 py-2 text-left">Item · proses · jumlah</th>}
                   </tr>
@@ -169,6 +172,13 @@ export function SheetDrawer({
                         <span className="block font-mono text-[10px] text-slate-400">{l.employee_no}</span>
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums text-slate-700">{formatNumber(l.hours)}</td>
+                      {/* What the paper said against this name. Where it is
+                          there, it is what payroll pays (D154). */}
+                      <td className="px-3 py-2 text-right tabular-nums text-slate-700">
+                        {l.form_amount == null
+                          ? <span className="text-slate-300" title="Tidak ada angka di form — dibayar tarif jam biasa">—</span>
+                          : formatIDR(l.form_amount)}
+                      </td>
                       <td className="px-3 py-2 text-slate-600">{l.task}</td>
                       {s.kind === "production" && (
                         <td className="px-3 py-2">
@@ -224,6 +234,24 @@ export function SheetDrawer({
                 </>
               )}
             </div>
+
+            {/* The form itself, read rather than retyped (D154). */}
+            {mayHrd && s.kind === "production" && !s.hrd_checked_at && (
+              <div className="rounded-xl border border-slate-200 px-4 py-3">
+                <p className="flex items-center gap-2 text-[13px] font-medium text-slate-800">
+                  <Upload className="h-4 w-4 text-slate-400" /> Isi lembar dari form lembur
+                </p>
+                <p className="mt-0.5 text-[12px] text-slate-500">
+                  Form kertas PT Talahome — NO · NAMA · DESCRIPTION · GAJI · JAM — di-export
+                  sebagai CSV, lalu dibaca ke sini. Nama dicocokkan dengan data karyawan; yang
+                  tidak dikenal dilaporkan, bukan dibuat.
+                </p>
+                <Button size="sm" variant="outline" icon={Upload} className="mt-2"
+                  onClick={() => setImporting(true)}>
+                  Upload form
+                </Button>
+              </div>
+            )}
 
             {/* Signatures. Production takes two; staff takes one. */}
             <div className="space-y-2">
@@ -309,6 +337,14 @@ export function SheetDrawer({
           </div>
         )}
       </Loaded>
+
+      {importing && (
+        <ImportForm
+          sheetNo={sheetNo}
+          onClose={() => setImporting(false)}
+          onDone={() => { setImporting(false); reload(); onChanged(); }}
+        />
+      )}
     </Drawer>
   );
 }

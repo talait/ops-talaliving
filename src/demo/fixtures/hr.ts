@@ -1,5 +1,6 @@
 import type {
   Employee, AttendanceScan, DayMark, OvertimeSheet, OvertimeLine, PayrollRun,
+  PayrollAdjustment,
 } from "@/services/hr/contracts";
 
 /** The office, and the workshop.
@@ -1161,43 +1162,75 @@ export const OVERTIME_LINES: OvertimeLine[] = [
   {
     id: "lbl_01", sheet_id: "lbr_01", employee_id: "emp_w009", hours: 2,
     task: "Finishing meja set ke-3, coating kedua.",
-    wo_no: "spk-26-08-24_01", stage: "FINISHING", qty_done: 1,
+    wo_no: "spk-26-08-24_01", stage: "FINISHING", qty_done: 1, form_amount: 70_000,
   },
   {
     id: "lbl_02", sheet_id: "lbr_01", employee_id: "emp_w012", hours: 2,
     task: "Bantu finishing dan siapkan bahan packing.",
-    wo_no: "spk-26-08-24_01", stage: "FINISHING", qty_done: 0,
+    wo_no: "spk-26-08-24_01", stage: "FINISHING", qty_done: 0, form_amount: 70_000,
   },
   {
     id: "lbl_03", sheet_id: "lbr_01", employee_id: "emp_w016", hours: 2.5,
     task: "Packing meja set ke-3.",
-    wo_no: "spk-26-08-24_01", stage: "PACKING", qty_done: 1,
+    wo_no: "spk-26-08-24_01", stage: "PACKING", qty_done: 1, form_amount: 100_000,
   },
   {
     id: "lbl_04", sheet_id: "lbr_01", employee_id: "emp_w015", hours: 1.5,
     task: "Rakit daun pintu VILLA SANUR.",
-    wo_no: "spk-26-08-30_01", stage: "RAKIT", qty_done: 2,
+    wo_no: "spk-26-08-30_01", stage: "RAKIT", qty_done: 2, form_amount: 60_000,
   },
   {
     id: "lbl_05", sheet_id: "lbr_02", employee_id: "emp_04", hours: 2,
     task: "Rekap 6 penawaran vendor ke papan rapat, lengkap dengan tautan.",
-    wo_no: null, stage: null, qty_done: null,
+    wo_no: null, stage: null, qty_done: null, form_amount: null,
   },
   {
     id: "lbl_06", sheet_id: "lbr_03", employee_id: "emp_04", hours: 2,
     task: "Menunggu file desain untuk BOM lemari.",
-    wo_no: null, stage: null, qty_done: null,
+    wo_no: null, stage: null, qty_done: null, form_amount: null,
   },
 ];
 
 export const PAYROLL_RUNS: PayrollRun[] = [
   {
-    id: "pay_01", run_no: "pyr-26-08-28_01",
-    period_start: "2026-08-24", period_end: "2026-08-28",
-    status: "PAID",
-    created_at: "2026-08-28T16:00:00+08:00", created_by: "usr_anggun",
-    approved_at: "2026-08-28T16:40:00+08:00", approved_by: "usr_evin",
+    /* The period is the week the attendance actually covers — Monday to
+       Sunday, so a payslip's weekly recap has a week to recap (D156). A run
+       whose period sits outside the timesheet reads as forty people who
+       worked nought days, which is a demo teaching the wrong thing. */
+    id: "pay_01", run_no: "pyr-26-09-06_01",
+    period_start: "2026-08-31", period_end: "2026-09-06",
+    status: "DRAFT",
+    created_at: "2026-09-07T09:00:00+08:00", created_by: "usr_anggun",
+    approved_at: null, approved_by: null,
     paid_trx_no: null,
-    note: "Minggu terakhir Agustus.",
+    note: "Minggu pertama September.",
+  },
+];
+
+
+/** What HRD adds to or takes off a payslip by hand (D155).
+ *
+ *  Three shapes, one of each: a deduction for lateness with the minutes behind
+ *  it, a written warning, and money left over from the previous run — which
+ *  goes the other way, because the last payslip was short.
+ */
+export const PAYROLL_ADJUSTMENTS: PayrollAdjustment[] = [
+  {
+    id: "adj_01", run_no: "pyr-26-09-06_01", employee_id: "emp_w012",
+    kind: "late", amount: -45_000,
+    reason: "Terlambat 3 hari, total 96 menit (lihat timesheet).",
+    created_by: "usr_wulan", created_at: "2026-09-07T09:30:00+08:00",
+  },
+  {
+    id: "adj_02", run_no: "pyr-26-09-06_01", employee_id: "emp_w011",
+    kind: "sp", amount: -100_000,
+    reason: "SP-1: meninggalkan pekerjaan tanpa izin, 2 September.",
+    created_by: "usr_wulan", created_at: "2026-09-07T09:35:00+08:00",
+  },
+  {
+    id: "adj_03", run_no: "pyr-26-09-06_01", employee_id: "emp_w009",
+    kind: "carry_over", amount: 85_000,
+    reason: "Kekurangan upah periode 24–28 Agustus, satu hari belum terbayar.",
+    created_by: "usr_wulan", created_at: "2026-09-07T09:40:00+08:00",
   },
 ];

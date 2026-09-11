@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Clock, Factory, Laptop, Plus } from "lucide-react";
 import { Badge, Button, Card, CardHeader, PageHeader } from "@/components/ui/primitives";
 import { Loaded, SourceBadge, useLoad } from "@/components/ui/loaded";
+import { usePaged } from "@/components/ui/pager";
 import { formatNumber } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { hr } from "@/demo/api";
@@ -48,6 +49,9 @@ export default function OvertimePage() {
   const [sheets, reload] = useLoad(() => hr.listOvertimeSheets(), []);
   const [creating, setCreating] = useState<OvertimeKind | null>(null);
   const [open, setOpen] = useState<string | null>(null);
+  /* Lembar lembur bertambah tiap minggu — daftarnya dipaginasi, tidak
+     dirender seluruhnya (D157). */
+  const { shown: rows, pager } = usePaged(sheets.status === "ready" ? sheets.data : [], 15);
   const mayEdit = can("hrd.update");
 
   return (
@@ -106,7 +110,7 @@ export default function OvertimePage() {
                   {all.length === 0 && (
                     <li className="px-5 py-8 text-[13px] text-slate-500">Belum ada lembar lembur.</li>
                   )}
-                  {all.map((s) => (
+                  {rows.map((s) => (
                     <li key={s.id}>
                       <button
                         onClick={() => setOpen(s.sheet_no)}
@@ -137,6 +141,7 @@ export default function OvertimePage() {
                     </li>
                   ))}
                 </ul>
+                {pager}
                 {mayEdit && (
                   <p className="flex items-center gap-2 border-t border-slate-100 px-5 py-2.5 text-[11px] text-slate-500">
                     <Plus className="h-3.5 w-3.5" />

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { CalendarCheck, Upload, AlertTriangle, Clock, Flag } from "lucide-react";
 import { Badge, Button, Card, CardHeader, PageHeader } from "@/components/ui/primitives";
 import { Loaded, SourceBadge, useLoad } from "@/components/ui/loaded";
+import { usePaged } from "@/components/ui/pager";
 import { formatNumber } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { hr } from "@/demo/api";
@@ -43,6 +44,13 @@ export default function TimesheetPage() {
   const [importing, setImporting] = useState(false);
   const [marking, setMarking] = useState<string | null>(null);
   const [open, setOpen] = useState<{ employee_no: string; work_date: string } | null>(null);
+  /* The grid pages by person. Computed out here rather than inside the
+     `Loaded` callback, which is not always called and so is no place for a
+     hook (D157). */
+  const { shown: people, pager: peoplePager } = usePaged(
+    sheet.status === "ready" ? sheet.data.employees : [],
+    12,
+  );
   const mayEdit = can("hrd.update");
   const mayLeader = hasAuthority("approve_overtime");
 
@@ -116,7 +124,7 @@ export default function TimesheetPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {s.employees.map((e) => (
+                    {people.map((e) => (
                       <tr key={e.employee_no} className="border-b border-slate-100">
                         <th scope="row" className="sticky left-0 z-10 bg-white px-4 py-1.5 text-left">
                           <span className="block text-[13px] font-medium text-slate-800">{e.full_name}</span>
@@ -150,6 +158,9 @@ export default function TimesheetPage() {
                   </tbody>
                 </table>
               </div>
+              {/* Forty names today, more next year: the grid pages like every
+                  other table rather than growing without limit (D157). */}
+              {peoplePager}
               <p className="flex flex-wrap gap-3 border-t border-slate-100 px-4 py-2 text-[11px] text-slate-500">
                 <span className="rounded border border-emerald-200 bg-emerald-50 px-1.5 text-emerald-800">hours</span> read cleanly
                 <span className="rounded border border-amber-300 bg-amber-50 px-1.5 text-amber-900">n tap</span> needs reading

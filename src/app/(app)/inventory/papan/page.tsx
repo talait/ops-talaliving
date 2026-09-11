@@ -3,6 +3,7 @@
 import { Layers } from "lucide-react";
 import { Card, CardHeader, PageHeader } from "@/components/ui/primitives";
 import { Loaded, SourceBadge, useLoad } from "@/components/ui/loaded";
+import { Paged } from "@/components/ui/pager";
 import { formatIDR, formatNumber } from "@/lib/format";
 import { inventory } from "@/demo/api";
 
@@ -69,42 +70,47 @@ export default function BoardsPage() {
                 icon={Layers}
                 action={<SourceBadge state={purchases} />}
               />
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[720px] border-collapse text-[13px]">
-                  <thead>
-                    <tr className="border-b border-slate-200 bg-slate-50/70 text-[11px] uppercase tracking-wide text-slate-500">
-                      <th className="px-4 py-2 text-left">Ukuran (t × l × p)</th>
-                      <th className="px-4 py-2 text-left">Jenis</th>
-                      <th className="px-4 py-2 text-right">Lembar</th>
-                      <th className="px-4 py-2 text-right">m³</th>
-                      <th className="px-4 py-2 text-right">Nilai</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((r) => (
-                      <tr key={r.size} className="border-b border-slate-100">
-                        <td className="px-4 py-2 font-medium text-slate-800">{r.size}</td>
-                        <td className="px-4 py-2 text-slate-600">{[...r.species].join(", ")}</td>
-                        <td className="px-4 py-2 text-right tabular-nums text-slate-700">{r.qty}</td>
-                        <td className="px-4 py-2 text-right tabular-nums text-slate-700">{formatNumber(r.m3)}</td>
-                        <td className="px-4 py-2 text-right">
-                          <span className="tabular-nums text-slate-800">{formatIDR(Math.round(r.value))}</span>
-                          {r.priced < r.m3 && (
-                            <span className="block text-[10px] text-amber-700">
-                              {formatNumber(Math.round((r.m3 - r.priced) * 10_000) / 10_000)} m³ belum ada harganya
-                            </span>
-                          )}
-                        </td>
+              {/* Ukuran papan bertambah setiap kiriman; dipaginasi (D157). */}
+              <Paged rows={rows} pageSize={20} unit="ukuran">
+                {(shown) => (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[720px] border-collapse text-[13px]">
+                    <thead>
+                      <tr className="border-b border-slate-200 bg-slate-50/70 text-[11px] uppercase tracking-wide text-slate-500">
+                        <th className="px-4 py-2 text-left">Ukuran (t × l × p)</th>
+                        <th className="px-4 py-2 text-left">Jenis</th>
+                        <th className="px-4 py-2 text-right">Lembar</th>
+                        <th className="px-4 py-2 text-right">m³</th>
+                        <th className="px-4 py-2 text-right">Nilai</th>
                       </tr>
-                    ))}
-                    {rows.length === 0 && (
-                      <tr><td colSpan={5} className="px-4 py-8 text-center text-slate-500">
-                        Belum ada papan yang dilaporkan.
-                      </td></tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {shown.map((r) => (
+                        <tr key={r.size} className="border-b border-slate-100">
+                          <td className="px-4 py-2 font-medium text-slate-800">{r.size}</td>
+                          <td className="px-4 py-2 text-slate-600">{[...r.species].join(", ")}</td>
+                          <td className="px-4 py-2 text-right tabular-nums text-slate-700">{r.qty}</td>
+                          <td className="px-4 py-2 text-right tabular-nums text-slate-700">{formatNumber(r.m3)}</td>
+                          <td className="px-4 py-2 text-right">
+                            <span className="tabular-nums text-slate-800">{formatIDR(Math.round(r.value))}</span>
+                            {r.priced < r.m3 && (
+                              <span className="block text-[10px] text-amber-700">
+                                {formatNumber(Math.round((r.m3 - r.priced) * 10_000) / 10_000)} m³ belum ada harganya
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                      {rows.length === 0 && (
+                        <tr><td colSpan={5} className="px-4 py-8 text-center text-slate-500">
+                          Belum ada papan yang dilaporkan.
+                        </td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+                )}
+              </Paged>
               <p className="border-t border-slate-100 px-4 py-2.5 text-[11px] text-slate-500">
                 Ini adalah papan yang <strong>keluar dari gergaji</strong>, bukan sisa stok: apa yang
                 sudah terpakai di produksi belum dikurangi di sini (Q40). Papan dicatat dari layar{" "}

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Check, Printer, AlertTriangle, Clock } from "lucide-react";
+import { ArrowLeft, Check, Printer, AlertTriangle, Clock, ChevronLeft, ChevronRight } from "lucide-react";
 import { Badge, Button, Card, CardHeader, PageHeader } from "@/components/ui/primitives";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { Loaded, SourceBadge, useLoad } from "@/components/ui/loaded";
@@ -10,6 +10,7 @@ import { formatIDR, formatNumber } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { hr } from "@/demo/api";
 import type { PayrollLine } from "@/services/hr/contracts";
+import { Adjustments } from "./Adjustments";
 import { useSession } from "@/store/session";
 import { useToast } from "@/store/toast";
 
@@ -20,6 +21,13 @@ import { useToast } from "@/store/toast";
  *  changes the figure the instant somebody closes it — and why approving a run
  *  is refused while any are open (D139).
  */
+/** A date, some days later or earlier. UTC arithmetic on a string, because the
+ *  office day is not the browser's day (F17). */
+function shiftDate(key: string, days: number): string {
+  const [y, m, d] = key.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d) + days * 86_400_000).toISOString().slice(0, 10);
+}
+
 export default function PayrollRunPage({ params }: { params: { run: string } }) {
   const runNo = decodeURIComponent(params.run);
   const { hasAuthority } = useSession();
@@ -94,8 +102,35 @@ export default function PayrollRunPage({ params }: { params: { run: string } }) 
       ),
     },
     {
-      key: "gross", header: "Gross", align: "right",
-      render: (l) => <span className="whitespace-nowrap tabular-nums font-semibold text-slate-900">{formatIDR(l.gross)}</span>,
+      key: "adj", header: "Penyesuaian", align: "right",
+      render: (l) => (
+        <div className="whitespace-nowrap text-right">
+          {l.adjustment_total === 0 ? (
+            <span className="text-slate-300">—</span>
+          ) : (
+            <>
+              <span className={cn("tabular-nums", l.adjustment_total < 0 ? "text-rose-700" : "text-emerald-700")}>
+                {l.adjustment_total < 0 ? `(${formatIDR(-l.adjustment_total)})` : formatIDR(l.adjustment_total)}
+              </span>
+              <p className="text-[11px] text-slate-500">{l.adjustments.map((a) => a.label).join(", ")}</p>
+            </>
+          )}
+          {l.late_minutes > 0 && l.adjustments.every((a) => a.kind !== "late") && (
+            <p className="text-[11px] text-amber-700">terlambat {l.late_minutes} mnt, belum dipotong</p>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: "gross", header: "Diterima", align: "right",
+      render: (l) => (
+        <div className="whitespace-nowrap text-right">
+          <span className="tabular-nums font-semibold text-slate-900">{formatIDR(l.net)}</span>
+          {l.net !== l.gross && (
+            <p className="text-[11px] text-slate-500">bruto {formatIDR(l.gross)}</p>
+          )}
+        </div>
+      ),
     },
     {
       key: "warn", header: "", className: "whitespace-normal",
@@ -123,6 +158,17 @@ export default function PayrollRunPage({ params }: { params: { run: string } }) 
               actions={
                 <div className="flex flex-wrap items-center gap-2">
                   <SourceBadge state={detail} />
+                  {/* Walking to the week before or after this run. A run is a
+                      document over a period; the period exists whether or not
+                      anybody opened one, so the arrows never dead-end (D158). */}
+                  <Link href={`/hrd/payroll/minggu?from=${shiftDate(d.period_start, -7)}`}>
+                    <Button variant="outline" size="sm" icon={ChevronLeft}>Minggu sebelumnya</Button>
+                  </Link>
+                  <Link href={`/hrd/payroll/minggu?from=${shiftDate(d.period_start, 7)}`}>
+                    <Button variant="outline" size="sm">
+                      Minggu berikutnya <ChevronRight className="ml-1 h-3.5 w-3.5" />
+                    </Button>
+                  </Link>
                   <Button
                     variant="outline" icon={Printer}
                     onClick={() => window.open(`/hrd/payroll/${encodeURIComponent(d.run_no)}/payslip`, "_blank", "noopener")}
@@ -142,6 +188,9 @@ export default function PayrollRunPage({ params }: { params: { run: string } }) 
               <dl className="grid divide-y divide-slate-100 sm:grid-cols-2 sm:divide-y-0 lg:grid-cols-4 lg:divide-x">
                 {([
                   ["Gross", formatIDR(d.gross_total), "before any deduction"],
+                  ["Diterima", formatIDR(d.net_total),
+                    d.adjustment_total === 0 ? "tidak ada penyesuaian"
+                      : `${d.adjustment_total < 0 ? "−" : "+"}${formatIDR(Math.abs(d.adjustment_total))} penyesuaian tangan`],
                   ["People", String(d.lines.length), "employed during the period"],
                   ["Days unread", String(d.open_days), d.open_days > 0 ? "must be read before approval" : "every day has been read"],
                   ["Overtime waiting", `${formatNumber(d.pending_overtime_hours)} h`, "claimed, not approved — not in the figures"],
@@ -188,6 +237,12 @@ export default function PayrollRunPage({ params }: { params: { run: string } }) 
                 </span>
               </div>
             )}
+
+            <Adjustments
+              runNo={d.run_no}
+              editable={d.status === "DRAFT"}
+              onChanged={reload}
+            />
 
             <Card>
               <CardHeader

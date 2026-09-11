@@ -1,0 +1,101 @@
+"use client";
+
+import React, { useEffect, useMemo, useState } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+
+/** Paging, for lists that are not tables.
+ *
+ *  The same rule as `DataTable` (D157): no screen renders the whole of a list
+ *  that grows with the business — forty people, a year of timber loads, every
+ *  overtime sheet ever signed. The bar says what is being shown, because a
+ *  screen that silently holds back half the rows is worse than a slow one.
+ */
+const DEFAULT_PAGE_SIZE = 25;
+
+export function usePaged<T>(rows: T[], pageSize = DEFAULT_PAGE_SIZE, unit?: string) {
+  const [page, setPage] = useState(0);
+  const pages = Math.max(Math.ceil(rows.length / pageSize), 1);
+
+  /* Filtering down to three rows must not leave somebody on page seven. */
+  useEffect(() => { setPage(0); }, [rows.length, pageSize]);
+
+  const current = Math.min(page, pages - 1);
+  const offset = current * pageSize;
+  const shown = useMemo(() => rows.slice(offset, offset + pageSize), [rows, offset, pageSize]);
+
+  return {
+    shown,
+    offset,
+    pager: rows.length > pageSize
+      ? (
+        <Pager
+          from={offset + 1}
+          to={Math.min(offset + pageSize, rows.length)}
+          total={rows.length}
+          page={current}
+          pages={pages}
+          onPage={setPage}
+          unit={unit}
+        />
+      )
+      : null,
+  };
+}
+
+export function Pager({
+  from, to, total, page, pages, onPage, unit = "baris",
+}: {
+  from: number; to: number; total: number; page: number; pages: number;
+  onPage: (p: number) => void;
+  unit?: string;
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 px-4 py-2.5">
+      <p className="text-[12px] text-slate-500">
+        <span className="font-medium tabular-nums text-slate-700">{from}–{to}</span> dari{" "}
+        <span className="tabular-nums">{total}</span> {unit}
+      </p>
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          onClick={() => onPage(page - 1)}
+          disabled={page === 0}
+          aria-label="Halaman sebelumnya"
+          className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+        <span className="px-1.5 text-[12px] tabular-nums text-slate-600">{page + 1} / {pages}</span>
+        <button
+          type="button"
+          onClick={() => onPage(page + 1)}
+          disabled={page >= pages - 1}
+          aria-label="Halaman berikutnya"
+          className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** The same paging, as a component.
+ *
+ *  Half of these lists are derived inside a `Loaded` callback — filtered by a
+ *  search box, grouped by size, sorted by thickness — and a callback is no
+ *  place for a hook, because it is not always called. So the state lives in a
+ *  component that wraps the list instead: `<Paged rows={…}>{(shown) => …}` and
+ *  the bar prints itself underneath.
+ */
+export function Paged<T>({
+  rows, pageSize, unit, children,
+}: {
+  rows: T[];
+  pageSize?: number;
+  unit?: string;
+  children: (shown: T[], offset: number) => React.ReactNode;
+}) {
+  const { shown, offset, pager } = usePaged(rows, pageSize, unit);
+  return <>{children(shown, offset)}{pager}</>;
+}

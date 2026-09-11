@@ -4,6 +4,7 @@ import { useState } from "react";
 import { AlertTriangle, Scale, TreePine } from "lucide-react";
 import { Badge, Button, Card, CardHeader, PageHeader } from "@/components/ui/primitives";
 import { Loaded, SourceBadge, useLoad } from "@/components/ui/loaded";
+import { usePaged } from "@/components/ui/pager";
 import { formatIDR, formatNumber } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { inventory } from "@/demo/api";
@@ -27,6 +28,11 @@ export default function TimberPage() {
   const [purchases, reload] = useLoad(() => inventory.listLogPurchases(), []);
   const [vendors, reloadVendors] = useLoad(() => inventory.timberByVendor(), []);
   const [open, setOpen] = useState<string | null>(null);
+  /* Pembelian log bertambah terus; daftarnya dipaginasi (D157). */
+  const { shown: loads, pager } = usePaged(
+    purchases.status === "ready" ? purchases.data : [],
+    15,
+  );
 
   return (
     <div>
@@ -145,7 +151,7 @@ export default function TimberPage() {
               action={<SourceBadge state={purchases} />}
             />
             <ul className="divide-y divide-slate-100">
-              {all.map((p) => (
+              {loads.map((p) => (
                 <li key={p.id}>
                   <button
                     onClick={() => setOpen(p.purchase_no)}
@@ -189,6 +195,7 @@ export default function TimberPage() {
                 </li>
               ))}
             </ul>
+            {pager}
             <p className="border-t border-slate-100 px-5 py-2 text-[11px] text-slate-500">
               Kubikasi log dihitung dengan {LOG_MEASURE_LABEL.round.toLowerCase()} kecuali kiriman
               itu mencatat cara lain — dua cara dipakai di pasar dan hasilnya berbeda sekitar 21%.

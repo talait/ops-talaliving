@@ -1239,6 +1239,7 @@ erDiagram
         text wo_no "production: the work order, at the seam"
         text stage
         numeric qty_done
+        numeric form_amount "the GAJI column of the paper form (D154)"
     }
     payroll_runs {
         uuid id PK
@@ -1249,6 +1250,16 @@ erDiagram
         uuid approved_by FK
         text paid_trx_no "the ledger row that paid it"
         text note
+    }
+    payroll_adjustments {
+        uuid id PK
+        text run_no FK "belongs to the run, not to the week"
+        uuid employee_id FK
+        adjustment_kind_t kind "late|sp|carry_over|advance|bonus|other"
+        numeric amount "signed: negative takes money off"
+        text reason "printed on the payslip, verbatim"
+        uuid created_by FK
+        timestamptz created_at
     }
 ```
 
@@ -1272,6 +1283,10 @@ slots are computed, never stored.
 | `employees.paid_leave_days` NOT NULL, default 0 | per person, because length of service and what was agreed at hiring both move it (D144) |
 | `employees` no DELETE | a payslip from March is still a fact in June (A5). `left_on` retires somebody |
 | `payroll_runs` UNIQUE `(period_start, period_end)` | the same week is not run twice by accident |
+| `payroll_adjustments.reason` NOT NULL, non-empty | a deduction an employee cannot read is one they cannot dispute (D155) |
+| `payroll_adjustments` CHECK `amount <> 0` | a zero adjustment is a row that says nothing and prints a line on a payslip |
+| `payroll_adjustments` writable only while the run is `DRAFT` | an approved run is a figure somebody signed; moving money inside it afterwards is a new run, not an edit (D155) |
+| `overtime_lines.form_amount` NULL-able | most nights have no figure on the paper; a nought there would mean *worked for free* rather than *not stated* (D154) |
 
 ### What makes a marked day paid
 

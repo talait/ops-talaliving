@@ -4,7 +4,7 @@ import {
   Layers, Landmark, BookOpen, TrendingUp, PiggyBank, Receipt,
   Megaphone, UserRound, Target, HandCoins,
   FolderKanban, Hammer, Truck, Wrench, Stamp,
-  PencilRuler, ListTree, CalendarClock,
+  PencilRuler, ListTree, CalendarClock, CalendarRange,
   Cpu, ScrollText, Activity, UserCog, KeyRound, Clock, Scale,
   Settings, FlaskConical, MessagesSquare, Route, type LucideIcon,
 } from "lucide-react";
@@ -50,6 +50,7 @@ export const NAV: NavSection[] = [
       { label: "Leave & Permits", href: "/hrd/cuti", icon: CalendarClock, permission: "hrd.read" },
       { label: "Compliance", href: "/hrd/compliance", icon: ShieldCheck, permission: "hrd.read" },
       { label: "Payroll", href: "/hrd/payroll", icon: Wallet, permission: "payroll.read" },
+      { label: "Gajian mingguan", href: "/hrd/payroll/minggu", icon: CalendarRange, permission: "payroll.read", badge: "new" },
     ],
   },
   {

@@ -48,9 +48,28 @@ number of components that have to be added.
 | `<EvidenceStrip>` | **built (M9)**, one component on both drawers: the documents already filed, what each one covers, *also covers* to point one file at another record, and two upload buttons — **Photograph** (opens the camera directly on a phone) and **Choose a file**. A ledger row also shows, read-only, the documents that live on the request lines its money paid for. Older description: the attach block above: thumbnails, kind, the agreement check, *Lampirkan*, *juga mencakup…*. Appears identically in the PR line drawer and the ledger row drawer — **the main road, so it is one component used twice** |
 | `<FilterBar>` | date range, account, vendor, status — the same bar on every list, so muscle memory transfers |
 | `<RefreshBadge>` | "3 new since you opened this" + a reload button. Backlog §10's own recommended order: **badge and reload first**, polling second, realtime third. Never lose a reviewer's half-typed draft to a refresh |
+| `<Pager>` / `usePaged` / `<Paged>` | **built (M26)**. `DataTable` pages itself at 25 rows; the hook is for a screen whose list is state at the top of the component, and the component wrapper is for a list derived **inside** a `Loaded` callback — which is not always called, and so is no place for a hook. The bar always prints `1–25 dari 137`, because a table silently showing a quarter of the data is worse than a slow one (D157) |
 
 Nothing else. A component library is allowed (owner, 2026-08-27) but every
-addition is a thing to maintain; these nine each answer a rule.
+addition is a thing to maintain; these each answer a rule.
+
+## Printing a payslip
+
+The slip is a **card, not a page** (D156). The print road is unchanged — it is
+the app's own page, so there is no second renderer to drift from the figures on
+screen (D133) — but how many land on a sheet is measured rather than assumed:
+the slips are laid out once at the printed width (718px = 210mm − margins), their
+real heights read off the page, and sheets packed to fill A4 and no further. A
+fixed count cuts a tall slip across a page break or wastes a third of the paper,
+and workshop slips are half again the height of salaried ones.
+
+Two modes: with the week recap (five to seven per sheet) and without (six to
+eight). The recap is the owner's own sketch — the week across, *masuk · pulang ·
+jam · lembur* down — and it is the part a daily worker actually reads.
+
+Where the recap and the totals disagree, the slip prints the reason: a day the
+machine left incomplete is marked `?` and named in words, and overtime the
+machine saw but nobody approved is stated beside the hours that were paid.
 
 ## Interaction contract
 

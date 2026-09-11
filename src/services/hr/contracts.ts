@@ -259,6 +259,53 @@ export interface OvertimeLine {
   wo_no: string | null;
   stage: string | null;
   qty_done: number | null;
+  /** The **GAJI** column of the paper form: what was written against this
+   *  person's name and signed for (D154).
+   *
+   *  When it is there it is what payroll pays, because it is what the sheet
+   *  says and what the man signed beside. The computed figure — hours × the
+   *  ordinary hourly rate — is still shown next to it, and a difference
+   *  between the two is displayed rather than resolved: one of them is wrong
+   *  and only a person knows which. */
+  form_amount: number | null;
+}
+
+/** Something added to or taken off a payslip by a person, with a reason.
+ *
+ *  Distinct from the statutory deductions this system still refuses to invent
+ *  (D140): BPJS and PPh 21 are rules nobody has given us, while these are the
+ *  company's own decisions about one person and one period — a late arrival, a
+ *  written warning, money left over from the last run. Each one is typed by
+ *  somebody, carries a sentence, and appears on the payslip in words (D155).
+ */
+export type AdjustmentKind = "late" | "sp" | "carry_over" | "advance" | "bonus" | "other";
+
+export const ADJUSTMENT_LABEL: Record<AdjustmentKind, string> = {
+  late: "Keterlambatan",
+  sp: "Surat peringatan",
+  carry_over: "Selisih periode lalu",
+  advance: "Kasbon / potongan pinjaman",
+  bonus: "Tambahan",
+  other: "Lain-lain",
+};
+
+export interface PayrollAdjustment {
+  id: string;
+  /** The run it belongs to. An adjustment is always about one period. */
+  run_no: string;
+  employee_id: string;
+  kind: AdjustmentKind;
+  /** **Signed.** Negative takes money off, positive adds it — including a
+   *  carry-over, which goes either way depending on who owes whom. */
+  amount: number;
+  reason: string;
+  created_by: string;
+  created_at: string;
+}
+
+export interface PayrollAdjustmentView extends PayrollAdjustment {
+  employee_no: string;
+  full_name: string;
 }
 
 /** Where a sheet has got to. Derived from the signatures and the attached
@@ -342,13 +389,49 @@ export interface PayrollLine {
   base_pay: number;
   overtime_pay: number;
   gross: number;
+  /** What was added or taken off by hand, each with its reason (D155). */
+  adjustments: { kind: AdjustmentKind; label: string; amount: number; reason: string }[];
+  /** Σ adjustments — negative when more was taken off than added. */
+  adjustment_total: number;
+  /** `gross + adjustment_total`. Still before any statutory deduction, which
+   *  this system does not compute (D140). */
+  net: number;
+  /** Minutes late across the period, from the taps. Evidence for a
+   *  `late` adjustment, never itself a deduction: what a minute costs is a
+   *  policy nobody has stated (Q41). */
+  late_minutes: number;
+  /** Every day of the period, for the weekly recap on the payslip (D156). */
+  days: PayslipDay[];
   /** Anything a person cannot resolve from the figures alone. */
   warnings: string[];
+}
+
+/** One day, as a payslip prints it — the owner's own sketch: masuk, pulang,
+ *  jam, and the overtime under it (D156). */
+export interface PayslipDay {
+  work_date: string;
+  /** 1 Monday … 7 Sunday. */
+  weekday: number;
+  in_at: string | null;
+  out_at: string | null;
+  work_hours: number;
+  overtime_hours: number;
+  /** `merah`, `sakit`, `cuti` — the short mark, when there is one. */
+  mark: string | null;
+  day_value: number;
+  /** The machine's record of this day is incomplete and nobody has read it, so
+   *  it counts for nothing yet. Printed on the slip rather than hidden: a day
+   *  with hours beside it that adds nothing to the total is the one an
+   *  employee is right to argue about (D156). */
+  open: boolean;
 }
 
 export interface PayrollView extends PayrollRun {
   lines: PayrollLine[];
   gross_total: number;
+  /** Gross plus everything added or taken off by hand (D155). */
+  net_total: number;
+  adjustment_total: number;
   /** Days inside the period that nobody has closed. A run with open days is
    *  computable and not trustworthy, and the screen says which. */
   open_days: number;

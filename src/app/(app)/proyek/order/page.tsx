@@ -4,6 +4,7 @@ import { useState } from "react";
 import { FolderKanban, Plus } from "lucide-react";
 import { Badge, Button, Card, CardHeader, PageHeader } from "@/components/ui/primitives";
 import { Loaded, SourceBadge, useLoad } from "@/components/ui/loaded";
+import { Paged } from "@/components/ui/pager";
 import { formatIDR } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { procurement } from "@/demo/api";
@@ -73,52 +74,57 @@ export default function ProjectsPage() {
                   icon={FolderKanban}
                   action={<SourceBadge state={projects} />}
                 />
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[820px] border-collapse text-[13px]">
-                    <thead>
-                      <tr className="border-b border-slate-200 bg-slate-50/70 text-[11px] uppercase tracking-wide text-slate-500">
-                        <th className="px-4 py-2 text-left">Proyek</th>
-                        <th className="px-4 py-2 text-left">Klien</th>
-                        <th className="px-4 py-2 text-left">PIC</th>
-                        <th className="px-4 py-2 text-left">Target</th>
-                        <th className="px-4 py-2 text-right">Nilai kontrak</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {all.map((p) => (
-                        <tr
-                          key={p.id}
-                          onClick={() => { setOpen(p.code); setCreating(false); }}
-                          className={cn(
-                            "cursor-pointer border-b border-slate-100 hover:bg-slate-50",
-                            !p.is_active && "opacity-60",
-                          )}
-                        >
-                          <td className="px-4 py-2">
-                            <span className="block font-medium text-slate-800">{p.name}</span>
-                            <span className="block font-mono text-[10px] text-slate-400">
-                              {p.code}
-                              {p.location && ` · ${p.location}`}
-                            </span>
-                          </td>
-                          <td className="px-4 py-2 text-slate-600">
-                            {p.client_name ?? <span className="text-slate-400">internal</span>}
-                          </td>
-                          <td className="px-4 py-2 text-slate-600">{p.pic ?? "—"}</td>
-                          <td className="px-4 py-2 text-slate-600">
-                            {p.target_date ?? "—"}
-                            {!p.is_active && <Badge tone="slate" className="ml-2">selesai</Badge>}
-                          </td>
-                          <td className="px-4 py-2 text-right tabular-nums text-slate-800">
-                            {p.contract_value == null
-                              ? <span className="text-slate-300">—</span>
-                              : formatIDR(p.contract_value)}
-                          </td>
+                {/* Daftar proyek bertambah tiap tahun; dipaginasi (D157). */}
+                <Paged rows={all} pageSize={20} unit="proyek">
+                  {(shown) => (
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[820px] border-collapse text-[13px]">
+                      <thead>
+                        <tr className="border-b border-slate-200 bg-slate-50/70 text-[11px] uppercase tracking-wide text-slate-500">
+                          <th className="px-4 py-2 text-left">Proyek</th>
+                          <th className="px-4 py-2 text-left">Klien</th>
+                          <th className="px-4 py-2 text-left">PIC</th>
+                          <th className="px-4 py-2 text-left">Target</th>
+                          <th className="px-4 py-2 text-right">Nilai kontrak</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody>
+                        {shown.map((p) => (
+                          <tr
+                            key={p.id}
+                            onClick={() => { setOpen(p.code); setCreating(false); }}
+                            className={cn(
+                              "cursor-pointer border-b border-slate-100 hover:bg-slate-50",
+                              !p.is_active && "opacity-60",
+                            )}
+                          >
+                            <td className="px-4 py-2">
+                              <span className="block font-medium text-slate-800">{p.name}</span>
+                              <span className="block font-mono text-[10px] text-slate-400">
+                                {p.code}
+                                {p.location && ` · ${p.location}`}
+                              </span>
+                            </td>
+                            <td className="px-4 py-2 text-slate-600">
+                              {p.client_name ?? <span className="text-slate-400">internal</span>}
+                            </td>
+                            <td className="px-4 py-2 text-slate-600">{p.pic ?? "—"}</td>
+                            <td className="px-4 py-2 text-slate-600">
+                              {p.target_date ?? "—"}
+                              {!p.is_active && <Badge tone="slate" className="ml-2">selesai</Badge>}
+                            </td>
+                            <td className="px-4 py-2 text-right tabular-nums text-slate-800">
+                              {p.contract_value == null
+                                ? <span className="text-slate-300">—</span>
+                                : formatIDR(p.contract_value)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  )}
+                </Paged>
                 <p className="border-t border-slate-100 px-4 py-2.5 text-[11px] text-slate-500">
                   Nilai kontrak adalah nilai pesanan yang disepakati — bukan faktur dan bukan
                   penawaran. Belanja terhadap proyek dibaca dari ledger, di halaman likuidasi.

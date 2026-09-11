@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Wallet, Plus, AlertTriangle } from "lucide-react";
+import { Wallet, Plus, AlertTriangle, CalendarRange } from "lucide-react";
 import { Badge, Button, Card, CardHeader, PageHeader } from "@/components/ui/primitives";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { Loaded, SourceBadge, useLoad } from "@/components/ui/loaded";
@@ -100,6 +100,11 @@ export default function PayrollPage() {
         <p className="text-[12px] text-slate-500">
           Weekly for the workshop, monthly for staff — the period is on the run, not assumed.
         </p>
+        {/* The workshop's week is looked at far more often than the list of
+            runs is, and it can be walked without opening anything (D158). */}
+        <Link href="/hrd/payroll/minggu" className="ml-auto">
+          <Button variant="outline" icon={CalendarRange}>Gajian mingguan</Button>
+        </Link>
       </div>
 
       <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3 text-[13px] text-amber-900">

@@ -10,7 +10,9 @@ import type { DemoState } from "./state";
 import type {
   Employee, TimesheetDay, DayState, ScanSlot, DayPay, DayMark,
   OvertimeSheet, OvertimeStage, PayrollLine, PayrollView, PayrollRun,
+  PayslipDay, AdjustmentKind,
 } from "@/services/hr/contracts";
+import { ADJUSTMENT_LABEL, DAY_MARK_SHORT } from "@/services/hr/contracts";
 
 const HOURS = 3_600_000;
 
@@ -332,6 +334,9 @@ export function payrollLine(
   employee: Employee,
   from: string,
   to: string,
+  /** Adjustments belong to a run, so the line has to know which one it is
+   *  being computed for (D155). */
+  runNo = "",
 ): PayrollLine {
   const days = timesheet(state, employee, from, to);
   /* A day is worth what the timesheet says it is worth: a full day, half of
@@ -350,8 +355,15 @@ export function payrollLine(
       && x.line.employee_id === employee.id
       && x.sheet.work_date >= from && x.sheet.work_date <= to);
 
-  const approvedOt = myLines
-    .filter((x) => overtimePayable(state, x.sheet!))
+  const payableLines = myLines.filter((x) => overtimePayable(state, x.sheet!));
+  const approvedOt = payableLines.reduce((s, x) => s + x.line.hours, 0);
+  /* What the paper form said, where it said anything: the GAJI column beside
+     the name, which is the figure the man signed for (D154). */
+  const formPaid = payableLines
+    .filter((x) => x.line.form_amount != null)
+    .reduce((s, x) => s + (x.line.form_amount ?? 0), 0);
+  const formHours = payableLines
+    .filter((x) => x.line.form_amount != null)
     .reduce((s, x) => s + x.line.hours, 0);
   const pendingOt = myLines
     .filter((x) => !overtimePayable(state, x.sheet!) && !x.sheet!.declined_reason && x.sheet!.paid)
@@ -380,7 +392,11 @@ export function payrollLine(
     : employee.pay_basis === "daily"
       ? Math.round(employee.base_rate / employee.daily_hours)
       : Math.round(employee.base_rate / 21 / employee.daily_hours);
-  const overtime_pay = Math.round(approvedOt * hourly);
+  /* Hours with no figure on the form are paid at the ordinary hourly rate;
+     hours that carry one are paid what the sheet says. The two are added
+     rather than one overriding the other, because they cover different
+     hours (D154). */
+  const overtime_pay = Math.round(formPaid + (approvedOt - formHours) * hourly);
 
   /* What the paid days are made of, so a payslip can say it rather than
      showing one total nobody can take apart (D144). */
@@ -415,6 +431,45 @@ export function payrollLine(
     warnings.push("No day counted in this period");
   }
 
+  /* Adjustments: what a person added or took off, each with its sentence
+     (D155). Never invented — this system computes no deduction it was not
+     told about. */
+  const adjustments = state.payroll_adjustments
+    .filter((a) => a.employee_id === employee.id && a.run_no === runNo)
+    .map((a) => ({
+      kind: a.kind as AdjustmentKind,
+      label: ADJUSTMENT_LABEL[a.kind],
+      amount: a.amount,
+      reason: a.reason,
+    }));
+  const adjustment_total = adjustments.reduce((s, a) => s + a.amount, 0);
+
+  /* Minutes late across the period. **Evidence, not a deduction**: what a
+     minute of lateness costs has never been stated, so the figure is shown and
+     the rupiah is typed by a person (Q41). */
+  const late_minutes = days.reduce((s, d) => {
+    const inAt = d.slots.in;
+    if (!inAt || d.mark) return s;
+    const mins = Number(inAt.slice(11, 13)) * 60 + Number(inAt.slice(14, 16));
+    return s + Math.max(mins - LATE_AFTER_MINUTES, 0);
+  }, 0);
+
+  const payslipDays: PayslipDay[] = days.map((d) => ({
+    work_date: d.work_date,
+    weekday: weekdayOf(d.work_date),
+    in_at: d.slots.in ? d.slots.in.slice(11, 16) : null,
+    out_at: d.slots.out ? d.slots.out.slice(11, 16) : null,
+    work_hours: d.work_hours,
+    overtime_hours: d.overtime_hours,
+    mark: d.mark ? DAY_MARK_SHORT[d.mark.kind] : null,
+    day_value: d.day_value,
+    open: d.state === "review",
+  }));
+
+  if (adjustment_total < 0) {
+    warnings.push(`${adjustments.filter((a) => a.amount < 0).length} potongan dicatat tangan — lihat rinciannya di slip`);
+  }
+
   return {
     employee_id: employee.id,
     employee_no: employee.employee_no,
@@ -434,8 +489,28 @@ export function payrollLine(
     base_pay,
     overtime_pay,
     gross: base_pay + overtime_pay,
+    adjustments,
+    adjustment_total,
+    net: base_pay + overtime_pay + adjustment_total,
+    late_minutes,
+    days: payslipDays,
     warnings,
   };
+}
+
+/** The office day starts at 08:00; anything past this is late.
+ *
+ *  One constant, in one place, because it is a policy and not a fact — the
+ *  moment somebody says the workshop starts at half past seven, this is the
+ *  line that changes (Q41). */
+const LATE_AFTER_MINUTES = 8 * 60;
+
+/** 1 Monday … 7 Sunday, from a `YYYY-MM-DD` string without going near a
+ *  timezone (F39). */
+function weekdayOf(key: string): number {
+  const [y, m, d] = key.split("-").map(Number);
+  const js = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+  return js === 0 ? 7 : js;
 }
 
 export function payrollView(state: DemoState, run: PayrollRun): PayrollView {
@@ -444,12 +519,14 @@ export function payrollView(state: DemoState, run: PayrollRun): PayrollView {
   const people = state.employees.filter(
     (e) => e.joined_on <= run.period_end && (e.left_on === null || e.left_on >= run.period_start),
   );
-  const lines = people.map((e) => payrollLine(state, e, run.period_start, run.period_end));
+  const lines = people.map((e) => payrollLine(state, e, run.period_start, run.period_end, run.run_no));
 
   return {
     ...run,
     lines,
     gross_total: lines.reduce((s, l) => s + l.gross, 0),
+    net_total: lines.reduce((s, l) => s + l.net, 0),
+    adjustment_total: lines.reduce((s, l) => s + l.adjustment_total, 0),
     open_days: lines.reduce((s, l) => s + l.days_open, 0),
     pending_overtime_hours: lines.reduce((s, l) => s + l.overtime_pending_hours, 0),
   };

@@ -280,10 +280,19 @@ dies — the same reason `john-lau` set 15 MB under Next's 16 MB.
 | GET | `/payroll/{run_no}` | the run with every line computed on read |
 | POST | `/payroll` | open a run for a period. 409 if a run already covers those dates |
 | POST | `/payroll/{run_no}/approve` | requires `approve_funds`. **422 while any day in the period is still unread** (D139) |
+| GET | `/payroll/period?from=&to=` | the same figures for **any** period, run or no run — the week slider reads this (D158). `opened:false` and an empty `run_no` where nothing has been opened |
+| GET | `/payroll/{run_no}/adjustments` | what was added or taken off by hand, each with its reason (D155) |
+| POST | `/payroll/{run_no}/adjustments` | 422 without a reason; **403 once the run leaves `DRAFT`** |
+| DELETE | `/payroll/{run_no}/adjustments/{id}` | same rule — an approved run is not edited |
+| POST | `/overtime/{sheet_no}/import-form` | reads the company's own *FORM LEMBUR* export: `NO · NAMA · DESCRIPTION · GAJI · JAM · TTD` (D154) |
 
 A payroll line now says what the paid days are made of — `days_present`,
 `days_sick_paid`, `days_leave_paid`, `days_unpaid` — because a single total is
-the one an employee argues with (D144).
+the one an employee argues with (D144). It also carries `days[]`: one entry per
+day of the period with in, out, hours, overtime, the mark and **whether the day
+was counted**, which is what the payslip's weekly recap prints (D156), plus
+`late_minutes` as evidence — never as a deduction, because what a minute costs
+has not been stated (Q41).
 
 Writes need `hrd.create` / `hrd.update`; payroll needs `payroll.read` /
 `payroll.run`; the two decisions need authorities, which no module level
@@ -304,6 +313,13 @@ Three refusals are the point of this service:
 
 // POST /attendance/import  →  200, with a question attached
 { "data": { "added": 4, "duplicates": 1, "unknown": [ { "ref": "999", "count": 1 } ] } }
+
+// POST /overtime/lbr-26-09-11_01/import-form  →  200, same shape, by name
+{ "data": { "added": 3, "skipped": 1, "unknown": [ "Wahyu Pratama" ] } }
+
+// POST /payroll/pyr-26-09-06_01/adjustments  {"kind":"late","amount":-45000}
+{ "error": { "code": "reason_required", "status": 422,
+  "message": "Potongan harus punya alasan — kalimatnya dicetak di slip gaji." } }
 ```
 
 Events: `hr.payroll.approved`, `hr.overtime.approved` (emitted on the second

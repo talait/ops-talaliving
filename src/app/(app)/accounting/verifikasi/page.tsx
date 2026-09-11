@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { Badge, Button, Card, CardHeader, EmptyState, PageHeader } from "@/components/ui/primitives";
 import { Loaded, SourceBadge, useLoad } from "@/components/ui/loaded";
+import { usePaged } from "@/components/ui/pager";
 import { MoneyInput } from "@/components/ui/money-input";
 import { NumberInput } from "@/components/ui/number-input";
 import { formatIDR } from "@/lib/format";
@@ -59,6 +60,16 @@ export default function InboxPage() {
   const [health, reloadHealth] = useLoad(() => accounting.getInboxHealth(), []);
   const [attachments] = useLoad(() => documents.listAttachments(), []);
   const [selected, setSelected] = useState<string | null>(null);
+  /* The queue and the history both page: an inbox is read from the top, and
+     a year of decided evidence is not something to render at once (D157, B4). */
+  const { shown: queue, pager: queuePager } = usePaged(
+    rows.status === "ready" ? rows.data : [],
+    12,
+  );
+  const decided = everything.status === "ready"
+    ? everything.data.filter((r) => r.status !== "PENDING")
+    : [];
+  const { shown: decidedPage, pager: decidedPager } = usePaged(decided, 12);
   const mayResolve = hasAuthority("resolve_inbox");
 
   function refresh() {
@@ -120,7 +131,7 @@ export default function InboxPage() {
                 action={<SourceBadge state={rows} />}
               />
               <ul className="divide-y divide-slate-100">
-                {all.map((r) => {
+                {queue.map((r) => {
                   const on = selected === r.ref_id;
                   const file = attachments.status === "ready"
                     ? attachments.data.find((a) => a.id === r.attachment_id)
@@ -156,6 +167,7 @@ export default function InboxPage() {
                   );
                 })}
               </ul>
+              {queuePager}
             </Card>
 
             {selected
@@ -201,7 +213,7 @@ export default function InboxPage() {
                 icon={StickyNote}
               />
               <ul className="divide-y divide-slate-100">
-                {done.map((r) => (
+                {decidedPage.map((r) => (
                   <li key={r.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-5 py-2.5 text-[13px]">
                     <Badge tone={
                       r.status === "CONFIRMED" ? "green"
@@ -223,6 +235,7 @@ export default function InboxPage() {
                   </li>
                 ))}
               </ul>
+              {decidedPager}
             </Card>
           );
         }}

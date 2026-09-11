@@ -2121,3 +2121,47 @@ in as many words. A stock figure that is never decremented is a lie; one
 decremented by guesswork is a worse lie, because it looks maintained. What is
 missing is not a table — the BOM already knows what a run should take — it is
 somebody in the workshop writing down what was actually pulled off the pile.
+
+## F47 — one comma, and a man was paid Rp 105
+
+The company's overtime form was exported from a spreadsheet and read straight
+in. The first row came back as **Rp 105 for 0 jam**.
+
+The file said `"105,000"`. A spreadsheet quotes any field containing a comma,
+and `line.split(",")` does not know that: the cell became two, every column
+after it shifted one to the left, the hours landed in the signature column and
+the rupiah lost its thousands. Nothing threw. The number was simply wrong, on
+a screen whose whole job is to be trusted with wages.
+
+The fix is fifteen lines that respect quotes (`src/lib/csv.ts`), used by the
+overtime form and by the biometric import beside it — a name or a location with
+a comma in it would have done exactly the same thing there. What is deliberately
+**not** handled: newlines inside cells, other separators, encodings. Those have
+not happened, and inventing for them would hide the day they do.
+
+The lesson is not "use a CSV library". It is that a parsing bug in this domain
+does not look like a parsing bug. It looks like a payslip.
+
+## F48 — the payroll run that covered a week nobody worked
+
+Building the weekly recap turned up a demo that had been quietly wrong for
+several sessions: the payroll run covered 24–28 August, and the attendance file
+started on the 29th. Every daily worker read **0 hari**, every payslip printed
+an empty grid, and the screen was perfectly honest about it — *No day counted
+in this period* — on forty rows at once.
+
+Two things came out of it.
+
+The first is that the run's period must be the week the timesheet actually
+covers, which is a fixture fix and was one line. The second is the real one:
+even on the corrected week, Karjo's slip showed **five days of hours and paid
+1,5 of them**. Nothing was wrong — three of his days are in `review` because
+the reader missed an *istirahat* tap, and a day nobody has read is worth
+nothing until they do (D141). But a payslip that prints the hours and then
+pays a third of them, with no sentence in between, is the payslip somebody
+brings to HRD angry, and they would be right to.
+
+So the slip marks those days `?`, names them in words, and says the same about
+overtime the machine saw and nobody approved: *10,27 jam catatan mesin, 2 jam
+dibayar*. The figures did not change. What changed is that the paper now
+answers the question it was provoking.

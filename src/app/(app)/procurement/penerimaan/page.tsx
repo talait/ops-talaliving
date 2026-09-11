@@ -6,6 +6,7 @@ import { Camera, FileSignature, PackageCheck, Moon } from "lucide-react";
 import { Badge, Button, Card, CardHeader, PageHeader } from "@/components/ui/primitives";
 import { NumberInput } from "@/components/ui/number-input";
 import { Loaded, SourceBadge, useLoad } from "@/components/ui/loaded";
+import { Paged } from "@/components/ui/pager";
 import { formatNumber } from "@/lib/format";
 import { documents, identity, procurement } from "@/demo/api";
 import { RECEIPT_CONDITIONS, type ReceiptCondition } from "@/services/procurement/contracts";
@@ -53,11 +54,15 @@ export default function ReceivingPage() {
                 both the photo and the tanda terima never appear here — they count straight away.
               </p>
             ) : (
-              <ul className="divide-y divide-slate-100">
-                {all.map((r) => (
-                  <Row key={r.receipt_no} row={r} mayConfirm={mayConfirm} onDone={reload} />
-                ))}
-              </ul>
+              <Paged rows={all} pageSize={12} unit="kiriman">
+                {(shown) => (
+                  <ul className="divide-y divide-slate-100">
+                    {shown.map((r) => (
+                      <Row key={r.receipt_no} row={r} mayConfirm={mayConfirm} onDone={reload} />
+                    ))}
+                  </ul>
+                )}
+              </Paged>
             )}
           </Card>
         )}

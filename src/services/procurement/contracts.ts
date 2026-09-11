@@ -399,6 +399,19 @@ export interface PaymentRoundLine {
   requested_amount: number;
 }
 
+/** Reported, or confirmed.
+ *
+ *  Goods from outside arrive when they arrive — often at night, when the
+ *  people with the app open are asleep. Whoever is there can say *it came*,
+ *  with a photograph; the signed tanda terima follows in the morning, from
+ *  procurement, who are accountable for it (D131).
+ *
+ *  Only a `CONFIRMED` receipt counts as value received. That is the whole
+ *  point of the split: an arrival nobody has acknowledged in writing is a fact
+ *  worth recording and not yet a thing we owe for.
+ */
+export type ReceiptStatus = "REPORTED" | "CONFIRMED";
+
 export interface Receipt {
   id: string;
   receipt_no: string;
@@ -411,6 +424,10 @@ export interface Receipt {
   received_at: string;
   qc_by: string | null;
   note: string | null;
+  status: ReceiptStatus;
+  /** Who completed it, and when. Null while it is only reported. */
+  confirmed_by: string | null;
+  confirmed_at: string | null;
 }
 
 export interface LineSettlement {
@@ -499,6 +516,9 @@ export interface PoLineJourney {
   unit_price: number;
   line_total: number;
   received: number;
+  /** Arrived and reported, with no signed tanda terima yet. Never part of
+   *  `received`, and worth looking at every morning (D131). */
+  reported: number;
   /** received − ordered when the vendor sent more than was asked for. Kept
    *  visible rather than trimmed: two extra sheets are a credit, not a
    *  rounding error (D98). */
@@ -519,6 +539,7 @@ export interface PoLineJourney {
      *  arrived, and the signed tanda terima. */
     has_photo: boolean;
     has_delivery_note: boolean;
+    status: ReceiptStatus;
   }[];
 }
 

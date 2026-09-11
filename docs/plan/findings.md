@@ -1527,3 +1527,46 @@ placed inside a clickable row inherits the row's job unless it is told not
 to** — the same fix already existed twenty lines below, on the cell holding
 the quantity and amount inputs, which is exactly the kind of precedent worth
 reading before adding the next cell.
+
+## F37 — a rule that was right about evidence and wrong about time
+
+D101 required both halves before a delivery could be recorded: the photograph
+of the goods, and the signed tanda terima. The reasoning held — they answer
+different questions, and a dispute three weeks later needs both.
+
+Then the owner said what actually happens:
+
+> *item yang dikirim dari luar biasanya datang di luar jam kerja jadi mereka
+> harus lapor, sementara tanda terimanya bisa menyusul*
+
+The truck comes at 23:40. The rule does not produce a tanda terima at 23:40;
+it produces **nothing recorded at all**, and the arrival is reconstructed from
+memory the next afternoon. A rule that cannot be followed at the moment it
+applies is not a strict rule, it is an absent one.
+
+So receiving became two acts (D131):
+
+- **Report** — anyone who was there, with a photograph. Recorded, numbered,
+  visible on the order and in the tracker.
+- **Confirm** — procurement, with the signed tanda terima, the QC name, and
+  the count somebody did in daylight.
+
+And the part that keeps the original rule intact: **only a confirmed receipt
+counts as value received.** The 80 sheets that arrived last night are on the
+screen and in no total. The order still says *150 of 400 received*, because
+150 is what has been acknowledged in writing.
+
+Two things worth keeping from how this was answered.
+
+**The question I asked was not the question that mattered.** Q28 asked who is
+accountable if the person filing cannot open a PO, and assumed the answer
+needed a Chat bot and a new inbox. The real answer was that accountability was
+never in doubt — there *is* a procurement team with access — and the only
+problem was the clock. The feature that looked necessary (a chat road into the
+exception inbox) turned out to be optional; the thing that mattered was
+splitting one act into two.
+
+**The audit row carries how long the paper took.** `hours_after_arrival` on
+the confirmation is the only way to tell the difference between this road
+working as intended and this road being used to skip the paperwork
+permanently. A concession without a measure becomes a habit.

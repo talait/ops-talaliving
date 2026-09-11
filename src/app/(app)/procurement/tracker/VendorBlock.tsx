@@ -321,11 +321,17 @@ function OrderBlock({ po, onChanged }: { po: PoJourney; onChanged: () => void })
                   <span className="font-medium text-slate-700">{formatNumber(r.qty)} {l.uom}</span>
                   <Badge tone={r.condition === "GOOD" ? "green" : "amber"}>{r.condition}</Badge>
                   <span className="text-slate-500">{r.at.slice(0, 10)}</span>
+                  {r.status === "REPORTED" && (
+                    <Badge tone="amber">reported — tanda terima to come</Badge>
+                  )}
                   <span className="text-slate-500">received by <span className="text-slate-700">{r.by}</span></span>
-                  <span className="text-slate-500">checked by <span className="text-slate-700">{r.qc_by}</span></span>
+                  {r.status === "CONFIRMED" && (
+                    <span className="text-slate-500">checked by <span className="text-slate-700">{r.qc_by}</span></span>
+                  )}
                 </div>
                 {/* Both halves, named separately: the photo says what arrived,
-                    the tanda terima says we acknowledged it (D101). */}
+                    the tanda terima says we acknowledged it (D101) — and a
+                    report is allowed to have only the first one (D131). */}
                 <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px]">
                   <span className={cn(
                     "rounded px-2 py-0.5",

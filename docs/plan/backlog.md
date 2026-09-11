@@ -20,4 +20,4 @@ that only shows what is left teaches nobody anything.
 
 | # | What | Note |
 |---|---|---|
-| W1 | Receiving reported by whoever actually saw the goods arrive — the driver, a supervisor, the security guard on the gate. They photograph it, send it to Google Chat, and a bot files it | Raised 2026-09-11. See **Q28**: it may mean the exception inbox becomes the main road for receiving rather than the exception, which would be a change of shape, not a feature |
+| W1 | ~~Receiving reported by whoever actually saw the goods arrive~~ | **answered and built** 2026-09-11 (D131). The owner's answer changed the shape: there *is* a procurement team with access, so accountability was never in doubt — the problem is only that goods arrive outside working hours. So receiving split into a report (photo, anyone present) and a confirmation (tanda terima, procurement). The Chat route is no longer required for it: the same two acts work from the app tonight, and a bot can produce the report later without changing anything |

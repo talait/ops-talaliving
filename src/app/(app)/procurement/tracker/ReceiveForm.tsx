@@ -13,12 +13,15 @@ import { useToast } from "@/store/toast";
 
 /** Recording what actually arrived — with everything a delivery is made of.
  *
- *  Five things, and none of them optional (D101): how many, in what condition,
- *  who took it, who checked it, and **both documents** — the photograph of the
- *  goods and the signed tanda terima. They answer different questions. The
- *  photo says what arrived; the tanda terima says we acknowledged it. Three
- *  weeks later, when the vendor says they sent forty-seven and the workshop
- *  remembers forty-five, the argument is settled by whichever one exists.
+ *  The photograph is always required — it is the one thing whoever is standing
+ *  there can produce, and without it there is no evidence anything arrived.
+ *
+ *  The **tanda terima is required to confirm, not to report** (D131). Goods
+ *  from outside arrive when they arrive, often at night, and refusing the
+ *  report until the signed paper exists does not produce the paper — it loses
+ *  the arrival. So a delivery with only a photo is recorded as **reported**:
+ *  visible everywhere, counted nowhere, and waiting for procurement to
+ *  complete it in the morning.
  *
  *  Quantities are cumulative and append-only. Four shipments against one line
  *  are four receipts, not one number edited four times.
@@ -72,12 +75,17 @@ export function ReceiveForm({
       toast(res.error.status === 422 ? "warning" : "critical", "Not recorded", res.error.message);
       return;
     }
+    const reported = res.data.receipt.status === "REPORTED";
     toast(
-      res.data.notified ? "warning" : "success",
-      `Received ${formatNumber(qty)} ${line.uom}`,
+      res.data.notified ? "warning" : reported ? "info" : "success",
+      reported
+        ? `Reported ${formatNumber(qty)} ${line.uom}`
+        : `Received ${formatNumber(qty)} ${line.uom}`,
       res.data.notified
         ? "Condition needs attention — the line stays open."
-        : `${res.data.receipt.receipt_no} · photo and tanda terima on file`,
+        : reported
+          ? `${res.data.receipt.receipt_no} · waiting for the tanda terima, so it counts for nothing yet`
+          : `${res.data.receipt.receipt_no} · photo and tanda terima on file`,
     );
     onDone();
   }
@@ -153,17 +161,19 @@ export function ReceiveForm({
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <span className={cn("text-[12px]", photo && tandaTerima ? "text-slate-500" : "text-amber-700")}>
+        <span className={cn("text-[12px]", photo && tandaTerima ? "text-slate-500" : photo ? "text-amber-700" : "text-slate-500")}>
           {photo && tandaTerima
-            ? "Both on file — this delivery can be recorded."
-            : "Both are required: the photo says what arrived, the tanda terima says we acknowledged it."}
+            ? "Both on file — this counts as received."
+            : photo
+              ? "No tanda terima yet: this is recorded as reported. It shows on the order and counts for nothing until procurement completes it."
+              : "The photograph is required — it is what says anything arrived at all."}
         </span>
         <Button
           size="sm" className="ml-auto"
-          disabled={busy || qty <= 0 || !photo || !tandaTerima}
+          disabled={busy || qty <= 0 || !photo}
           onClick={submit}
         >
-          {busy ? "Recording…" : "Record what arrived"}
+          {busy ? "Recording…" : tandaTerima ? "Record what arrived" : "Report it — tanda terima follows"}
         </Button>
       </div>
 

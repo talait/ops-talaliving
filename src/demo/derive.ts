@@ -12,6 +12,7 @@
  */
 import type { DemoState } from "./state";
 import type {
+  ReceiptCondition, ReceiptStatus,
   PrLine, PrApproval, LineStatus, LineCoverage, PrLineView,
   PoStatusView, RoundSummary, PaymentRound,
   PurchaseFact, CategoryCount, VendorItemSummary, ItemSource, MeetingState,
@@ -131,11 +132,30 @@ export function lineCoverage(state: DemoState, line: PrLine): LineCoverage {
 /* Receiving                                                           */
 /* ------------------------------------------------------------------ */
 
-/** Only GOOD, and the received part of PARTIALLY DAMAGED, count toward
- *  completion. Everything else leaves the line open (A18). */
+/** Does this receipt turn into value received?
+ *
+ *  Two tests, and both have to pass. **Condition**: only GOOD and the received
+ *  part of PARTIALLY DAMAGED count; everything else leaves the line open
+ *  (A18). **Status**: only a CONFIRMED receipt counts — an arrival reported at
+ *  night and not yet acknowledged in writing is a fact worth recording and not
+ *  yet a thing we owe for (D131).
+ *
+ *  One definition, used everywhere a receipt becomes money, because two would
+ *  disagree within a month. */
+export function receiptCounts(r: { condition: ReceiptCondition; status: ReceiptStatus }): boolean {
+  return r.status === "CONFIRMED" && COUNTING_CONDITIONS.includes(r.condition);
+}
+
 export function receivedQty(state: DemoState, line: PrLine): number {
   return state.receipts
-    .filter((r) => r.line_id === line.id && COUNTING_CONDITIONS.includes(r.condition))
+    .filter((r) => r.line_id === line.id && receiptCounts(r))
+    .reduce((sum, r) => sum + r.qty_received, 0);
+}
+
+/** Reported against this line and not yet confirmed — shown, never counted. */
+export function reportedQty(state: DemoState, line: PrLine): number {
+  return state.receipts
+    .filter((r) => r.line_id === line.id && r.status === "REPORTED")
     .reduce((sum, r) => sum + r.qty_received, 0);
 }
 
@@ -392,7 +412,13 @@ export function poJourney(state: DemoState, poId: string): PoJourney {
     .map((l) => {
       const rows = state.receipts.filter((r) => r.po_line_id === l.id);
       const received = rows
-        .filter((r) => COUNTING_CONDITIONS.includes(r.condition))
+        .filter(receiptCounts)
+        .reduce((sum, r) => sum + r.qty_received, 0);
+      /* Reported at night, not yet acknowledged in writing. Shown on the line
+         because "it is here but the paperwork has not caught up" is a real
+         state somebody has to chase, and never counted (D131). */
+      const reported = rows
+        .filter((r) => r.status === "REPORTED")
         .reduce((sum, r) => sum + r.qty_received, 0);
       const problem = rows.some((r) => PROBLEM_CONDITIONS.includes(r.condition));
       const over = Math.max(received - l.qty, 0);
@@ -405,6 +431,7 @@ export function poJourney(state: DemoState, poId: string): PoJourney {
         unit_price: l.unit_price,
         line_total: l.line_total,
         received,
+        reported,
         over,
         condition: problem ? "PROBLEM"
           : received === 0 ? "NOT ARRIVED"
@@ -424,6 +451,7 @@ export function poJourney(state: DemoState, poId: string): PoJourney {
             note: r.note,
             has_photo: links.some((l) => l.kind === "Receiving Item"),
             has_delivery_note: links.some((l) => l.kind === "Delivery Note"),
+            status: r.status,
           };
         }),
       };
@@ -591,7 +619,7 @@ export function poStatus(state: DemoState, poId: string): PoStatusView {
 
   const value_received = lines.reduce((sum, l) => {
     const qty = state.receipts
-      .filter((r) => r.po_line_id === l.id && COUNTING_CONDITIONS.includes(r.condition))
+      .filter((r) => r.po_line_id === l.id && receiptCounts(r))
       .reduce((s, r) => s + r.qty_received, 0);
     /* Capped at what was ordered. A vendor who ships two sheets more than the
      * order has given us a credit, not sold us more — we owe for what we
@@ -603,7 +631,7 @@ export function poStatus(state: DemoState, poId: string): PoStatusView {
 
   const fullyDelivered = lines.length > 0 && lines.every((l) => {
     const qty = state.receipts
-      .filter((r) => r.po_line_id === l.id && COUNTING_CONDITIONS.includes(r.condition))
+      .filter((r) => r.po_line_id === l.id && receiptCounts(r))
       .reduce((s, r) => s + r.qty_received, 0);
     return qty >= l.qty;
   });
@@ -1376,7 +1404,7 @@ export function poTerms(state: DemoState, poId: string): PoTermView[] {
   const lines = state.po_lines.filter((l) => l.po_id === poId && l.superseded_by === null);
   const delivered = lines.length > 0 && lines.every((l) => {
     const qty = state.receipts
-      .filter((r) => r.po_line_id === l.id && COUNTING_CONDITIONS.includes(r.condition))
+      .filter((r) => r.po_line_id === l.id && receiptCounts(r))
       .reduce((s, r) => s + r.qty_received, 0);
     return qty >= l.qty;
   });

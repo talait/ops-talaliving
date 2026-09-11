@@ -1324,20 +1324,25 @@ export async function createReceipt(
   const cached = replayed<{ receipt: Receipt; notified: boolean }>(SERVICE, endpoint, idempotencyKey);
   if (cached) return cached;
 
-  /* Two documents, not one (D101): the photo of what arrived, and the signed
-   * tanda terima. They answer different questions — what came, and that we
-   * acknowledged it — and a dispute three weeks later needs both. */
+  /* The photo is always required: without it there is no evidence anything
+   * arrived at all, and that is the one thing the person standing there can
+   * always produce.
+   *
+   * The tanda terima is required to **confirm**, not to report (D131,
+   * superseding half of D101). Goods from outside arrive at night, when the
+   * people with the app open are asleep; refusing the report until the signed
+   * paper exists does not produce the paper, it loses the arrival. So a report
+   * without it is recorded as REPORTED and counts for nothing until
+   * procurement completes it. */
   const kinds = input.documents?.map((d) => d.kind) ?? [];
   if (!kinds.includes("Receiving Item")) {
-    return invalid(SERVICE, "photo_required", "A photo of the goods is required.", { field: "documents" });
-  }
-  if (!kinds.includes("Delivery Note")) {
     return invalid(
-      SERVICE, "delivery_note_required",
-      "The signed tanda terima is required too — the photo says what arrived, the tanda terima says we acknowledged it.",
+      SERVICE, "photo_required",
+      "A photograph of what arrived is required — it is the one thing whoever is there can always produce.",
       { field: "documents" },
     );
   }
+  const confirmed = kinds.includes("Delivery Note");
   if (!input.line_no && !input.po_line_id) {
     return invalid(SERVICE, "anchor_required", "A receiving report must point at a PR line or a PO line.", { field: "line_no" });
   }
@@ -1352,7 +1357,10 @@ export async function createReceipt(
     line_id: line?.id ?? null, po_line_id: input.po_line_id ?? null,
     qty_received: input.qty_received, condition: input.condition,
     received_by: user.id, received_at: new Date().toISOString(),
-    qc_by: input.qc_by ?? user.id, note: input.note ?? null,
+    qc_by: confirmed ? input.qc_by ?? user.id : null, note: input.note ?? null,
+    status: confirmed ? "CONFIRMED" : "REPORTED",
+    confirmed_by: confirmed ? user.id : null,
+    confirmed_at: confirmed ? new Date().toISOString() : null,
   };
   const notified = PROBLEM_CONDITIONS.includes(input.condition);
 
@@ -1366,12 +1374,15 @@ export async function createReceipt(
       });
     }
     writeAudit(draft, {
-      service: SERVICE, entity: "receipt", entity_no: receipt.receipt_no, action: "create",
-      outcome: "ok", reason: notified ? `condition ${input.condition} — line stays open` : null,
+      service: SERVICE, entity: "receipt", entity_no: receipt.receipt_no,
+      action: confirmed ? "receive" : "report",
+      outcome: "ok",
+      reason: notified ? `condition ${input.condition} — line stays open` : null,
+      detail: { status: receipt.status, qty: input.qty_received, condition: input.condition },
     });
     writeOutbox(draft, {
       service: SERVICE, event_type: "procurement.receipt.recorded",
-      payload: { receipt_no: receipt.receipt_no, condition: input.condition, notified },
+      payload: { receipt_no: receipt.receipt_no, condition: input.condition, notified, status: receipt.status },
     });
   });
 
@@ -2051,4 +2062,112 @@ export async function closePo(
     });
   });
   return getPoDetail(input.po_no);
+}
+
+/** Completing a reported arrival.
+ *
+ *  The report says *it came*, with a photograph, from whoever was standing
+ *  there at 23:40. This is procurement doing the part they are accountable
+ *  for: the signed tanda terima, who checked it, and what the quantity and
+ *  condition actually turned out to be once somebody counted in daylight
+ *  (D131).
+ *
+ *  Until this runs, nothing about the arrival counts as value received. That
+ *  is deliberate: an arrival nobody has acknowledged in writing is a fact
+ *  worth recording and not yet a thing we owe for.
+ */
+export async function confirmReceipt(
+  input: {
+    receipt_no: string;
+    /** The signed tanda terima. Required — it is the whole difference. */
+    delivery_note_attachment_id: string;
+    qc_by?: string | null;
+    /** What it turned out to be, when the night count was rough. */
+    qty_received?: number;
+    condition?: ReceiptCondition;
+    note?: string | null;
+  },
+): Promise<Result<Receipt>> {
+  await latency();
+  const denied = requireModule(SERVICE, "procurement");
+  if (denied) return denied;
+
+  const state = getState();
+  const receipt = state.receipts.find((r) => r.receipt_no === input.receipt_no);
+  if (!receipt) return notFound(SERVICE, "receipt_not_found", `No receiving report ${input.receipt_no}.`);
+  if (receipt.status === "CONFIRMED") {
+    return conflict(SERVICE, "already_confirmed", `${input.receipt_no} was already confirmed — nothing changed.`);
+  }
+  if (!input.delivery_note_attachment_id) {
+    return invalid(
+      SERVICE, "delivery_note_required",
+      "The signed tanda terima is what confirms it. The photo says what arrived; this says we acknowledged it.",
+      { field: "delivery_note_attachment_id" },
+    );
+  }
+
+  const user = actingUser();
+  let updated: Receipt | null = null;
+  apply((draft) => {
+    const row = draft.receipts.find((r) => r.receipt_no === input.receipt_no);
+    if (!row) return;
+    const before = { qty: row.qty_received, condition: row.condition, status: row.status };
+    if (input.qty_received != null) row.qty_received = input.qty_received;
+    if (input.condition) row.condition = input.condition;
+    if (input.note?.trim()) row.note = input.note.trim();
+    row.qc_by = input.qc_by ?? user.id;
+    row.status = "CONFIRMED";
+    row.confirmed_by = user.id;
+    row.confirmed_at = new Date().toISOString();
+    updated = row;
+
+    draft.attachment_links.push({
+      id: newId("lnk"), attachment_id: input.delivery_note_attachment_id,
+      entity: "receipt", entity_no: row.receipt_no,
+      kind: "Delivery Note", linked_by: user.id, linked_at: new Date().toISOString(),
+    });
+    writeAudit(draft, {
+      service: SERVICE, entity: "receipt", entity_no: row.receipt_no,
+      action: "confirm", outcome: "ok", reason: null,
+      detail: {
+        before,
+        after: { qty: row.qty_received, condition: row.condition, status: row.status },
+        confirmed_by: user.email,
+        /* How long the paper took to catch up — the number that says whether
+           this road is working or being used to avoid the paperwork. */
+        hours_after_arrival: Math.round(
+          (Date.parse(row.confirmed_at ?? "") - Date.parse(row.received_at)) / 3_600_000,
+        ),
+      },
+    });
+    writeOutbox(draft, {
+      service: SERVICE, event_type: "procurement.receipt.confirmed",
+      payload: { receipt_no: row.receipt_no, qty: row.qty_received, condition: row.condition },
+    });
+  });
+  return ok(SERVICE, updated as unknown as Receipt);
+}
+
+/** Arrivals somebody reported and nobody has completed — the morning queue. */
+export async function listReported(): Promise<Result<(Receipt & {
+  description: string; po_no: string | null; vendor_name: string | null; reported_by_name: string;
+})[]>> {
+  await latency();
+  const state = getState();
+  const rows = state.receipts
+    .filter((r) => r.status === "REPORTED")
+    .sort((a, b) => byTime(a.received_at, b.received_at))
+    .map((r) => {
+      const poLine = state.po_lines.find((l) => l.id === r.po_line_id);
+      const po = poLine ? state.purchase_orders.find((p) => p.id === poLine.po_id) : null;
+      const prLine = state.pr_lines.find((l) => l.id === r.line_id);
+      return {
+        ...r,
+        description: poLine?.description ?? prLine?.description ?? "—",
+        po_no: po?.po_no ?? null,
+        vendor_name: po ? state.vendors.find((v) => v.id === po.vendor_id)?.name ?? null : null,
+        reported_by_name: state.users.find((u) => u.id === r.received_by)?.full_name ?? r.received_by,
+      };
+    });
+  return ok(SERVICE, rows);
 }

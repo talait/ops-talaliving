@@ -30,14 +30,16 @@
                    Postgres + Auth + Storage + RLS
 ```
 
-Five services in v1. Each one is addressed only through
+Six services in v1 — the five below plus `hr`, added on D136. Each one is
+addressed only through
 `/api/v1/<service>/…`, configured by a per-service base URL, and reachable
 from anything that speaks HTTP.
 
-## ADR-001 — One Next.js process now, five separable services
+## ADR-001 — One Next.js process now, separable services
 
-**Decision.** Build five services as strictly separated code and data, all
-running inside one Next.js process today.
+**Decision.** Build the services as strictly separated code and data, all
+running inside one Next.js process today. Five at the time of this decision,
+six since `hr` (D136) — the count is not the point, the separation is.
 
 **Why not five processes today.** The whole system has to be driven from a
 phone this week and then run on one office PC. Five containers means five
@@ -305,7 +307,7 @@ no secrets, no backend. The table below is Phase 2.
 
 | Piece | Where | If the office PC is off |
 |---|---|---|
-| Next.js app + all five services | Docker on the office PC, port 8092 | **down** |
+| Next.js app + every service | Docker on the office PC, port 8092 | **down** |
 | Postgres, Auth, Storage | Supabase (managed) | fine |
 | `dev-ops.talaliving.com` | Cloudflare tunnel → office PC | down |
 | Outbox worker, integrity job | same container, cron inside | down (catches up on restart) |

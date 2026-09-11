@@ -40,56 +40,124 @@ export interface Employee {
   note: string | null;
 }
 
-/** Where an attendance row came from.
- *
- *  `biometric` is the fingerprint machine, imported. `manual` is a person
- *  saying what the machine missed, which always carries a reason: an
- *  attendance record nobody can challenge is a payroll nobody can challenge
- *  (D137).
- */
-export type AttendanceSource = "biometric" | "manual";
+/** Where a scan came from. `import` is the machine's own export; `manual` is a
+ *  person putting in what the machine missed, which always carries a reason
+ *  (D137). */
+export type ScanSource = "import" | "manual";
 
-export interface Attendance {
+/** One tap on the reader.
+ *
+ *  This is what the machine actually produces — a person, a moment, and how
+ *  they were recognised. **Not** a check-in and a check-out: the export from
+ *  the real device is one row per tap, four on an ordinary day and six when
+ *  somebody works late, and which tap means *istirahat keluar* is our reading
+ *  of it rather than something the machine says (D141).
+ */
+export interface AttendanceScan {
   id: string;
   employee_id: string;
-  /** Office day, WITA. */
+  /** Office day this tap belongs to, WITA. */
   work_date: string;
-  check_in: string | null;
-  check_out: string | null;
-  source: AttendanceSource;
-  /** The machine's own id for the row, so a re-import is a no-op rather than a
-   *  double day. */
-  device_ref: string | null;
-  /** Required on anything entered by hand. */
+  at: string;
+  /** `FACE`, `FP`, whatever the device calls it. Carried verbatim. */
+  verify: string;
+  location: string | null;
+  source: ScanSource;
+  /** The import that brought it in, so a re-upload is a no-op rather than a
+   *  second day. */
+  import_id: string | null;
   reason: string | null;
   recorded_by: string | null;
   recorded_at: string;
 }
 
-/** What the day is worth, once somebody has read the two timestamps.
- *
- *  A machine produces times, not hours: a missing check-out is the normal
- *  failure, not the exception, and guessing one is how a payroll quietly pays
- *  for a day nobody worked. So an incomplete day is `open` and counts as
- *  nothing until a person closes it (D137).
- */
-export type AttendanceState = "complete" | "open" | "absent";
+/** The six things a full day is made of, in the order they happen. */
+export const SCAN_SLOTS = ["in", "break_out", "break_in", "out", "ot_start", "ot_end"] as const;
+export type ScanSlot = (typeof SCAN_SLOTS)[number];
 
-export interface AttendanceDay {
-  employee_id: string;
+export const SLOT_LABEL: Record<ScanSlot, string> = {
+  in: "Masuk",
+  break_out: "Istirahat keluar",
+  break_in: "Istirahat masuk",
+  out: "Pulang",
+  ot_start: "Lembur mulai",
+  ot_end: "Lembur selesai",
+};
+
+/** What HRD says about a day, when the machine alone cannot say it.
+ *
+ *  These are not corrections to the scans — they are facts about the day that
+ *  no reader can know: that it was a public holiday, that the office sent
+ *  everybody home at noon, that somebody was ill. A mark never deletes a scan
+ *  and a scan never overrides a mark (D142).
+ */
+export type DayMarkKind =
+  | "holiday"     // tanggal merah — being here at all is overtime
+  | "half_day"    // acara kantor, kecelakaan, blackout
+  | "absent"      // tidak masuk, tanpa keterangan
+  | "sick"        // sakit
+  | "leave"       // cuti
+  | "permit";     // izin
+
+export const DAY_MARK_LABEL: Record<DayMarkKind, string> = {
+  holiday: "Tanggal merah",
+  half_day: "Setengah hari",
+  absent: "Tidak masuk",
+  sick: "Sakit",
+  leave: "Cuti",
+  permit: "Izin",
+};
+
+/** The same six, short enough for a cell in a grid forty people wide. */
+export const DAY_MARK_SHORT: Record<DayMarkKind, string> = {
+  holiday: "merah",
+  half_day: "½ hari",
+  absent: "absen",
+  sick: "sakit",
+  leave: "cuti",
+  permit: "izin",
+};
+
+export interface DayMark {
+  id: string;
+  /** Null means everybody — a public holiday is not marked person by person. */
+  employee_id: string | null;
   work_date: string;
-  check_in: string | null;
-  check_out: string | null;
-  source: AttendanceSource;
-  state: AttendanceState;
-  /** Worked hours, capped at nothing — the raw difference. */
-  hours: number;
-  /** Hours up to the employee's standard day. */
-  normal_hours: number;
-  /** Everything past it, before anybody has approved paying for it. */
+  kind: DayMarkKind;
+  reason: string;
+  marked_by: string;
+  marked_at: string;
+}
+
+/** How a day stands once the taps have been read against the six slots.
+ *
+ *  `review` is the honest state for what the real machine mostly produces: an
+ *  odd number of taps, a missing *istirahat masuk*, a double tap eleven
+ *  minutes apart. In the export this was built against, **48 of 227 days**
+ *  land here, and guessing any of them would be guessing somebody's wages
+ *  (D141).
+ */
+export type DayState = "complete" | "review" | "marked" | "off";
+
+export interface TimesheetDay {
+  employee_id: string;
+  employee_no: string;
+  full_name: string;
+  work_date: string;
+  /** Every tap, in order. The reading is derived; the taps are the record. */
+  scans: { at: string; verify: string; slot: ScanSlot | null; source: ScanSource }[];
+  slots: Partial<Record<ScanSlot, string>>;
+  state: DayState;
+  mark: DayMark | null;
+  /** In the building, break subtracted. */
+  work_hours: number;
+  break_hours: number;
+  /** From the lembur pair, or the whole day when it is a public holiday. */
   overtime_hours: number;
-  late_minutes: number;
-  reason: string | null;
+  /** 1 for a full day, 0.5 for a half day, 0 for absent — what payroll counts. */
+  day_value: number;
+  /** What a person has to resolve, in words. */
+  issues: string[];
 }
 
 /** Overtime is claimed and approved, never inferred.

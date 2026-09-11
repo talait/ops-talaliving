@@ -1132,6 +1132,132 @@ that makes it due.
 
 ---
 
+## Schema `hr` — people, taps, marks, payroll
+
+A sixth service (D136). Not part of `core`: identity says who may open a
+screen, HR says what somebody is owed, and payroll is both the most
+access-controlled data in the company and the most likely to need its own
+retention rule.
+
+```mermaid
+erDiagram
+    employees ||--o{ attendance_scans : "tapped"
+    employees ||--o{ day_marks : "marked for"
+    employees ||--o{ overtime_claims : "claimed"
+    attendance_imports ||--o{ attendance_scans : "brought in"
+    payroll_runs ||--o{ payroll_lines : "computed (view)"
+
+    employees {
+        uuid id PK
+        text employee_no UK "B-009 - the number on the reader"
+        text full_name
+        text position
+        text unit
+        pay_basis_t pay_basis "monthly|daily|hourly"
+        bigint base_rate "per month, day or hour"
+        numeric daily_hours "standard day"
+        date joined_on
+        boolean active
+        date left_on "records stay (A5)"
+        text note
+    }
+    attendance_imports {
+        uuid id PK
+        text filename
+        int rows_seen
+        int rows_added
+        int rows_duplicate
+        jsonb unknown_refs "machine numbers nobody is registered under"
+        uuid imported_by FK
+        timestamptz imported_at
+    }
+    attendance_scans {
+        uuid id PK
+        uuid employee_id FK
+        date work_date "office day, WITA"
+        timestamptz at
+        text verify "FACE|FP - carried verbatim"
+        text location
+        scan_source_t source "import|manual"
+        uuid import_id FK
+        text reason "required when source = manual"
+        uuid recorded_by FK
+        timestamptz recorded_at
+    }
+    day_marks {
+        uuid id PK
+        uuid employee_id FK "NULL = the whole office"
+        date work_date
+        day_mark_t kind "holiday|half_day|absent|sick|leave|permit"
+        text reason "NOT NULL"
+        uuid marked_by FK
+        timestamptz marked_at
+    }
+    overtime_claims {
+        uuid id PK
+        uuid employee_id FK
+        date work_date
+        numeric hours
+        text reason
+        uuid claimed_by FK
+        uuid approved_by FK
+        timestamptz approved_at
+        text declined_reason
+    }
+    payroll_runs {
+        uuid id PK
+        text run_no UK "pyr-26-09-11_01"
+        date period_start
+        date period_end
+        payroll_status_t status "DRAFT|APPROVED|PAID"
+        uuid approved_by FK
+        text paid_trx_no "the ledger row that paid it"
+        text note
+    }
+```
+
+**`attendance_scans` is one row per tap, not one per day** (D141). The real
+export is a stream of moments — four on a good day, six with lembur, and 48
+days out of 227 that are neither (F40). A `check_in`/`check_out` pair cannot
+hold that file without discarding the rows somebody has to look at. The six
+slots are computed, never stored.
+
+| Constraint | Why |
+|---|---|
+| `attendance_scans` UNIQUE `(employee_id, at)` | re-uploading the same export is a no-op. A tap is who and when, to the second (D143) |
+| `attendance_scans` CHECK `source = 'manual' → reason IS NOT NULL` | a time somebody typed says why the machine missed it (D137) |
+| `day_marks` UNIQUE `(work_date, employee_id)` incl. NULL | one mark per person per day, one office-wide mark per day. Postgres needs `NULLS NOT DISTINCT` here |
+| `day_marks.reason` NOT NULL | *setengah hari* with no reason is a decision nobody can check in six months (D142) |
+| `overtime_claims` UNIQUE `(employee_id, work_date) WHERE declined_reason IS NULL` | one live claim per day; a declined one may be re-claimed |
+| `employees` no DELETE | a payslip from March is still a fact in June (A5). `left_on` retires somebody |
+| `payroll_runs` UNIQUE `(period_start, period_end)` | the same week is not run twice by accident |
+
+Marks never touch scans, and scans never override a mark. They are different
+kinds of statement: the taps are evidence with a machine behind them, the mark
+is a decision with a person behind it, and destroying either to express the
+other loses the only record of what happened (D142).
+
+### Views
+
+| View | Answers |
+|---|---|
+| `v_timesheet_day` | per employee per office day: the taps, the six slots the rule filled, `work_hours`, `break_hours`, `overtime_hours`, `day_value` (1 / 0,5 / 0) and `state` — `complete` · `review` · `marked` · `off` |
+| `v_payroll_line` | per employee per run: days worked, days still unread, normal hours, **approved** overtime hours, base pay, overtime pay, gross. Computed on read, never stored (D139) |
+| `v_payroll_run` | the run plus `gross_total`, `open_days`, `pending_overtime_hours` |
+
+`day_value` is where the marks reach the money: 1 for an ordinary day, 0,5 for
+*setengah hari*, 0 for *tidak masuk / sakit / cuti / izin*, and on a *tanggal
+merah* the hours worked become overtime while the day itself counts nothing.
+Whether any of the zero-value days is nonetheless **paid** is policy nobody has
+stated — Q33 — and the marks are recorded so the answer can be applied to
+history the day it arrives.
+
+Approving a run is refused while `open_days > 0`: a payroll over days nobody
+finished reading is wrong about the people paid by the day, who are least able
+to argue (D139).
+
+---
+
 ## Evidence: the main road and the exception road
 
 ADR-010 inverts how a document reaches the system, and the schema has to make
@@ -1239,8 +1365,11 @@ not have received the right environment variable.
 0012_acct_ledger.sql         transactions, transaction_lines, transaction_docs + RLS
 0013_acct_allocations.sql    payment_allocations + v_allocations_public + grants
 0014_acct_review.sql         review_queue, bank_statements, statement_lines + RLS
-0015_views.sql               every v_* above
-0016_seams.sql               post_transaction(), allocate_payment(), audit triggers on those two only
+0015_hr_people.sql           employees + RLS
+0016_hr_attendance.sql       attendance_imports, attendance_scans, day_marks + RLS
+0017_hr_payroll.sql          overtime_claims, payroll_runs + RLS
+0018_views.sql               every v_* above
+0019_seams.sql               post_transaction(), allocate_payment(), audit triggers on those two only
 ```
 
 Additive migrations may be applied by the agent after a dry run. **Destructive

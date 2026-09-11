@@ -12,7 +12,7 @@ import type {
 } from "@/services/accounting/contracts";
 import type { Attachment, AttachmentLink } from "@/services/documents/contracts";
 import type {
-  Employee, Attendance, OvertimeClaim, PayrollRun,
+  Employee, AttendanceScan, DayMark, OvertimeClaim, PayrollRun,
 } from "@/services/hr/contracts";
 
 export interface DemoUser extends User {
@@ -102,7 +102,10 @@ export interface DemoState {
    *  overtime, never stored — a stored figure is one that can disagree with
    *  the days behind it (A3). */
   employees: Employee[];
-  attendance: Attendance[];
+  /** One row per tap on the reader. The day is derived (D141). */
+  attendance_scans: AttendanceScan[];
+  /** What HRD says about a day that no reader can know (D142). */
+  day_marks: DayMark[];
   overtime_claims: OvertimeClaim[];
   payroll_runs: PayrollRun[];
 

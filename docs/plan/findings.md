@@ -1659,3 +1659,82 @@ Indonesian (D140). A deductions block full of zeroes would read as *nothing
 was deducted*; a payslip that states it computes bruto reads as *this part is
 not done yet*. Q30–Q32 hold the questions — which deductions, what an overtime
 hour is worth here, and whether payroll is weekly, monthly or both.
+
+---
+
+## F40 — the file the machine actually produces
+
+The owner sent the real export: *ALL DAILY WORKER PAYROLL — WEEK 1 SEPTEMBER
+(31–04 SEPTEMBER 2026) — PASTE HERE BIOMETRIC ORIGIN DATA*. Eight columns,
+981 rows, 35 people, eight working dates. It is worth reading before designing
+anything, because it disagrees with every assumption a clean model makes.
+
+### What is in it
+
+```
+Department,Name,No.,Date/Time,Location ID,ID Number,VerifyCode,CardNo
+OUR COMPANY,Sumiati,6,29/08/2026 07:54:23,104,,FACE,
+```
+
+One row per **tap**. Not a check-in and a check-out — a tap. The person is the
+machine's own `No.` (6 to 138, with gaps); the name is whatever was typed into
+the device; `VerifyCode` is `FACE` or `FP` depending on which reader worked
+that morning; `Date/Time` is local, `DD/MM/YYYY`, with the hour sometimes
+unpadded (`01/09/2026 7:26:40`).
+
+### What is wrong with it, counted
+
+| | |
+|---|---|
+| Taps | 981 |
+| People | 35 |
+| Person-days | 227 |
+| Double taps inside two minutes | 29 |
+| Days with exactly 4 or 6 taps (a clean day) | 179 |
+| **Days with 1, 2, 3, 5 or 7 taps** | **48** |
+
+The distribution: 8 days with one tap, 2 with two, 26 with three, 138 with
+four, 10 with five, 41 with six, 2 with seven.
+
+Read the awkward ones directly:
+
+- **Karjo, 31/08**: 07:21, 12:02, 12:33, **12:48**, 17:32, 17:58, 19:59. Six
+  of those are a long day with lembur. The seventh is 12:48, twenty-six
+  minutes after he came back from lunch, and nothing in the file says why.
+- **Roni, 30/08**: 07:29, 12:04, 16:00. He went to lunch and came back without
+  scanning, or he left at noon and the 16:00 is somebody else's finger.
+- **Trisno, 30/08**: 07:43, **07:54**, 12:07, 13:02, 16:01. A second tap eleven
+  minutes after the first — too far apart to be a finger that did not take.
+
+### What this decided
+
+**One row per tap, and the day is computed** (D141). A schema with
+`check_in`/`check_out` columns cannot hold this file without discarding rows,
+and the rows it discards are exactly the ones somebody needs to look at. The
+six slots — *masuk, istirahat keluar, istirahat masuk, pulang, lembur mulai,
+lembur selesai* — are a reading, applied on read, and a wrong reading is then
+a one-line change rather than a re-import.
+
+**Two minutes is the dedupe window.** Long enough to swallow a finger that did
+not take on the first try (29 of those), short enough that Trisno's eleven
+minutes stays visible as the unexplained event it is.
+
+**Anything the reading cannot place leaves the day in `review`.** Not a
+best guess, not an average of the others — 48 of 227 days, each one somebody's
+wages. The timesheet exists to show which they are, and a payroll run over the
+period is refused while any remain (D139).
+
+**A number nobody is registered under is reported, never created** (D143). The
+file's `No.` is the machine's numbering; the names in it are inconsistent
+spellings typed at a keypad. Importing a stranger would put somebody on a
+payroll who was never hired.
+
+### The thing the file taught that the interview did not
+
+Everyone describes attendance as *masuk dan pulang*. The device describes it
+as a stream of moments, and the gap between those two descriptions is where a
+payroll goes wrong. Twenty-one per cent of the days in a single ordinary week
+could not be described by the rule everybody agrees on. That is not a data
+quality problem to clean up before go-live; it is the steady state, and the
+system's job is to make it **visible and cheap to resolve** rather than to
+pretend it away.

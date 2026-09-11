@@ -130,9 +130,9 @@ export default function PayrollPage() {
       </Loaded>
 
       <p className="mt-4 text-[12px] text-slate-400">
-        Days with no check-out are cleared on{" "}
-        <Link href="/hrd/absensi" className="underline">attendance</Link> — a run cannot be
-        approved while any are open.
+        Days the machine could not describe are read on the{" "}
+        <Link href="/hrd/absensi" className="underline">timesheet</Link> — a run cannot be
+        approved while any are still unread.
       </p>
     </div>
   );

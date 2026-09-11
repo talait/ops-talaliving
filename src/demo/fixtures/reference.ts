@@ -70,6 +70,19 @@ export const USERS: DemoUser[] = [
     authorities: [],
   },
   {
+    /* HRD. The one person whose day is the timesheet: she reads the days the
+     * fingerprint machine could not describe, says what happened on them, and
+     * runs the payroll — but approving overtime and approving the money are
+     * somebody else's signature (D24). */
+    id: "usr_wulan", email: "wulan@talaliving.com", full_name: "Wulan Sari", is_active: true,
+    modules: [
+      { module: "dashboard", level: "read" },
+      { module: "hrd", level: "write" },
+      { module: "payroll", level: "write" },
+    ],
+    authorities: [],
+  },
+  {
     id: "usr_shared", email: "it@talaliving.com", full_name: "IT / Shared", is_active: true,
     modules: [
       { module: "dashboard", level: "read" },

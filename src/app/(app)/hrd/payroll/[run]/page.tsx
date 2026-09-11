@@ -130,7 +130,7 @@ export default function PayrollRunPage({ params }: { params: { run: string } }) 
                 {([
                   ["Gross", formatIDR(d.gross_total), "before any deduction"],
                   ["People", String(d.lines.length), "employed during the period"],
-                  ["Open days", String(d.open_days), d.open_days > 0 ? "must be closed before approval" : "every day is closed"],
+                  ["Days unread", String(d.open_days), d.open_days > 0 ? "must be read before approval" : "every day has been read"],
                   ["Overtime waiting", `${formatNumber(d.pending_overtime_hours)} h`, "claimed, not approved — not in the figures"],
                 ] as [string, string, string][]).map(([k, v, note]) => (
                   <div key={k} className="px-4 py-3.5">
@@ -156,12 +156,12 @@ export default function PayrollRunPage({ params }: { params: { run: string } }) 
               <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3 text-[13px] text-amber-900">
                 <AlertTriangle className="h-4 w-4 shrink-0" />
                 <span>
-                  {d.open_days} day(s) in this period have no check-out. The figures below are
-                  computable and not trustworthy — the people they are wrong about are the ones
-                  paid by the day.
+                  {d.open_days} day(s) in this period are still unread — the machine left them
+                  incomplete and nobody has said what happened. The figures below are computable
+                  and not trustworthy, and the people they are wrong about are paid by the day.
                 </span>
                 <Link href="/hrd/absensi" className="ml-auto">
-                  <Button size="sm" variant="outline">Close them</Button>
+                  <Button size="sm" variant="outline">Read them</Button>
                 </Link>
               </div>
             )}

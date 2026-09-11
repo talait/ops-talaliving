@@ -8,7 +8,7 @@
  */
 import type { DemoState } from "./state";
 import type {
-  Employee, AttendanceDay, AttendanceState, PayrollLine, PayrollView, PayrollRun,
+  Employee, TimesheetDay, DayState, ScanSlot, PayrollLine, PayrollView, PayrollRun,
 } from "@/services/hr/contracts";
 
 const HOURS = 3_600_000;
@@ -21,83 +21,164 @@ function hoursBetween(from: string, to: string): number {
   return Math.round((ms / HOURS) * 100) / 100;
 }
 
-/** One day, read from what the machine recorded.
+/** Taps a person made on one day, de-duplicated.
  *
- *  A missing check-out is `open` and worth nothing until a person closes it.
- *  That is the whole rule: the machine produces times, and a day with one time
- *  is not a day worked, it is a day nobody finished recording (D137). Guessing
- *  the second stamp — "assume they left at five" — is how a payroll quietly
- *  pays for a day nobody can account for.
+ *  A reader scanned twice in the same minute is one arrival, not two — the
+ *  real export has 29 of them. Two minutes is the window: it is long enough to
+ *  swallow a finger that did not take the first time, and short enough to keep
+ *  a genuine second tap eleven minutes later, which is a different event
+ *  somebody has to look at (D141).
  */
-export function attendanceDay(
+function tapsOf(state: DemoState, employeeId: string, workDate: string) {
+  const rows = state.attendance_scans
+    .filter((r) => r.employee_id === employeeId && r.work_date === workDate)
+    .sort((a, b) => a.at.localeCompare(b.at));
+  const kept: typeof rows = [];
+  for (const r of rows) {
+    const last = kept[kept.length - 1];
+    if (last && Math.abs(Date.parse(r.at) - Date.parse(last.at)) < 120_000) continue;
+    kept.push(r);
+  }
+  return kept;
+}
+
+const hhmm = (iso: string) => iso.slice(11, 16);
+const minutes = (iso: string) => Number(iso.slice(11, 13)) * 60 + Number(iso.slice(14, 16));
+
+/** Reading a day's taps against the six slots.
+ *
+ *  The rule is written here rather than buried, because it is a **reading**
+ *  and every reading can be wrong: the first tap is `masuk`, a tap in the
+ *  middle of the day is the break going out and coming back, the first tap
+ *  after mid-afternoon is `pulang`, and a pair after that is the lembur.
+ *
+ *  What matters more than the rule is what happens when it does not fit.
+ *  Anything left over, or any slot the rule cannot fill, makes the day
+ *  `review` — never a guess. On the export this was built against that is 48
+ *  days out of 227, and each of them is somebody's wages (D141).
+ */
+export function timesheetDay(
   state: DemoState,
   employee: Employee,
   workDate: string,
-): AttendanceDay | null {
-  const rows = state.attendance
-    .filter((a) => a.employee_id === employee.id && a.work_date === workDate)
-    .sort((a, b) => (a.recorded_at < b.recorded_at ? -1 : 1));
-  if (rows.length === 0) return null;
+): TimesheetDay {
+  const taps = tapsOf(state, employee.id, workDate);
+  const mark = state.day_marks.find(
+    (m) => m.work_date === workDate
+      && (m.employee_id === null || m.employee_id === employee.id),
+  ) ?? null;
 
-  /* A machine that scans twice produces two rows for one day. The earliest
-     check-in and the latest check-out are the day; the rest is the same
-     finger, twice. */
-  const check_in = rows.map((r) => r.check_in).filter(Boolean).sort()[0] ?? null;
-  const outs = rows.map((r) => r.check_out).filter(Boolean).sort();
-  const check_out = outs.length ? outs[outs.length - 1] : null;
-  const manual = rows.find((r) => r.source === "manual");
+  const slots: Partial<Record<ScanSlot, string>> = {};
+  const assigned = new Map<string, ScanSlot>();
+  const issues: string[] = [];
 
-  let state_: AttendanceState;
-  let hours = 0;
-  if (check_in && check_out) { state_ = "complete"; hours = hoursBetween(check_in, check_out); }
-  else if (check_in || check_out) state_ = "open";
-  else state_ = "absent";
+  const rest = [...taps];
+  const take = (slot: ScanSlot, pick: (t: typeof taps[number]) => boolean) => {
+    const i = rest.findIndex(pick);
+    if (i === -1) return false;
+    slots[slot] = rest[i].at;
+    assigned.set(rest[i].id, slot);
+    rest.splice(i, 1);
+    return true;
+  };
 
-  const normal_hours = Math.min(hours, employee.daily_hours);
-  const overtime_hours = Math.max(Math.round((hours - employee.daily_hours) * 100) / 100, 0);
+  if (taps.length > 0) {
+    take("in", () => true);
+    /* The middle of the day: out to eat, back from eating. */
+    take("break_out", (t) => minutes(t.at) >= 11 * 60 && minutes(t.at) < 13 * 60 + 30);
+    take("break_in", (t) => minutes(t.at) >= 11 * 60 + 30 && minutes(t.at) < 14 * 60 + 30);
+    take("out", (t) => minutes(t.at) >= 14 * 60 + 30);
+    take("ot_start", (t) => slots.out !== undefined && t.at > slots.out!);
+    take("ot_end", (t) => slots.ot_start !== undefined && t.at > slots.ot_start!);
+  }
 
-  /* Late against the earliest check-in seen for this person in the period —
-     not against a schedule nobody has given us. Shown, never priced. */
+  const worked = (a?: string, b?: string) =>
+    a && b ? Math.max(Math.round(((Date.parse(b) - Date.parse(a)) / HOURS) * 100) / 100, 0) : 0;
+
+  const break_hours = worked(slots.break_out, slots.break_in);
+  const gross_hours = worked(slots.in, slots.out);
+  let work_hours = Math.max(Math.round((gross_hours - break_hours) * 100) / 100, 0);
+  let overtime_hours = worked(slots.ot_start, slots.ot_end);
+
+  /* Anything the rule could not place. Left over taps are the loudest signal
+     that this day needs a person: they are real events nobody has explained. */
+  if (rest.length > 0) {
+    issues.push(`${rest.length} tap(s) the rule could not place: ${rest.map((t) => hhmm(t.at)).join(", ")}`);
+  }
+  if (taps.length > 0) {
+    if (!slots.out) issues.push("No pulang — the day has no end");
+    if (!slots.break_out || !slots.break_in) issues.push("Istirahat incomplete");
+    if (slots.ot_start && !slots.ot_end) issues.push("Lembur started and never finished");
+  }
+
+  let day_value = 0;
+  let state_: DayState;
+
+  if (mark) {
+    state_ = "marked";
+    if (mark.kind === "half_day") day_value = 0.5;
+    else if (mark.kind === "holiday") {
+      /* Tanggal merah: being here at all is overtime (owner). The day itself
+         is not a working day, so it adds no day_value — the hours do. */
+      day_value = 0;
+      overtime_hours = work_hours > 0 ? work_hours : overtime_hours;
+      work_hours = 0;
+    } else {
+      /* absent, sick, leave, permit: no day is counted. Whether any of them is
+         *paid* is policy nobody has stated, so nothing here pays them (Q33). */
+      day_value = 0;
+      work_hours = 0;
+      overtime_hours = 0;
+    }
+  } else if (taps.length === 0) {
+    state_ = "off";
+  } else if (issues.length > 0) {
+    state_ = "review";
+  } else {
+    state_ = "complete";
+    day_value = 1;
+  }
+
   return {
     employee_id: employee.id,
+    employee_no: employee.employee_no,
+    full_name: employee.full_name,
     work_date: workDate,
-    check_in,
-    check_out,
-    source: manual ? "manual" : "biometric",
+    scans: taps.map((t) => ({
+      at: t.at, verify: t.verify, slot: assigned.get(t.id) ?? null, source: t.source,
+    })),
+    slots,
     state: state_,
-    hours,
-    normal_hours,
+    mark,
+    work_hours,
+    break_hours,
     overtime_hours,
-    late_minutes: 0,
-    reason: manual?.reason ?? null,
+    day_value,
+    issues,
   };
 }
 
-/** Every day of a period for one person, including the days with nothing. */
-export function attendanceDays(
+/** Every day of a period for one person, including the days with nothing on
+ *  them — a day nobody scanned is a fact too. */
+export function timesheet(
   state: DemoState,
   employee: Employee,
   from: string,
   to: string,
-): AttendanceDay[] {
-  const out: AttendanceDay[] = [];
-  /* Walked in office days, not in UTC. Building the key with `toISOString()`
-     converts back through UTC, and 2026-09-07 00:00 WITA is 2026-09-06 16:00Z
-     — so every day came out one early and the last day of the period was
-     silently dropped. On a daily rate that is somebody's wages (F39). */
+): TimesheetDay[] {
+  const out: TimesheetDay[] = [];
+  /* Walked as strings, in office days. Going through `Date` to build a key
+     converts back via UTC and loses the last day of every period (F39). */
   for (let key = from; key <= to; key = nextDay(key)) {
-    const day = attendanceDay(state, employee, key);
-    if (day) out.push(day);
+    out.push(timesheetDay(state, employee, key));
   }
   return out;
 }
 
-/** The next office day, as a `YYYY-MM-DD` string, without going near a
- *  timezone. */
+/** The next office day, without going near a timezone. */
 function nextDay(key: string): string {
   const [y, m, d] = key.split("-").map(Number);
-  const next = new Date(Date.UTC(y, m - 1, d + 1));
-  return next.toISOString().slice(0, 10);
+  return new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
 }
 
 /** What one person is owed for a period, before any deduction.
@@ -113,9 +194,13 @@ export function payrollLine(
   from: string,
   to: string,
 ): PayrollLine {
-  const days = attendanceDays(state, employee, from, to);
-  const complete = days.filter((d) => d.state === "complete");
-  const open = days.filter((d) => d.state === "open");
+  const days = timesheet(state, employee, from, to);
+  /* A day is worth what the timesheet says it is worth: a full day, half of
+     one when the office closed at noon, none at all when somebody was away
+     (D142). */
+  const counted = days.filter((d) => d.day_value > 0);
+  const worked_days = days.reduce((s, d) => s + d.day_value, 0);
+  const open = days.filter((d) => d.state === "review");
 
   const claims = state.overtime_claims.filter(
     (c) => c.employee_id === employee.id && c.work_date >= from && c.work_date <= to,
@@ -127,7 +212,10 @@ export function payrollLine(
     .filter((c) => c.approved_at === null && c.declined_reason === null)
     .reduce((s, c) => s + c.hours, 0);
 
-  const normal_hours = complete.reduce((s, d) => s + d.normal_hours, 0);
+  const normal_hours = counted.reduce((s, d) => s + d.work_hours, 0);
+  /* Hours the machine shows past the day, and the whole of a public holiday.
+     Still not paid until a claim for them is approved (D138). */
+  const shown_ot = days.reduce((s, d) => s + d.overtime_hours, 0);
 
   /* Monthly staff are paid the month whatever the machine says; a daily or
      hourly person is paid for what they were here for. That difference is the
@@ -135,7 +223,7 @@ export function payrollLine(
   const base_pay = employee.pay_basis === "monthly"
     ? employee.base_rate
     : employee.pay_basis === "daily"
-      ? complete.length * employee.base_rate
+      ? Math.round(worked_days * employee.base_rate)
       : Math.round(normal_hours * employee.base_rate);
 
   /* The hourly value of an ordinary hour, which is what overtime is a multiple
@@ -151,13 +239,16 @@ export function payrollLine(
 
   const warnings: string[] = [];
   if (open.length > 0) {
-    warnings.push(`${open.length} day(s) with no check-out — worth nothing until somebody closes them`);
+    warnings.push(`${open.length} day(s) need a person to read them — worth nothing until they do`);
+  }
+  if (shown_ot > 0 && shown_ot > approvedOt + pendingOt) {
+    warnings.push(`${Math.round((shown_ot - approvedOt - pendingOt) * 10) / 10} hour(s) past the day on the machine that nobody has claimed`);
   }
   if (pendingOt > 0) {
     warnings.push(`${pendingOt} overtime hour(s) claimed and not approved — not in this figure`);
   }
-  if (employee.pay_basis !== "monthly" && complete.length === 0) {
-    warnings.push("No complete day in this period");
+  if (employee.pay_basis !== "monthly" && worked_days === 0) {
+    warnings.push("No day counted in this period");
   }
 
   return {
@@ -167,7 +258,7 @@ export function payrollLine(
     position: employee.position,
     pay_basis: employee.pay_basis,
     base_rate: employee.base_rate,
-    days_worked: complete.length,
+    days_worked: worked_days,
     days_open: open.length,
     normal_hours: Math.round(normal_hours * 100) / 100,
     overtime_hours: approvedOt,

@@ -6,9 +6,9 @@
 > status codes, so screens are written once. When Phase 2 arrives, the demo
 > module is replaced by `fetch` and no screen changes.
 
-Five services. Each is independently addressable, independently documented,
-and could be moved to its own host by changing one environment variable
-(ADR-001). None of them imports another.
+Six services — five from D5, plus `hr` (D136). Each is independently
+addressable, independently documented, and could be moved to its own host by
+changing one environment variable (ADR-001). None of them imports another.
 
 ```
 /api/v1/identity/…        core.*      who you are, what you may do
@@ -16,9 +16,10 @@ and could be moved to its own host by changing one environment variable
 /api/v1/accounting/…      acct.*      accounts, ledger, allocations, review
 /api/v1/documents/…       core files  upload, link, fetch evidence
 /api/v1/events/…          core.outbox subscribe, replay — the third-party seam
+/api/v1/hr/…              hr.*        people, attendance, overtime, payroll
 ```
 
-## Service contract — the same for all five
+## Service contract — the same for all six
 
 ### Envelope
 
@@ -231,6 +232,47 @@ The size limit sits **below** the framework's body limit deliberately, so a
 too-large file gets a 413 that names the limit instead of a connection that
 dies — the same reason `john-lau` set 15 MB under Next's 16 MB.
 
+## `hr`
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/employees` | `?include_left=1` to see people who have gone. Sorted by `employee_no` |
+| GET | `/employees/{employee_no}` | |
+| POST | `/employees` | create or update by `employee_no`. A rate change puts the figure **before and after** on the audit row — "when did his rate go up, and who said so" is the question a payroll dispute turns on |
+| GET | `/timesheet?from=&to=&unit=` | the grid: every person × every office day, plus `needs_review` and `marked` counts |
+| GET | `/timesheet/{employee_no}/{work_date}` | one day: every tap, the slot the rule gave it, the issues |
+| POST | `/attendance/import` | `{filename, rows[]}` from the reader's export. Returns `{import_id, added, duplicates, unknown[]}`. **Never creates a person** — an unrecognised machine number comes back with its tap count (D143). Idempotent on `(employee, at)`, so re-uploading a file adds nothing |
+| POST | `/attendance/scan` | a tap the machine missed. `reason` required (D137) |
+| POST | `/day-marks` | `{work_date, kind, reason, employee_no?}` — omit the employee and it covers the whole office. 409 if that day is already marked for that scope |
+| DELETE | `/day-marks/{id}` | the holiday was the Tuesday, not the Monday. Audited like any other act |
+| GET | `/overtime` | waiting claims first |
+| POST | `/overtime` | claim hours against a day. 409 if a live claim already exists for it |
+| POST | `/overtime/{id}/decide` | `{approved, reason?}`. Requires the `approve_goods` authority; declining requires a sentence (Q34 asks whether that is the right authority) |
+| GET | `/payroll` | runs, newest period first |
+| GET | `/payroll/{run_no}` | the run with every line computed on read |
+| POST | `/payroll` | open a run for a period. 409 if a run already covers those dates |
+| POST | `/payroll/{run_no}/approve` | requires `approve_funds`. **422 while any day in the period is still unread** (D139) |
+
+Writes need `hrd.create` / `hrd.update`; payroll needs `payroll.read` /
+`payroll.run`; the two decisions need authorities, which no module level
+implies (D24).
+
+Two refusals are the point of this service:
+
+```jsonc
+// POST /payroll/pyr-26-09-11_01/approve
+{ "error": { "code": "open_days", "status": 422,
+  "message": "25 day(s) in this period are still unread — the machine left them
+              incomplete and nobody has said what happened." } }
+
+// POST /attendance/import  →  200, with a question attached
+{ "data": { "added": 4, "duplicates": 1, "unknown": [ { "ref": "999", "count": 1 } ] } }
+```
+
+Events: `hr.payroll.approved`, and in Phase 2 `hr.attendance.imported`
+(so the workshop supervisor's chat gets the day's unreadable list without
+anybody opening the app).
+
 ## `events` — the seam for a third service
 
 | Method | Path | Notes |
@@ -248,7 +290,8 @@ not building a second system").
 Event names are `<service>.<entity>.<past tense>`:
 `procurement.pr.submitted`, `procurement.approval.requested`, `procurement.line.approved`,
 `procurement.round.closed`, `accounting.transaction.posted`,
-`accounting.transaction.voided`, `accounting.allocation.recorded`.
+`accounting.transaction.voided`, `accounting.allocation.recorded`,
+`hr.payroll.approved`.
 
 ---
 

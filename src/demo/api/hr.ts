@@ -1,10 +1,11 @@
 /** Implements `/api/v1/hr` from `03-api.md`. */
 import { ok, invalid, notFound, type Result } from "@/services/_shared/envelope";
 import type {
-  Employee, Attendance, AttendanceDay, OvertimeClaim, PayrollRun, PayrollView, PayBasis,
+  Employee, AttendanceScan, TimesheetDay, DayMark, DayMarkKind,
+  OvertimeClaim, PayrollRun, PayrollView, PayBasis,
 } from "@/services/hr/contracts";
 import { getState, apply, newId, nextDocNumber, writeAudit, writeOutbox } from "../store";
-import { attendanceDays, payrollView } from "../hr-derive";
+import { timesheet, timesheetDay, payrollView } from "../hr-derive";
 import { latency, actingUser, requireModule, requireAuthority, conflict, replayed, remember } from "./_kit";
 
 const SERVICE = "hr" as const;
@@ -118,39 +119,146 @@ export async function saveEmployee(
 
 export async function attendanceFor(
   input: { employee_no: string; from: string; to: string },
-): Promise<Result<AttendanceDay[]>> {
+): Promise<Result<TimesheetDay[]>> {
   await latency();
   const state = getState();
   const emp = state.employees.find((e) => e.employee_no === input.employee_no);
   if (!emp) return notFound(SERVICE, "employee_not_found", `No employee ${input.employee_no}.`);
-  return ok(SERVICE, attendanceDays(state, emp, input.from, input.to));
+  return ok(SERVICE, timesheet(state, emp, input.from, input.to));
 }
 
-/** Every open day in a period, across everybody — the thing somebody has to
- *  clear before a payroll run means anything. */
-export async function listOpenDays(
-  input: { from: string; to: string },
-): Promise<Result<(AttendanceDay & { employee_no: string; full_name: string })[]>> {
+/** The whole workshop for a week, one row per person per day.
+ *
+ *  This is the screen the payroll depends on: until a person has read every
+ *  day the machine could not, the figures below are arithmetic rather than
+ *  wages (D141).
+ */
+export async function getTimesheet(
+  input: { from: string; to: string; unit?: string },
+): Promise<Result<{
+  days: TimesheetDay[];
+  dates: string[];
+  employees: { employee_no: string; full_name: string; pay_basis: PayBasis }[];
+  needs_review: number;
+  marked: number;
+}>> {
   await latency();
   const state = getState();
-  const rows = state.employees
-    .filter((e) => e.active)
-    .flatMap((e) => attendanceDays(state, e, input.from, input.to)
-      .filter((d) => d.state === "open")
-      .map((d) => ({ ...d, employee_no: e.employee_no, full_name: e.full_name })))
-    .sort((a, b) => a.work_date.localeCompare(b.work_date));
-  return ok(SERVICE, rows);
+  const people = state.employees.filter(
+    (e) => e.active && (!input.unit || e.unit === input.unit),
+  );
+  const days = people.flatMap((e) => timesheet(state, e, input.from, input.to));
+  const dates = [...new Set(days.map((d) => d.work_date))].sort();
+  return ok(SERVICE, {
+    days,
+    dates,
+    employees: people.map((e) => ({
+      employee_no: e.employee_no, full_name: e.full_name, pay_basis: e.pay_basis,
+    })),
+    needs_review: days.filter((d) => d.state === "review").length,
+    marked: days.filter((d) => d.state === "marked").length,
+  });
 }
 
-/** Closing a day the machine did not finish.
+/** One day, in full — every tap and how the rule read it. */
+export async function getDay(
+  input: { employee_no: string; work_date: string },
+): Promise<Result<TimesheetDay>> {
+  await latency();
+  const state = getState();
+  const emp = state.employees.find((e) => e.employee_no === input.employee_no);
+  if (!emp) return notFound(SERVICE, "employee_not_found", `No employee ${input.employee_no}.`);
+  return ok(SERVICE, timesheetDay(state, emp, input.work_date));
+}
+
+/** Taking the machine's export.
  *
- *  Always by hand, always with a reason, and never by assuming a time. An
- *  attendance record nobody can challenge is a payroll nobody can challenge
- *  (D137).
+ *  The file is one row per tap, `Date/Time` as `DD/MM/YYYY HH:MM:SS`, and the
+ *  employee is the machine's own `No.` — which is why an employee carries that
+ *  number rather than a name match. Nothing is invented: a number the system
+ *  does not know is **reported back, not created**, because a person the
+ *  payroll has never heard of is a question, not a row (D143).
+ *
+ *  Re-uploading the same file changes nothing. A tap is identified by who, and
+ *  when, to the second.
  */
-export async function closeDay(
-  input: { employee_no: string; work_date: string; check_in?: string; check_out?: string; reason: string },
-): Promise<Result<Attendance>> {
+export async function importScans(
+  input: { filename: string; rows: { employee_ref: string; at: string; verify: string; location?: string | null }[] },
+  idempotencyKey?: string,
+): Promise<Result<{ import_id: string; added: number; duplicates: number; unknown: { ref: string; count: number }[] }>> {
+  await latency();
+  const cached = replayed<{ import_id: string; added: number; duplicates: number; unknown: { ref: string; count: number }[] }>(
+    SERVICE, "importScans", idempotencyKey,
+  );
+  if (cached) return cached;
+
+  const denied = requireModule(SERVICE, "hrd");
+  if (denied) return denied;
+  if (input.rows.length === 0) {
+    return invalid(SERVICE, "empty_file", "That file has no scans in it.", { field: "rows" });
+  }
+
+  const state = getState();
+  const byRef = new Map(state.employees.map((e) => [e.employee_no.replace(/^B-0*/, ""), e]));
+  const seen = new Set(state.attendance_scans.map((s) => `${s.employee_id}|${s.at}`));
+
+  const user = actingUser();
+  const importId = newId("imp");
+  let added = 0;
+  let duplicates = 0;
+  const unknown = new Map<string, number>();
+
+  apply((draft) => {
+    for (const row of input.rows) {
+      const emp = byRef.get(row.employee_ref.replace(/^0+/, ""));
+      if (!emp) {
+        unknown.set(row.employee_ref, (unknown.get(row.employee_ref) ?? 0) + 1);
+        continue;
+      }
+      const key = `${emp.id}|${row.at}`;
+      if (seen.has(key)) { duplicates += 1; continue; }
+      seen.add(key);
+      added += 1;
+      draft.attendance_scans.push({
+        id: newId("scn"),
+        employee_id: emp.id,
+        work_date: row.at.slice(0, 10),
+        at: row.at,
+        verify: row.verify,
+        location: row.location ?? null,
+        source: "import",
+        import_id: importId,
+        reason: null,
+        recorded_by: user.id,
+        recorded_at: new Date().toISOString(),
+      });
+    }
+    writeAudit(draft, {
+      service: SERVICE, entity: "attendance_import", entity_no: importId,
+      action: "import", outcome: "ok", reason: input.filename,
+      detail: {
+        rows: input.rows.length, added, duplicates,
+        unknown: [...unknown.keys()], by: user.email,
+      },
+    });
+  });
+
+  const result = {
+    import_id: importId, added, duplicates,
+    unknown: [...unknown.entries()].map(([ref, count]) => ({ ref, count })),
+  };
+  remember(SERVICE, "importScans", idempotencyKey, result);
+  return ok(SERVICE, result);
+}
+
+/** Putting in a tap the machine did not record.
+ *
+ *  Always by hand, always with a reason. The reason is what separates a
+ *  correction from a favour three months later (D137).
+ */
+export async function addScan(
+  input: { employee_no: string; work_date: string; time: string; reason: string },
+): Promise<Result<AttendanceScan>> {
   await latency();
   const denied = requireModule(SERVICE, "hrd");
   if (denied) return denied;
@@ -161,37 +269,117 @@ export async function closeDay(
   if (!input.reason.trim()) {
     return invalid(
       SERVICE, "reason_required",
-      "A time somebody typed needs to say why. In three months this sentence is the only thing separating a correction from a favour.",
+      "A time somebody typed needs to say why the machine missed it.",
       { field: "reason" },
     );
   }
-  if (!input.check_in && !input.check_out) {
-    return invalid(SERVICE, "time_required", "Put the time that is missing.", { field: "check_out" });
-  }
 
   const user = actingUser();
-  let row: Attendance | null = null;
+  let row: AttendanceScan | null = null;
   apply((draft) => {
     row = {
-      id: newId("att"),
+      id: newId("scn"),
       employee_id: emp.id,
       work_date: input.work_date,
-      check_in: input.check_in ? `${input.work_date}T${input.check_in}:00+08:00` : null,
-      check_out: input.check_out ? `${input.work_date}T${input.check_out}:00+08:00` : null,
+      at: `${input.work_date}T${input.time}:00+08:00`,
+      verify: "MANUAL",
+      location: null,
       source: "manual",
-      device_ref: null,
+      import_id: null,
       reason: input.reason.trim(),
       recorded_by: user.id,
       recorded_at: new Date().toISOString(),
     };
-    draft.attendance.push(row);
+    draft.attendance_scans.push(row);
     writeAudit(draft, {
       service: SERVICE, entity: "attendance", entity_no: `${emp.employee_no}/${input.work_date}`,
-      action: "close_day", outcome: "ok", reason: input.reason.trim(),
-      detail: { check_in: input.check_in ?? null, check_out: input.check_out ?? null, by: user.email },
+      action: "add_scan", outcome: "ok", reason: input.reason.trim(),
+      detail: { at: input.time, by: user.email },
     });
   });
-  return ok(SERVICE, row as unknown as Attendance);
+  return ok(SERVICE, row as unknown as AttendanceScan);
+}
+
+/** What HRD says about a day the reader cannot describe.
+ *
+ *  A public holiday, an afternoon the power went, somebody off sick. Marking
+ *  is not editing: the taps stay exactly as they were, and a mark for
+ *  everybody carries no employee at all (D142).
+ */
+export async function markDay(
+  input: { work_date: string; kind: DayMarkKind; reason: string; employee_no?: string | null },
+): Promise<Result<DayMark>> {
+  await latency();
+  const denied = requireModule(SERVICE, "hrd");
+  if (denied) return denied;
+
+  if (!input.reason.trim()) {
+    return invalid(
+      SERVICE, "reason_required",
+      "Say what happened. *Setengah hari* with no reason is a decision nobody can check in six months.",
+      { field: "reason" },
+    );
+  }
+  const state = getState();
+  const emp = input.employee_no
+    ? state.employees.find((e) => e.employee_no === input.employee_no)
+    : null;
+  if (input.employee_no && !emp) {
+    return notFound(SERVICE, "employee_not_found", `No employee ${input.employee_no}.`);
+  }
+  const clash = state.day_marks.find(
+    (m) => m.work_date === input.work_date && (m.employee_id ?? null) === (emp?.id ?? null),
+  );
+  if (clash) {
+    return conflict(
+      SERVICE, "already_marked",
+      `${input.work_date} is already marked as ${clash.kind}${emp ? ` for ${emp.full_name}` : " for everybody"}.`,
+    );
+  }
+
+  const user = actingUser();
+  let mark: DayMark | null = null;
+  apply((draft) => {
+    mark = {
+      id: newId("dmk"),
+      employee_id: emp?.id ?? null,
+      work_date: input.work_date,
+      kind: input.kind,
+      reason: input.reason.trim(),
+      marked_by: user.id,
+      marked_at: new Date().toISOString(),
+    };
+    draft.day_marks.push(mark);
+    writeAudit(draft, {
+      service: SERVICE, entity: "day_mark", entity_no: `${input.work_date}/${emp?.employee_no ?? "ALL"}`,
+      action: "mark", outcome: "ok", reason: input.reason.trim(),
+      detail: { kind: input.kind, by: user.email },
+    });
+  });
+  return ok(SERVICE, mark as unknown as DayMark);
+}
+
+/** Taking a mark off. It happens — the holiday was the Tuesday, not the
+ *  Monday — and it is an act with a name on it like any other. */
+export async function unmarkDay(markId: string): Promise<Result<{ removed: string }>> {
+  await latency();
+  const denied = requireModule(SERVICE, "hrd");
+  if (denied) return denied;
+
+  const state = getState();
+  const mark = state.day_marks.find((m) => m.id === markId);
+  if (!mark) return notFound(SERVICE, "mark_not_found", "No such mark.");
+
+  const user = actingUser();
+  apply((draft) => {
+    draft.day_marks = draft.day_marks.filter((m) => m.id !== markId);
+    writeAudit(draft, {
+      service: SERVICE, entity: "day_mark", entity_no: `${mark.work_date}/${mark.employee_id ?? "ALL"}`,
+      action: "unmark", outcome: "ok", reason: mark.reason,
+      detail: { kind: mark.kind, by: user.email },
+    });
+  });
+  return ok(SERVICE, { removed: markId });
 }
 
 /** Claiming overtime. The machine saw them stay; this says it was work. */
@@ -362,7 +550,7 @@ export async function approvePayroll(runNo: string): Promise<Result<PayrollView>
   if (view.open_days > 0) {
     return invalid(
       SERVICE, "open_days",
-      `${view.open_days} day(s) in this period have no check-out. Close them first — a payroll over days nobody finished recording is wrong about the people least able to argue.`,
+      `${view.open_days} day(s) in this period are still unread — the machine left them incomplete and nobody has said what happened. Read them on the timesheet first: a payroll over days nobody finished recording is wrong about the people least able to argue.`,
       { field: "open_days" },
     );
   }

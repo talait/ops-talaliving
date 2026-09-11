@@ -75,11 +75,43 @@ insert into core.doc_kind_labels (kind, label) values
   ('quotation','Reference Link'),
   ('invoice','Invoice'),
   ('surat_jalan','Surat Jalan'),
+  ('rekening_koran','Rekening Koran'),
   ('surat_dokter','Surat Dokter'),
   ('surat_lembur','Surat Lembur'),
+  ('laporan_lembur','Laporan Lembur'),
   ('gambar_kerja','Gambar Kerja'),
   ('gambar_jadi','Gambar Jadi'),
+  -- Berkas 201. The wording is the screen's; the code is what is stored, so
+  -- renaming "Foto" to "Pas Foto" one day is a row here and not a migration.
+  ('ktp','KTP'),
+  ('kartu_keluarga','Kartu Keluarga'),
+  ('ijazah','Ijazah'),
+  ('cv','CV'),
+  ('kontrak_kerja','Kontrak Kerja'),
+  ('npwp','NPWP'),
+  ('bpjs','BPJS'),
+  ('foto','Foto'),
+  ('sertifikat','Sertifikat'),
+  ('surat_peringatan','Surat Peringatan'),
   ('other','Others');
+
+-- Every kind has a label, checked here rather than hoped for. A kind the UI
+-- cannot name renders as a blank chip, and the first person to notice is a
+-- user rather than whoever added the enum value.
+do $$
+declare missing text;
+begin
+  select string_agg(e.enumlabel, ', ') into missing
+    from pg_enum e
+    join pg_type t on t.oid = e.enumtypid
+    join pg_namespace n on n.oid = t.typnamespace
+   where n.nspname = 'core' and t.typname = 'doc_kind_t'
+     and not exists (select 1 from core.doc_kind_labels l
+                      where l.kind::text = e.enumlabel);
+  if missing is not null then
+    raise exception 'doc_kind_t has no label for: %', missing;
+  end if;
+end $$;
 
 alter table core.attachments       enable row level security;
 alter table core.attachment_links  enable row level security;

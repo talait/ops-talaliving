@@ -46,13 +46,25 @@ create type core.authority_t as enum (
   'approve_goods','approve_funds','approve_overtime','post_ledger','resolve_inbox');
 
 -- ── documents and evidence ────────────────────────────────────────────────
--- `laporan_lembur` was missing: a staff overtime session's own report is a
--- document kind the screens already file (D146), and a kind the database
--- cannot store is evidence that quietly lands under `other`.
+-- A kind the database cannot store is evidence that quietly lands under
+-- `other`, and `other` is where things go to stop being findable. So this list
+-- tracks `DOC_KINDS` in `src/services/documents/contracts.ts` exactly.
+--
+-- `laporan_lembur` was missing from the first cut (D146). `rekening_koran` and
+-- the eleven berkas-201 kinds arrived with M29 and M31: a bank statement is
+-- **primary** evidence rather than supporting, because for the two leadership
+-- accounts it is not a check on rows somebody typed — it is the only way their
+-- rows exist at all (D180); and a personnel file is a strip of evidence on the
+-- same road as everything else rather than a folder on somebody's laptop
+-- (D177).
 create type core.doc_kind_t as enum (
   'nota','transfer_proof','goods_photo','delivery_note','purchase_order',
-  'quotation','invoice','surat_jalan','surat_dokter','surat_lembur',
-  'laporan_lembur','gambar_kerja','gambar_jadi','other');
+  'quotation','invoice','surat_jalan','rekening_koran',
+  'surat_dokter','surat_lembur','laporan_lembur',
+  'gambar_kerja','gambar_jadi',
+  'ktp','kartu_keluarga','ijazah','cv','kontrak_kerja','npwp','bpjs',
+  'foto','sertifikat','surat_peringatan',
+  'other');
 
 -- A superset of the contract's `LinkEntity` on purpose: a link's parent is a
 -- row in this database, and there are parents here the demo never needed to
@@ -60,7 +72,12 @@ create type core.doc_kind_t as enum (
 -- entity somebody needs and cannot name costs an upload.
 create type core.link_entity_t as enum (
   'pr_line','transaction','receipt','purchase_order','payment_round',
-  'overtime_sheet','day_mark','work_order','product','log_purchase','project');
+  'overtime_sheet','day_mark','work_order','product','log_purchase','project',
+  -- Somebody's own file: KTP, ijazah, the contract they signed (D177).
+  'employee',
+  -- A bank statement belongs to the account and the period, not to any one row
+  -- inside it (D180).
+  'bank_statement');
 
 -- ── procurement ───────────────────────────────────────────────────────────
 -- Seven values, not the ten the first cut carried. `HELD` and `REJECTED` went

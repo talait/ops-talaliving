@@ -101,23 +101,32 @@ Consequences, so nothing is a surprise later:
   by default. The link can be shared with the team as-is.
 - Reversible in one setting, whenever `main` should take over again.
 
-### Phase 2 — the backend (proposed on D14, awaiting the owner's go)
+### Phase 2 — the backend (kit written 2026-09-11 · `docs/plan/phase-2/`)
 
-| # | Milestone | Proposed | Status | Note |
+The D14 proposal (P1–P8, dated to late September) is **superseded**: it was
+written before HR, production, inventory and master data existed, and its
+ordering by layer has been replaced by ordering per schema. The brief the
+build session works from is `docs/plan/phase-2/` — readiness, the ladder, the
+API inventory and the estimate.
+
+| # | Milestone | Sessions | Status | Note |
 |---|---|---|---|---|
-| P1 | Supabase project + `core` schema + RLS | Thu 24 Sep | TODO | starts only after M14 is signed off. `core.app_user`, audit with `detail jsonb`, `next_doc_number()`, attachments and the one link table. RLS in the same migration that creates each table (ADR-002) |
-| P2 | Identity service, real session | Fri 25 Sep | TODO | Supabase Auth behind the same `identity` contract the demo already uses. The eleven module grants and four authorities become rows, not constants |
-| P3 | `procure` schema + procurement service | Mon 28 – Tue 29 Sep | TODO | PR chain, PO with `expected_date` (§1 of the D14 schema), receipts with `qc_by`, the approval-request table carrying the answerer's identity (§4), variances as rows (§5) |
-| P4 | `acct` schema + accounting service | Wed 30 Sep – Thu 1 Oct | TODO | ledger with the evidenced-row constraint trigger (§8), allocations against a line **or** an order (§11), the exception inbox's five roads (§7), `transfer_group` (§2), the three calendar tables |
-| P5 | The views, one by one, against the demo's numbers | Fri 2 Oct | TODO | `derive.ts` is the specification: every function there becomes a view with the same name, and the demo's figures are the test data. If `v_cash_plan` does not also say *November*, one of the two is wrong |
-| P6 | Documents service on Storage | Mon 5 Oct | TODO | signed URLs, the same `attachment_link` road, camera capture unchanged |
-| P7 | Import from `john-lau`, one way | Tue 6 – Wed 7 Oct | TODO | vendors, items, projects, open PRs and the ledger. One way, never back. Unclassified types (`EJO`, `PACKING`) carried as-is, never folded into `OTHERS` (Q10) |
-| P8 | Cut over and serve at `dev-ops.talaliving.com` | Thu 8 Oct | TODO | Vercel custom domain or the office PC — a Phase 2 decision, deliberately not pre-empted here |
+| B0 | Foundation: schemas, enums, identity, audit, numbering, evidence | 0,5 | **DONE** | `supabase/migrations/0001–0006`, applied from nothing against Postgres 16. `rebuild.sh` re-applies the ladder; `smoke.sql` proves the access model **refuses** — HRD cannot approve funds, `write` is not `admin`, an authority is never implied by a level |
+| B1 | The remaining 21 migrations | 3–5 | TODO | procure PR/rounds/PO/receipts · acct ledger/inbox/calendar · hr · prod · inv |
+| B2 | Derivations → views | 4–6 | TODO | 2.583 lines of TypeScript. The demo's figures are the test data: if `v_cash_plan` does not also say *November*, one of the two is wrong |
+| B3 | Write seams → RPCs | 3–4 | TODO | ~25 functions, each with audit + outbox + refusal + idempotency |
+| B4 | `src/lib/api` and the swap, one service at a time | 2–3 | TODO | same signatures, so no screen changes |
+| B5 | Supabase Auth and real sessions | 1 | TODO | `actAs` goes; the persona picker becomes dev-only |
+| B6 | Storage: bucket, signed URLs, sha256 | 1 | TODO | the evidence road end to end |
+| B7 | Smoke + RLS matrix tests | 2 | TODO | one refusal and one derivation per schema |
+| B8 | Data migration from Sheets + `john-lau` | 2–8 | BLOCKED | the only open-ended item: nobody has yet written down what must come across and in what state |
+| B9 | Parallel run and cutover | 2–3 | TODO | both systems in use, figures reconciled daily |
 
-**The ordering rule.** P5 comes *after* both schemas and before the import on
-purpose: the views are where Phase 1's real output lives, and checking them
-against figures somebody has already read on a screen is the cheapest
-verification available to this project. Every other order loses that.
+**The ordering rule.** Per **schema**, not per layer: finish `procure` from
+table to view to swapped screen before starting `acct`. A vertical slice
+proves the pattern; four horizontal layers prove nothing until the last one
+lands. Identity comes first regardless — every refusal elsewhere is theatre
+until the database knows who is asking.
 
 ---
 
@@ -135,6 +144,7 @@ verification available to this project. Every other order loses that.
 | `07-ways-of-working.md` | Phone-driven workflow, session protocol, prompt recipes | both |
 | `backlog.md` | What somebody reported while using it, bugs and asks alike — kept out of the milestone board so neither list lies about the other | 1 |
 | `findings.md` | **Written as we go.** What each screen taught us about the rules — the input to Phase 2 | 1 |
+| `phase-2/` | The build kit: readiness verdict, the migration ladder, the API inventory, the estimate, and the protocol that lets the design session keep running while the backend is built | 2 |
 
 ---
 

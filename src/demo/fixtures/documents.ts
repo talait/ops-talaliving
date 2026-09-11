@@ -48,7 +48,9 @@ export const ATTACHMENTS: Attachment[] = [
   { id: "att_14", storage_path: "demo/2026-09/nota-rak-besi.jpg", url: null, filename: "nota-rak-besi.jpg", sha256: "2290ffcc7710", mime: "image/jpeg", bytes: 555_310, uploaded_by: "usr_made", uploaded_at: "2026-09-02T18:30:00+08:00", source: "chat", duplicate_suspect: false },
   /* HR. A doctor's letter and an overtime letter — evidence like any other. */
   { id: "att_40", storage_path: "demo/2026-09/surat-dokter-siti.jpg", url: null, filename: "surat-dokter-siti.jpg", sha256: "d41a77bc0091", mime: "image/jpeg", bytes: 612_884, uploaded_by: "usr_wulan", uploaded_at: "2026-09-02T09:08:00+08:00", source: "web", duplicate_suspect: false },
-  { id: "att_41", storage_path: "demo/2026-09/surat-lembur-310826.pdf", url: null, filename: "surat-lembur-310826.pdf", sha256: "6b20aa41cc03", mime: "application/pdf", bytes: 96_441, uploaded_by: "usr_wulan", uploaded_at: "2026-09-01T08:18:00+08:00", source: "web", duplicate_suspect: false },
+  { id: "att_41", storage_path: "demo/2026-09/surat-lembur-produksi-310826.pdf", url: null, filename: "surat-lembur-produksi-310826.pdf", sha256: "6b20aa41cc03", mime: "application/pdf", bytes: 96_441, uploaded_by: "usr_wulan", uploaded_at: "2026-09-01T08:18:00+08:00", source: "web", duplicate_suspect: false },
+  { id: "att_42", storage_path: "demo/2026-09/lembur-andi-010926.png", url: null, filename: "lembur-andi-010926.png", sha256: "ff8123aa5501", mime: "image/png", bytes: 388_112, uploaded_by: "usr_andi", uploaded_at: "2026-09-01T21:41:00+08:00", source: "web", duplicate_suspect: false },
+  { id: "att_43", storage_path: "demo/2026-09/lembur-andi-020926.png", url: null, filename: "lembur-andi-020926.png", sha256: "cd90aa112288", mime: "image/png", bytes: 201_553, uploaded_by: "usr_andi", uploaded_at: "2026-09-02T22:11:00+08:00", source: "web", duplicate_suspect: false },
 ];
 
 export const ATTACHMENT_LINKS: AttachmentLink[] = [
@@ -56,7 +58,11 @@ export const ATTACHMENT_LINKS: AttachmentLink[] = [
    * the surat lembur is what leadership is actually signing (D145). Same road
    * as every other document here: uploaded once, linked by a named person. */
   { id: "lnk_40", attachment_id: "att_40", entity: "day_mark", entity_no: "dmk_03", kind: "Surat Dokter", linked_by: "usr_wulan", linked_at: "2026-09-02T09:10:00+08:00" },
-  { id: "lnk_41", attachment_id: "att_41", entity: "overtime", entity_no: "ovt_01", kind: "Surat Lembur", linked_by: "usr_wulan", linked_at: "2026-09-01T08:20:00+08:00" },
+  { id: "lnk_41", attachment_id: "att_41", entity: "overtime", entity_no: "lbr_01", kind: "Surat Lembur", linked_by: "usr_wulan", linked_at: "2026-09-01T08:20:00+08:00" },
+  /* A staff session's evidence is the screenshot of what they were doing —
+   * the report itself, not a signed form (D146). */
+  { id: "lnk_42", attachment_id: "att_42", entity: "overtime", entity_no: "lbr_02", kind: "Laporan Lembur", linked_by: "usr_andi", linked_at: "2026-09-01T21:42:00+08:00" },
+  { id: "lnk_43", attachment_id: "att_43", entity: "overtime", entity_no: "lbr_03", kind: "Laporan Lembur", linked_by: "usr_andi", linked_at: "2026-09-02T22:12:00+08:00" },
 
   { id: "lnk_01", attachment_id: "att_01", entity: "transaction", entity_no: "trx-26-08-20_003", kind: "Receipt / Invoice / Nota", linked_by: "usr_putri", linked_at: "2026-08-20T16:06:00+08:00" },
   { id: "lnk_02", attachment_id: "att_02", entity: "transaction", entity_no: "trx-26-08-20_003", kind: "Payment Proof", linked_by: "usr_putri", linked_at: "2026-08-20T16:09:00+08:00" },

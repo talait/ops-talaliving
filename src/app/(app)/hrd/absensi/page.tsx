@@ -7,13 +7,10 @@ import { Loaded, SourceBadge, useLoad } from "@/components/ui/loaded";
 import { formatNumber } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { hr } from "@/demo/api";
-import {
-  DAY_MARK_SHORT, OVERTIME_STAGE_LABEL,
-  type DayState, type OvertimeView,
-} from "@/services/hr/contracts";
+import { DAY_MARK_SHORT, OVERTIME_STAGE_LABEL, type DayState } from "@/services/hr/contracts";
+import Link from "next/link";
 import { useSession } from "@/store/session";
 import { ImportScans } from "./ImportScans";
-import { OvertimeRow } from "./OvertimeRow";
 import { DayDrawer } from "./DayDrawer";
 import { MarkDay } from "./MarkDay";
 
@@ -42,7 +39,7 @@ const CELL: Record<DayState, string> = {
 export default function TimesheetPage() {
   const { can, hasAuthority } = useSession();
   const [sheet, reload] = useLoad(() => hr.getTimesheet(PERIOD), []);
-  const [claims, reloadClaims] = useLoad(() => hr.listOvertime(), []);
+  const [sheets, reloadSheets] = useLoad(() => hr.listOvertimeSheets(), []);
   const [importing, setImporting] = useState(false);
   const [marking, setMarking] = useState<string | null>(null);
   const [open, setOpen] = useState<{ employee_no: string; work_date: string } | null>(null);
@@ -161,36 +158,44 @@ export default function TimesheetPage() {
               </p>
             </Card>
 
-            <Loaded state={claims} onRetry={reloadClaims}>
+            {/* Overtime lives on its own screen now: it arrives as a sheet,
+                and the two kinds of sheet answer to different people (D146).
+                What belongs here is only the part that touches attendance —
+                how many hours the machine saw that nobody has signed for. */}
+            <Loaded state={sheets} onRetry={reloadSheets}>
               {(all) => {
-                const waiting = all.filter((c) => c.stage !== "approved" && c.stage !== "declined");
-                const byStage = (st: typeof waiting[number]["stage"]) => waiting.filter((c) => c.stage === st).length;
+                const waiting = all.filter((x) =>
+                  x.stage === "waiting_hrd" || x.stage === "waiting_surat" || x.stage === "waiting_leader");
+                const unreviewed = all.filter((x) => x.stage === "paid_default");
                 return (
                   <Card>
                     <CardHeader
-                      title={`Lembur — ${waiting.length} menunggu`}
-                      subtitle="Dua tanda tangan: HRD memeriksa jamnya, pimpinan menandatangani suratnya. Hanya yang lengkap masuk payslip."
+                      title="Lembur"
+                      subtitle="Jam lembur tidak dicatat dari mesin — ia datang sebagai lembar, dan lembar itu yang ditandatangani."
                       icon={Clock}
                       action={
-                        <span className="flex flex-wrap gap-1.5">
-                          {byStage("waiting_hrd") > 0 && <Badge tone="amber">{byStage("waiting_hrd")} {OVERTIME_STAGE_LABEL.waiting_hrd}</Badge>}
-                          {byStage("waiting_surat") > 0 && <Badge tone="violet">{byStage("waiting_surat")} {OVERTIME_STAGE_LABEL.waiting_surat}</Badge>}
-                          {byStage("waiting_leader") > 0 && <Badge tone="brand">{byStage("waiting_leader")} {OVERTIME_STAGE_LABEL.waiting_leader}</Badge>}
-                        </span>
+                        <Link href="/hrd/lembur">
+                          <Button size="sm" variant="outline">Buka lembar lembur</Button>
+                        </Link>
                       }
                     />
                     <ul className="divide-y divide-slate-100">
-                      {waiting.length === 0 && (
-                        <li className="px-5 py-6 text-[13px] text-slate-500">Tidak ada lembur yang menunggu keputusan.</li>
+                      {waiting.length === 0 && unreviewed.length === 0 && (
+                        <li className="px-5 py-5 text-[13px] text-slate-500">
+                          Tidak ada lembar yang menunggu keputusan.
+                        </li>
                       )}
-                      {waiting.map((c) => (
-                        <OvertimeRow
-                          key={c.id}
-                          claim={c}
-                          mayHrd={mayEdit}
-                          mayLeader={mayLeader}
-                          onChanged={reloadClaims}
-                        />
+                      {[...waiting, ...unreviewed].slice(0, 6).map((x) => (
+                        <li key={x.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-5 py-2.5">
+                          <span className="min-w-[180px] flex-1 text-[13px] text-slate-800">
+                            {x.purpose}
+                            <span className="ml-2 font-mono text-[10px] text-slate-400">{x.sheet_no} · {x.work_date}</span>
+                          </span>
+                          <span className="whitespace-nowrap text-[12px] text-slate-600">
+                            {x.lines.length} orang · {formatNumber(x.total_hours)} jam
+                          </span>
+                          <Badge tone={x.payable ? "green" : "amber"} dot>{OVERTIME_STAGE_LABEL[x.stage]}</Badge>
+                        </li>
                       ))}
                     </ul>
                   </Card>

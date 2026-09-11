@@ -21,6 +21,10 @@ export type ServiceName =
   /** The sixth service (D136). Kept out of `identity` deliberately: one says
    *  who may open a screen, the other says what somebody is owed. */
   | "hr"
+  /** The seventh (D148): what is being made, how far it got, and by when.
+   *  Overtime references it by work-order number at the seam, never by
+   *  reaching into its tables (ADR-004). */
+  | "production"
   | "documents"
   | "events";
 

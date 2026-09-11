@@ -64,10 +64,14 @@ export const USERS: DemoUser[] = [
     authorities: [],
   },
   {
+    /* Kepala Gudang, and the workshop's own hand on the production board: he
+     * is the one who opens a work order and reports what came off the floor
+     * (D148). No authorities — reporting work is not approving anything. */
     id: "usr_made", email: "made@talaliving.com", full_name: "Made Suparta", is_active: true,
     modules: [
       { module: "dashboard", level: "read" },
       { module: "inventory", level: "write" },
+      { module: "production", level: "write" },
       { module: "procurement", level: "read" },
     ],
     authorities: [],

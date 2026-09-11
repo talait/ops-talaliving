@@ -191,57 +191,112 @@ export interface TimesheetDay {
   issues: string[];
 }
 
-/** Overtime is claimed and approved, never inferred.
+/** Overtime arrives as a **sheet**, and there are two kinds of sheet.
  *
- *  The machine knows somebody was in the building at 19:40. It does not know
- *  whether they were working, waiting for a lift, or finishing a cigarette —
- *  and paying 1,5× for all three is how overtime becomes a habit. So hours
- *  past the standard day are **shown** from the moment they happen and **paid**
- *  only once a supervisor says they were worked (D138).
+ *  This is the owner's own description of the paper that already exists, and
+ *  the two are genuinely different documents (D146):
+ *
+ *  - **Produksi.** One sheet, one night, **many names** — and against each
+ *    name the job, the item, how far it got and how many. It is signed by
+ *    leadership, because it is a batch of wages and a batch of production
+ *    claims at once. It is also the only overtime that needs that signature.
+ *  - **Staff.** One sheet **per session**, one person, with their own report
+ *    of what they did — usually a screenshot of the work. No leadership
+ *    signature: HRD decides whether it is paid, and **the default is yes**,
+ *    because the person already stayed and the report is attached.
+ *
+ *  What the two share is that hours are never inferred from the reader (D138).
+ *  What they do not share is who has to sign, and pretending otherwise is how
+ *  a designer's Tuesday evening ends up waiting on the Direktur.
  */
-export interface OvertimeClaim {
+export type OvertimeKind = "production" | "staff";
+
+export const OVERTIME_KIND_LABEL: Record<OvertimeKind, string> = {
+  production: "Lembur produksi",
+  staff: "Lembur staff",
+};
+
+export interface OvertimeSheet {
   id: string;
-  employee_id: string;
+  sheet_no: string;
+  kind: OvertimeKind;
+  /** The office day the work happened. One sheet covers one night. */
   work_date: string;
-  hours: number;
-  reason: string;
-  claimed_by: string;
-  claimed_at: string;
-  /** HRD first: the hours are real, the taps say so, the man was here. */
-  hrd_approved_by: string | null;
-  hrd_approved_at: string | null;
-  /** Then leadership, and not before the surat lembur is attached (D145). */
+  /** Why there was overtime at all — the shift's own heading. */
+  purpose: string;
+  created_by: string;
+  created_at: string;
+  /** HRD checked the hours against the taps. Both kinds pass through here. */
+  hrd_checked_by: string | null;
+  hrd_checked_at: string | null;
+  /** Leadership's signature. **Production only** (D146). */
   leader_approved_by: string | null;
   leader_approved_at: string | null;
-  /** Either step can decline, and the reason says which one did. */
+  /** Staff sheets are paid unless HRD says otherwise — so this ships `true`
+   *  and is only ever turned off deliberately, with a reason (D146). Not used
+   *  by production sheets, whose payment is the leadership signature. */
+  paid: boolean;
+  unpaid_reason: string | null;
   declined_by: string | null;
   declined_reason: string | null;
 }
 
-/** Where a claim has got to. Derived from the two approvals, never stored —
- *  two columns and a status that can disagree with them is one column too
- *  many (A3). */
+/** One person's line on a sheet.
+ *
+ *  The production fields are why this module now touches `production`: *item
+ *  apa, proses sampai mana, berapa*. They are carried as the work order's
+ *  public number and a stage code, validated at the seam — never as a foreign
+ *  key into another service (ADR-004, D147).
+ */
+export interface OvertimeLine {
+  id: string;
+  sheet_id: string;
+  employee_id: string;
+  hours: number;
+  /** What they were doing, in the words on the sheet. */
+  task: string;
+  /** Production lines: which order, which stage, how many finished. */
+  wo_no: string | null;
+  stage: string | null;
+  qty_done: number | null;
+}
+
+/** Where a sheet has got to. Derived from the signatures and the attached
+ *  paper, never stored beside them (A3). */
 export type OvertimeStage =
-  | "waiting_hrd"      // nobody has checked it yet
-  | "waiting_surat"    // HRD said yes; the surat lembur is not attached
-  | "waiting_leader"   // the letter is there; leadership has not signed
-  | "approved"         // both yes — and only now does it reach a payslip
+  | "waiting_hrd"      // nobody has checked the hours yet
+  | "waiting_surat"    // production: the signed sheet is not attached
+  | "waiting_leader"   // production: the letter is there, leadership has not signed
+  | "approved"         // production: both signatures — it reaches a payslip
+  | "paid_default"     // staff: paid because nobody said otherwise
+  | "paid_checked"     // staff: HRD looked and said yes
+  | "unpaid"           // staff: HRD looked and said no, with a reason
   | "declined";
 
 export const OVERTIME_STAGE_LABEL: Record<OvertimeStage, string> = {
   waiting_hrd: "Menunggu HRD",
   waiting_surat: "Menunggu surat lembur",
   waiting_leader: "Menunggu pimpinan",
-  approved: "Disetujui",
+  approved: "Disetujui pimpinan",
+  paid_default: "Dibayar — belum ditinjau",
+  paid_checked: "Dibayar — ditinjau HRD",
+  unpaid: "Tidak dibayar",
   declined: "Ditolak",
 };
 
-export interface OvertimeView extends OvertimeClaim {
+export interface OvertimeLineView extends OvertimeLine {
   employee_no: string;
   full_name: string;
+}
+
+export interface OvertimeSheetView extends OvertimeSheet {
+  lines: OvertimeLineView[];
   stage: OvertimeStage;
-  /** The surat lembur, if somebody has attached it. */
-  surat: { attachment_id: string; filename: string } | null;
+  /** True when the hours on this sheet reach a payslip as they stand. */
+  payable: boolean;
+  total_hours: number;
+  /** The signed sheet (production) or the work report (staff). */
+  evidence: { attachment_id: string; filename: string; kind: string } | null;
 }
 
 export type PayrollStatus = "DRAFT" | "APPROVED" | "PAID";

@@ -6,7 +6,7 @@
 > status codes, so screens are written once. When Phase 2 arrives, the demo
 > module is replaced by `fetch` and no screen changes.
 
-Six services — five from D5, plus `hr` (D136). Each is independently
+Seven services — five from D5, plus `hr` (D136) and `production` (D148). Each is independently
 addressable, independently documented, and could be moved to its own host by
 changing one environment variable (ADR-001). None of them imports another.
 
@@ -17,9 +17,10 @@ changing one environment variable (ADR-001). None of them imports another.
 /api/v1/documents/…       core files  upload, link, fetch evidence
 /api/v1/events/…          core.outbox subscribe, replay — the third-party seam
 /api/v1/hr/…              hr.*        people, attendance, overtime, payroll
+/api/v1/production/…      prod.*      work orders, stages, progress, deadlines
 ```
 
-## Service contract — the same for all six
+## Service contract — the same for all seven
 
 ### Envelope
 
@@ -248,8 +249,12 @@ dies — the same reason `john-lau` set 15 MB under Next's 16 MB.
 | DELETE | `/day-marks/{id}` | the holiday was the Tuesday, not the Monday. Audited like any other act |
 | GET | `/overtime` | waiting claims first |
 | POST | `/overtime` | claim hours against a day. 409 if a live claim already exists for it |
-| POST | `/overtime/{id}/surat-lembur` | link the overtime letter to the claim. Needed before leadership can approve, not before HRD can |
-| POST | `/overtime/{id}/decide` | `{step: "hrd" \| "leader", approved, reason?}`. **Two signatures** (D145): `hrd` needs `hrd.update`, `leader` needs the `approve_overtime` authority. `leader` is 409 before HRD has approved, and **422 while no surat lembur is attached**. Declining, at either step, requires a sentence |
+| GET | `/overtime` | every sheet with its lines, its stage and the paper behind it. Anything still waiting comes first |
+| GET | `/overtime/{sheet_no}` | one sheet in full |
+| POST | `/overtime` | open a sheet: `{kind: "production" \| "staff", work_date, purpose}`. The kind decides who has to sign, which is not a detail to discover at the end (D146) |
+| POST | `/overtime/{sheet_no}/lines` | add a name: `{employee_no, hours, task}` plus, on a production sheet, `{wo_no, stage, qty_done}` — the production report for that night (D147). 409 once the sheet has been checked: a new name belongs on a new sheet, or the signature no longer points at what was signed |
+| POST | `/overtime/{sheet_no}/document` | link the paper — `Surat Lembur` for production, `Laporan Lembur` (the screenshot) for staff |
+| POST | `/overtime/{sheet_no}/decide` | `{step: "hrd" \| "leader", approved, reason?}`. **Production** takes both: `hrd` needs `hrd.update`, `leader` needs `approve_overtime`, is 409 before HRD, and **422 while no surat lembur is attached**. **Staff** takes `hrd` alone — `leader` on a staff sheet is 422 — and the sheet is already paid, so `approved: false` is what HRD's decision actually does, and it needs a sentence (D146) |
 | GET | `/payroll` | runs, newest period first |
 | GET | `/payroll/{run_no}` | the run with every line computed on read |
 | POST | `/payroll` | open a run for a period. 409 if a run already covers those dates |
@@ -271,7 +276,7 @@ Three refusals are the point of this service:
   "message": "25 day(s) in this period are still unread — the machine left them
               incomplete and nobody has said what happened." } }
 
-// POST /overtime/ovt_03/decide  {"step":"leader","approved":true}
+// POST /overtime/lbr-26-09-11_01/decide  {"step":"leader","approved":true}
 { "error": { "code": "surat_required", "status": 422,
   "message": "Surat lembur belum dilampirkan. Pimpinan menandatangani suratnya
               — tanpa itu yang disetujui hanya angka." } }
@@ -284,6 +289,25 @@ Events: `hr.payroll.approved`, `hr.overtime.approved` (emitted on the second
 signature, not the first), and in Phase 2 `hr.attendance.imported`
 (so the workshop supervisor's chat gets the day's unreadable list without
 anybody opening the app).
+
+## `production`
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/stages` | the seven, seeded and ordered (Q35) |
+| GET | `/work-orders` | `?include_done=1`. **Late first, then by due date** — the board's job is to put the thing somebody has to deal with at the top |
+| GET | `/work-orders/{wo_no}` | the order with per-stage progress, `current_stage`, `percent`, `days_left`, `late`, and the warnings in words |
+| POST | `/work-orders` | `{item_name, qty, uom, due_date, project_code?}`. **422 with no due date**: an order that cannot be late is one nobody can tell is late |
+| GET | `/work-orders/{wo_no}/progress` | every entry, newest first — including the ones a signed lembur sheet posted |
+| POST | `/work-orders/{wo_no}/progress` | `{stage, qty, work_date, worked_by?, note?, source?, source_ref?}`. Append-only; a correction is a **negative qty with a note**. 422 over the ordered quantity; a stage ahead of the previous one is accepted and **warned about** (A6). Idempotent on `(source_ref, wo, stage)` |
+| POST | `/work-orders/{wo_no}/close` | 422 with no reason when the quantity is not finished |
+
+Writes need `production.update` — **except** an entry whose `source` is
+`overtime_sheet`, which the `approve_overtime` authority may write, because
+that posting is the consequence of the signature on the sheet and the signature
+is its authority (D147).
+
+Events: `production.work_order.closed`.
 
 ## `events` — the seam for a third service
 
@@ -303,7 +327,8 @@ Event names are `<service>.<entity>.<past tense>`:
 `procurement.pr.submitted`, `procurement.approval.requested`, `procurement.line.approved`,
 `procurement.round.closed`, `accounting.transaction.posted`,
 `accounting.transaction.voided`, `accounting.allocation.recorded`,
-`hr.payroll.approved`.
+`hr.payroll.approved`, `hr.overtime.approved`,
+`production.work_order.closed`.
 
 ---
 

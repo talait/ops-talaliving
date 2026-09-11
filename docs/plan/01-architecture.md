@@ -30,7 +30,7 @@
                    Postgres + Auth + Storage + RLS
 ```
 
-Six services in v1 — the five below plus `hr`, added on D136. Each one is
+Seven services in v1 — the five below plus `hr` (D136) and `production` (D148). Each one is
 addressed only through
 `/api/v1/<service>/…`, configured by a per-service base URL, and reachable
 from anything that speaks HTTP.
@@ -39,7 +39,8 @@ from anything that speaks HTTP.
 
 **Decision.** Build the services as strictly separated code and data, all
 running inside one Next.js process today. Five at the time of this decision,
-six since `hr` (D136) — the count is not the point, the separation is.
+seven since `hr` (D136) and `production` (D148) — the count is not the point,
+the separation is.
 
 **Why not five processes today.** The whole system has to be driven from a
 phone this week and then run on one office PC. Five containers means five

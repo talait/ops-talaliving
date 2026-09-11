@@ -2,26 +2,37 @@
 import { ok, invalid, notFound, type Result } from "@/services/_shared/envelope";
 import type {
   Employee, AttendanceScan, TimesheetDay, DayMark, DayMarkKind,
-  OvertimeClaim, OvertimeView, PayrollRun, PayrollView, PayBasis,
+  OvertimeSheet, OvertimeLine, OvertimeSheetView, OvertimeKind,
+  PayrollRun, PayrollView, PayBasis,
 } from "@/services/hr/contracts";
 import { getState, apply, newId, nextDocNumber, writeAudit, writeOutbox } from "../store";
-import { timesheet, timesheetDay, payrollView, overtimeStage, suratLembur } from "../hr-derive";
+import {
+  timesheet, timesheetDay, payrollView, overtimeStage, overtimePayable, sheetEvidence,
+} from "../hr-derive";
 import { latency, actingUser, requireModule, requireAuthority, conflict, replayed, remember } from "./_kit";
 
 const SERVICE = "hr" as const;
 
-/** A claim with the name, the stage and the letter attached to it — which is
- *  how every screen wants it and how nothing stores it (D145). */
-function overtimeView(state: ReturnType<typeof getState>, claim: OvertimeClaim): OvertimeView {
-  const emp = state.employees.find((e) => e.id === claim.employee_id);
-  const link = suratLembur(state, claim.id);
+/** A sheet with its lines, its stage and the paper behind it — how every
+ *  screen wants it, and how nothing stores it (D146). */
+function sheetView(state: ReturnType<typeof getState>, sheet: OvertimeSheet): OvertimeSheetView {
+  const lines = state.overtime_lines
+    .filter((l) => l.sheet_id === sheet.id)
+    .map((l) => {
+      const emp = state.employees.find((e) => e.id === l.employee_id);
+      return { ...l, employee_no: emp?.employee_no ?? "—", full_name: emp?.full_name ?? "—" };
+    });
+  const link = sheetEvidence(state, sheet.id);
   const att = link ? state.attachments.find((a) => a.id === link.attachment_id) : null;
   return {
-    ...claim,
-    employee_no: emp?.employee_no ?? "—",
-    full_name: emp?.full_name ?? "—",
-    stage: overtimeStage(state, claim),
-    surat: att ? { attachment_id: att.id, filename: att.filename } : null,
+    ...sheet,
+    lines,
+    stage: overtimeStage(state, sheet),
+    payable: overtimePayable(state, sheet),
+    total_hours: Math.round(lines.reduce((a, l) => a + l.hours, 0) * 100) / 100,
+    evidence: att && link
+      ? { attachment_id: att.id, filename: att.filename, kind: link.kind }
+      : null,
   };
 }
 
@@ -400,106 +411,217 @@ export async function unmarkDay(markId: string): Promise<Result<{ removed: strin
   return ok(SERVICE, { removed: markId });
 }
 
-/** Claiming overtime. The machine saw them stay; this says it was work. */
-export async function claimOvertime(
-  input: { employee_no: string; work_date: string; hours: number; reason: string },
-): Promise<Result<OvertimeClaim>> {
+/** Opening a sheet.
+ *
+ *  A **production** sheet is one night with many names on it; a **staff**
+ *  sheet is one session with one name and that person's own report (D146).
+ *  The kind is chosen when the sheet is opened because it decides who has to
+ *  sign — and that is not a detail to discover at the end.
+ */
+export async function createOvertimeSheet(
+  input: { kind: OvertimeKind; work_date: string; purpose: string },
+  idempotencyKey?: string,
+): Promise<Result<OvertimeSheetView>> {
+  await latency();
+  const cached = replayed<OvertimeSheetView>(SERVICE, "createOvertimeSheet", idempotencyKey);
+  if (cached) return cached;
+
+  const denied = requireModule(SERVICE, "hrd");
+  if (denied) return denied;
+  if (!input.purpose.trim()) {
+    return invalid(
+      SERVICE, "purpose_required",
+      "Kenapa ada lembur malam itu? Lembur tanpa alasan adalah kebiasaan, bukan keputusan.",
+      { field: "purpose" },
+    );
+  }
+
+  const user = actingUser();
+  let sheetNo = "";
+  let id = "";
+  apply((draft) => {
+    sheetNo = nextDocNumber(draft, "lbr");
+    id = newId("lbr");
+    draft.overtime_sheets.push({
+      id, sheet_no: sheetNo, kind: input.kind,
+      work_date: input.work_date,
+      purpose: input.purpose.trim(),
+      created_by: user.id, created_at: new Date().toISOString(),
+      hrd_checked_by: null, hrd_checked_at: null,
+      leader_approved_by: null, leader_approved_at: null,
+      /* Staff sessions ship paid; production sheets are paid by the
+         leadership signature, and this flag is not what decides them. */
+      paid: true, unpaid_reason: null,
+      declined_by: null, declined_reason: null,
+    });
+    writeAudit(draft, {
+      service: SERVICE, entity: "overtime_sheet", entity_no: sheetNo,
+      action: "create", outcome: "ok", reason: input.purpose.trim(),
+      detail: { kind: input.kind, work_date: input.work_date, by: user.email },
+    });
+  });
+  const state = getState();
+  const view = sheetView(state, state.overtime_sheets.find((x) => x.id === id)!);
+  remember(SERVICE, "createOvertimeSheet", idempotencyKey, view);
+  return ok(SERVICE, view);
+}
+
+/** Adding a name to a sheet.
+ *
+ *  On a production sheet the line also carries **what was made**: the work
+ *  order, the stage and how many. Those three are the production report for
+ *  that night, and the reason they are typed here rather than twice is that
+ *  two copies of the same fact start disagreeing the week after (D147).
+ */
+export async function addOvertimeLine(
+  input: {
+    sheet_no: string;
+    employee_no: string;
+    hours: number;
+    task: string;
+    wo_no?: string | null;
+    stage?: string | null;
+    qty_done?: number | null;
+  },
+): Promise<Result<OvertimeSheetView>> {
   await latency();
   const denied = requireModule(SERVICE, "hrd");
   if (denied) return denied;
 
   const state = getState();
+  const sheet = state.overtime_sheets.find((x) => x.sheet_no === input.sheet_no);
+  if (!sheet) return notFound(SERVICE, "sheet_not_found", `No sheet ${input.sheet_no}.`);
+  if (sheet.leader_approved_at || sheet.hrd_checked_at) {
+    return conflict(
+      SERVICE, "sheet_closed",
+      `${sheet.sheet_no} sudah diperiksa. Nama baru masuk lembar baru — menambah nama ke lembar yang sudah ditandatangani berarti tanda tangannya tidak lagi menunjuk apa yang ditandatangani.`,
+    );
+  }
   const emp = state.employees.find((e) => e.employee_no === input.employee_no);
   if (!emp) return notFound(SERVICE, "employee_not_found", `No employee ${input.employee_no}.`);
   if (input.hours <= 0) {
-    return invalid(SERVICE, "hours_required", "Overtime of zero hours is not overtime.", { field: "hours" });
+    return invalid(SERVICE, "hours_required", "Lembur nol jam bukan lembur.", { field: "hours" });
   }
-  if (!input.reason.trim()) {
-    return invalid(
-      SERVICE, "reason_required",
-      "What was being finished? Overtime with no reason is how it becomes a habit rather than a decision.",
-      { field: "reason" },
-    );
+  if (!input.task.trim()) {
+    return invalid(SERVICE, "task_required", "Apa yang dikerjakan?", { field: "task" });
   }
-  if (state.overtime_claims.some(
-    (c) => c.employee_id === emp.id && c.work_date === input.work_date && c.declined_reason === null,
-  )) {
-    return conflict(SERVICE, "already_claimed", `${emp.full_name} already has a claim for ${input.work_date}.`);
+  if (state.overtime_lines.some((l) => l.sheet_id === sheet.id && l.employee_id === emp.id)) {
+    return conflict(SERVICE, "already_on_sheet", `${emp.full_name} sudah ada di lembar ini.`);
   }
 
   const user = actingUser();
-  let claim: OvertimeClaim | null = null;
   apply((draft) => {
-    claim = {
-      id: newId("ovt"),
-      employee_id: emp.id,
-      work_date: input.work_date,
-      hours: input.hours,
-      reason: input.reason.trim(),
-      claimed_by: user.id,
-      claimed_at: new Date().toISOString(),
-      hrd_approved_by: null, hrd_approved_at: null,
-      leader_approved_by: null, leader_approved_at: null,
-      declined_by: null, declined_reason: null,
+    const row: OvertimeLine = {
+      id: newId("lbl"), sheet_id: sheet.id, employee_id: emp.id,
+      hours: input.hours, task: input.task.trim(),
+      wo_no: input.wo_no?.trim() || null,
+      stage: input.stage?.trim() || null,
+      qty_done: input.qty_done ?? null,
     };
-    draft.overtime_claims.push(claim);
+    draft.overtime_lines.push(row);
     writeAudit(draft, {
-      service: SERVICE, entity: "overtime", entity_no: `${emp.employee_no}/${input.work_date}`,
-      action: "claim", outcome: "ok", reason: input.reason.trim(),
-      detail: { hours: input.hours, by: user.email },
+      service: SERVICE, entity: "overtime_sheet", entity_no: sheet.sheet_no,
+      action: "add_line", outcome: "ok", reason: input.task.trim(),
+      detail: { employee: emp.employee_no, hours: input.hours, wo_no: row.wo_no, stage: row.stage, qty: row.qty_done, by: user.email },
     });
   });
-  return ok(SERVICE, claim as unknown as OvertimeClaim);
+  return getOvertimeSheet(sheet.sheet_no);
 }
 
-/** Deciding a claim — in two steps, and nothing is paid until both are taken.
- *
- *  Owner, answering Q34: **HRD approves, and leadership approves with the
- *  surat lembur**. So this is two signatures rather than one, and they check
- *  different things. HRD checks the hours against the taps: was he here, are
- *  these the hours the machine shows. Leadership checks the decision: was this
- *  work worth paying for — and does so holding the letter, which is why the
- *  letter has to be attached before the second signature can be given (D145).
- *
- *  Either step may decline, and a decline is recorded with the name of
- *  whichever step took it.
- */
-export async function decideOvertime(
-  input: { claim_id: string; step: "hrd" | "leader"; approved: boolean; reason?: string | null },
-): Promise<Result<OvertimeView>> {
+/** Attaching the paper: the signed sheet for production, the work report —
+ *  usually a screenshot — for a staff session (D146). */
+export async function attachOvertimeDoc(
+  input: { sheet_no: string; attachment_id: string },
+): Promise<Result<OvertimeSheetView>> {
   await latency();
+  const denied = requireModule(SERVICE, "hrd");
+  if (denied) return denied;
+
+  const state = getState();
+  const sheet = state.overtime_sheets.find((x) => x.sheet_no === input.sheet_no);
+  if (!sheet) return notFound(SERVICE, "sheet_not_found", `No sheet ${input.sheet_no}.`);
+  if (!state.attachments.some((a) => a.id === input.attachment_id)) {
+    return notFound(SERVICE, "attachment_not_found", "That file is not on the system.");
+  }
+
+  const user = actingUser();
+  const kind = sheet.kind === "production" ? "Surat Lembur" : "Laporan Lembur";
+  apply((draft) => {
+    draft.attachment_links.push({
+      id: newId("lnk"), attachment_id: input.attachment_id,
+      entity: "overtime", entity_no: sheet.id, kind,
+      linked_by: user.id, linked_at: new Date().toISOString(),
+    });
+    writeAudit(draft, {
+      service: SERVICE, entity: "overtime_sheet", entity_no: sheet.sheet_no,
+      action: "attach", outcome: "ok", reason: null,
+      detail: { kind, attachment_id: input.attachment_id, by: user.email },
+    });
+  });
+  return getOvertimeSheet(sheet.sheet_no);
+}
+
+/** Deciding a sheet.
+ *
+ *  Owner (2026-09-11): **only production overtime needs leadership.** A staff
+ *  session is HRD's decision alone, and the default is yes — so `hrd` on a
+ *  staff sheet means *I have looked*, and turning it down is a separate,
+ *  explicit act carrying a reason.
+ *
+ *  On a production sheet the two steps check different things: HRD checks the
+ *  hours against the taps, leadership signs the sheet — holding it, which is
+ *  why the scan has to be attached before that signature is allowed (D146).
+ */
+export async function decideOvertimeSheet(
+  input: {
+    sheet_no: string;
+    step: "hrd" | "leader";
+    approved: boolean;
+    reason?: string | null;
+  },
+): Promise<Result<OvertimeSheetView>> {
+  await latency();
+  const state0 = getState();
+  const sheet0 = state0.overtime_sheets.find((x) => x.sheet_no === input.sheet_no);
+  if (!sheet0) return notFound(SERVICE, "sheet_not_found", `No sheet ${input.sheet_no}.`);
+
   const denied = input.step === "hrd"
     ? requireModule(SERVICE, "hrd")
     : requireAuthority(SERVICE, "approve_overtime");
   if (denied) return denied;
 
-  const state = getState();
-  const claim = state.overtime_claims.find((c) => c.id === input.claim_id);
-  if (!claim) return notFound(SERVICE, "claim_not_found", "No such overtime claim.");
-  if (claim.declined_reason) {
-    return conflict(SERVICE, "already_decided", "That claim has already been turned down.");
+  if (input.step === "leader" && sheet0.kind === "staff") {
+    return invalid(
+      SERVICE, "no_leader_needed",
+      "Lembur staff tidak perlu tanda tangan pimpinan — HRD yang memutuskan (D146).",
+      { field: "step" },
+    );
+  }
+  if (sheet0.declined_reason) {
+    return conflict(SERVICE, "already_decided", `${sheet0.sheet_no} sudah ditolak.`);
   }
   if (!input.approved && !input.reason?.trim()) {
-    return invalid(SERVICE, "reason_required", "Turning down overtime somebody worked needs a sentence.", { field: "reason" });
+    return invalid(
+      SERVICE, "reason_required",
+      "Menolak lembur yang sudah dikerjakan butuh satu kalimat.",
+      { field: "reason" },
+    );
+  }
+  if (state0.overtime_lines.filter((l) => l.sheet_id === sheet0.id).length === 0) {
+    return invalid(SERVICE, "empty_sheet", "Lembar ini belum ada namanya.", { field: "lines" });
   }
 
-  if (input.step === "hrd" && claim.hrd_approved_at) {
-    return conflict(SERVICE, "already_decided", "HRD has already approved this claim.");
-  }
   if (input.step === "leader") {
-    if (!claim.hrd_approved_at) {
+    if (!sheet0.hrd_checked_at) {
       return conflict(
         SERVICE, "hrd_first",
-        "HRD has not checked these hours yet. Leadership signs after HRD, not instead of it.",
+        "HRD belum memeriksa jamnya. Pimpinan menandatangani setelah HRD, bukan menggantikannya.",
       );
     }
-    if (claim.leader_approved_at) {
-      return conflict(SERVICE, "already_decided", "Leadership has already signed this claim.");
+    if (sheet0.leader_approved_at) {
+      return conflict(SERVICE, "already_decided", "Pimpinan sudah menandatangani lembar ini.");
     }
-    /* The letter is the thing being signed. Approving without it is signing a
-       number somebody typed (D145). Refused when approving; a decline needs no
-       letter, because turning something down needs no evidence for it. */
-    if (input.approved && !suratLembur(state, claim.id)) {
+    if (input.approved && !sheetEvidence(state0, sheet0.id, "Surat Lembur")) {
       return invalid(
         SERVICE, "surat_required",
         "Surat lembur belum dilampirkan. Pimpinan menandatangani suratnya — tanpa itu yang disetujui hanya angka.",
@@ -510,70 +632,71 @@ export async function decideOvertime(
 
   const user = actingUser();
   apply((draft) => {
-    const row = draft.overtime_claims.find((c) => c.id === input.claim_id);
+    const row = draft.overtime_sheets.find((x) => x.sheet_no === input.sheet_no);
     if (!row) return;
-    if (!input.approved) {
-      row.declined_by = user.id;
-      row.declined_reason = input.reason?.trim() ?? null;
-    } else if (input.step === "hrd") {
-      row.hrd_approved_by = user.id;
-      row.hrd_approved_at = new Date().toISOString();
-    } else {
+    if (input.step === "hrd") {
+      row.hrd_checked_by = user.id;
+      row.hrd_checked_at = new Date().toISOString();
+      if (row.kind === "staff") {
+        row.paid = input.approved;
+        row.unpaid_reason = input.approved ? null : input.reason?.trim() ?? null;
+      } else if (!input.approved) {
+        row.declined_by = user.id;
+        row.declined_reason = input.reason?.trim() ?? null;
+      }
+    } else if (input.approved) {
       row.leader_approved_by = user.id;
       row.leader_approved_at = new Date().toISOString();
+    } else {
+      row.declined_by = user.id;
+      row.declined_reason = input.reason?.trim() ?? null;
     }
     writeAudit(draft, {
-      service: SERVICE, entity: "overtime", entity_no: row.id,
-      action: input.approved ? `approve_${input.step}` : `decline_${input.step}`, outcome: "ok",
+      service: SERVICE, entity: "overtime_sheet", entity_no: row.sheet_no,
+      action: `${input.approved ? "approve" : "decline"}_${input.step}`, outcome: "ok",
       reason: input.reason?.trim() ?? null,
-      detail: { hours: row.hours, by: user.email },
+      detail: { kind: row.kind, by: user.email },
     });
-    if (input.approved && input.step === "leader") {
+    if (input.approved && (input.step === "leader" || row.kind === "staff")) {
       writeOutbox(draft, {
         service: SERVICE, event_type: "hr.overtime.approved",
-        payload: { claim_id: row.id, hours: row.hours, work_date: row.work_date },
+        payload: {
+          sheet_no: row.sheet_no, kind: row.kind, work_date: row.work_date,
+          /* Production lines carry what was made. A subscriber — today the
+             screen, in Phase 2 the production service itself — turns these
+             into progress entries against the work order (D147). */
+          production: draft.overtime_lines
+            .filter((l) => l.sheet_id === row.id && l.wo_no && l.qty_done)
+            .map((l) => ({ wo_no: l.wo_no, stage: l.stage, qty: l.qty_done })),
+        },
       });
     }
   });
-  const after = getState().overtime_claims.find((c) => c.id === input.claim_id)!;
-  return ok(SERVICE, overtimeView(getState(), after));
+  return getOvertimeSheet(input.sheet_no);
 }
 
-/** Attaching the surat lembur to a claim, on the same road as every other
- *  document in the system (ADR-010): the file is uploaded through `documents`
- *  and linked here, by a person, with their name on the link. */
-export async function attachSuratLembur(
-  input: { claim_id: string; attachment_id: string },
-): Promise<Result<OvertimeView>> {
+export async function listOvertimeSheets(): Promise<Result<OvertimeSheetView[]>> {
   await latency();
-  const denied = requireModule(SERVICE, "hrd");
-  if (denied) return denied;
-
   const state = getState();
-  const claim = state.overtime_claims.find((c) => c.id === input.claim_id);
-  if (!claim) return notFound(SERVICE, "claim_not_found", "No such overtime claim.");
-  if (!state.attachments.some((a) => a.id === input.attachment_id)) {
-    return notFound(SERVICE, "attachment_not_found", "That file is not on the system.");
-  }
+  const rows = state.overtime_sheets
+    .map((sh) => sheetView(state, sh))
+    .sort((a, b) => {
+      /* Anything still waiting for somebody, first. */
+      const open = (v: OvertimeSheetView) =>
+        v.stage === "waiting_hrd" || v.stage === "waiting_surat" || v.stage === "waiting_leader"
+          || v.stage === "paid_default" ? 0 : 1;
+      if (open(a) !== open(b)) return open(a) - open(b);
+      return b.work_date.localeCompare(a.work_date);
+    });
+  return ok(SERVICE, rows);
+}
 
-  const user = actingUser();
-  apply((draft) => {
-    draft.attachment_links.push({
-      id: newId("lnk"),
-      attachment_id: input.attachment_id,
-      entity: "overtime",
-      entity_no: claim.id,
-      kind: "Surat Lembur",
-      linked_by: user.id,
-      linked_at: new Date().toISOString(),
-    });
-    writeAudit(draft, {
-      service: SERVICE, entity: "overtime", entity_no: claim.id,
-      action: "attach_surat", outcome: "ok", reason: null,
-      detail: { attachment_id: input.attachment_id, by: user.email },
-    });
-  });
-  return ok(SERVICE, overtimeView(getState(), claim));
+export async function getOvertimeSheet(sheetNo: string): Promise<Result<OvertimeSheetView>> {
+  await latency();
+  const state = getState();
+  const sheet = state.overtime_sheets.find((x) => x.sheet_no === sheetNo);
+  if (!sheet) return notFound(SERVICE, "sheet_not_found", `No sheet ${sheetNo}.`);
+  return ok(SERVICE, sheetView(state, sheet));
 }
 
 /** Attaching the surat dokter to a day somebody was ill.
@@ -729,17 +852,4 @@ export async function approvePayroll(runNo: string): Promise<Result<PayrollView>
   return getPayroll(runNo);
 }
 
-/** Every overtime claim as a view, with the stage it has reached. Anything
- *  still waiting for somebody comes first. */
-export async function listOvertime(): Promise<Result<OvertimeView[]>> {
-  await latency();
-  const state = getState();
-  const rows = state.overtime_claims
-    .map((c) => overtimeView(state, c))
-    .sort((a, b) => {
-      const open = (v: OvertimeView) => (v.stage === "approved" || v.stage === "declined" ? 1 : 0);
-      if (open(a) !== open(b)) return open(a) - open(b);
-      return b.work_date.localeCompare(a.work_date);
-    });
-  return ok(SERVICE, rows);
-}
+

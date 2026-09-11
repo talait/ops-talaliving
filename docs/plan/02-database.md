@@ -1143,7 +1143,8 @@ retention rule.
 erDiagram
     employees ||--o{ attendance_scans : "tapped"
     employees ||--o{ day_marks : "marked for"
-    employees ||--o{ overtime_claims : "claimed"
+    employees ||--o{ overtime_lines : "worked"
+    overtime_sheets ||--o{ overtime_lines : "lists"
     attendance_imports ||--o{ attendance_scans : "brought in"
     payroll_runs ||--o{ payroll_lines : "computed (view)"
 
@@ -1194,19 +1195,30 @@ erDiagram
         uuid marked_by FK
         timestamptz marked_at
     }
-    overtime_claims {
+    overtime_sheets {
         uuid id PK
-        uuid employee_id FK
-        date work_date
-        numeric hours
-        text reason
-        uuid claimed_by FK
-        uuid hrd_approved_by FK "step 1 - the hours are real"
-        timestamptz hrd_approved_at
-        uuid leader_approved_by FK "step 2 - holding the surat lembur"
+        text sheet_no UK "lbr-26-08-31_01"
+        overtime_kind_t kind "production|staff"
+        date work_date "one sheet, one night"
+        text purpose
+        uuid hrd_checked_by FK
+        timestamptz hrd_checked_at
+        uuid leader_approved_by FK "production only"
         timestamptz leader_approved_at
+        boolean paid "staff: default TRUE"
+        text unpaid_reason
         uuid declined_by FK
         text declined_reason
+    }
+    overtime_lines {
+        uuid id PK
+        uuid sheet_id FK
+        uuid employee_id FK
+        numeric hours
+        text task
+        text wo_no "production: the work order, at the seam"
+        text stage
+        numeric qty_done
     }
     payroll_runs {
         uuid id PK
@@ -1232,8 +1244,11 @@ slots are computed, never stored.
 | `attendance_scans` CHECK `source = 'manual' → reason IS NOT NULL` | a time somebody typed says why the machine missed it (D137) |
 | `day_marks` UNIQUE `(work_date, employee_id)` incl. NULL | one mark per person per day, one office-wide mark per day. Postgres needs `NULLS NOT DISTINCT` here |
 | `day_marks.reason` NOT NULL | *setengah hari* with no reason is a decision nobody can check in six months (D142) |
-| `overtime_claims` UNIQUE `(employee_id, work_date) WHERE declined_reason IS NULL` | one live claim per day; a declined one may be re-claimed |
-| `overtime_claims` CHECK `leader_approved_at IS NULL OR hrd_approved_at IS NOT NULL` | leadership signs **after** HRD, not instead of it (D145) |
+| `overtime_lines` UNIQUE `(sheet_id, employee_id)` | one line per person per sheet — a second entry for the same night is a second sheet |
+| `overtime_sheets` CHECK `leader_approved_at IS NULL OR hrd_checked_at IS NOT NULL` | leadership signs **after** HRD, not instead of it (D145) |
+| `overtime_sheets` CHECK `kind = 'staff' → leader_approved_at IS NULL` | a staff session never waits on leadership (D146) |
+| `overtime_sheets` CHECK `paid OR unpaid_reason IS NOT NULL` | turning off a default-paid session says why |
+| `overtime_lines` CHECK `wo_no IS NULL OR (stage IS NOT NULL)` | a production line names the stage it advanced (D147) |
 | `employees.paid_leave_days` NOT NULL, default 0 | per person, because length of service and what was agreed at hiring both move it (D144) |
 | `employees` no DELETE | a payslip from March is still a fact in June (A5). `left_on` retires somebody |
 | `payroll_runs` UNIQUE `(period_start, period_end)` | the same week is not run twice by accident |
@@ -1259,9 +1274,12 @@ without a letter — is recorded and not paid, and the timesheet says so in
 words. Q33 is answered; nothing here refuses a mark, because a day taken
 without a letter is still a fact about that person's month.
 
-Overtime is the same shape for the same reason: paid when **both**
-`hrd_approved_at` and `leader_approved_at` are set, and the second is refused
-until a `Surat Lembur` is linked to the claim (D145).
+Overtime has **two shapes**, because the paper does (D146). A *production*
+sheet is paid when both `hrd_checked_at` and `leader_approved_at` are set, and
+the second is refused until a `Surat Lembur` is linked to the sheet. A *staff*
+sheet is paid on `paid`, which ships `true`: HRD's decision is whether to turn
+it off, and doing so writes `unpaid_reason`. Its evidence is a
+`Laporan Lembur` — the screenshot of the work.
 
 Marks never touch scans, and scans never override a mark. They are different
 kinds of statement: the taps are evidence with a machine behind them, the mark
@@ -1286,6 +1304,78 @@ overtime while the day itself counts nothing (D142, D144).
 Approving a run is refused while `open_days > 0`: a payroll over days nobody
 finished reading is wrong about the people paid by the day, who are least able
 to argue (D139).
+
+---
+
+## Schema `prod` — work orders, stages, progress
+
+A seventh service (D148). The overtime sheet demanded it: each production line
+carries *item apa, proses sampai mana, berapa*, and those are production facts
+travelling on a payroll document. Written down twice, the two copies begin to
+disagree.
+
+```mermaid
+erDiagram
+    work_orders ||--o{ progress_entries : "advanced by"
+    process_stages ||--o{ progress_entries : "at"
+
+    process_stages {
+        text code PK "POTONG, SERUT, RAKIT..."
+        text name
+        int seq "a piece cannot be sanded before it is cut"
+    }
+    work_orders {
+        uuid id PK
+        text wo_no UK "spk-26-08-24_01"
+        text item_name
+        text description
+        numeric qty
+        text uom
+        text project_code "public code, validated at the seam"
+        date due_date "the promise, not the plan"
+        wo_status_t status "OPEN|DONE|CANCELLED"
+        uuid created_by FK
+        text note
+    }
+    progress_entries {
+        uuid id PK
+        uuid wo_id FK
+        text stage FK
+        numeric qty "may be negative - a correction is an entry"
+        date work_date "the office day it happened"
+        text worked_by "a name: a subcontractor is a valid answer"
+        progress_source_t source "manual|overtime_sheet"
+        text source_ref "the lembur sheet number - the idempotency claim"
+        text note
+        uuid recorded_by FK
+    }
+```
+
+| Constraint | Why |
+|---|---|
+| `progress_entries` no UPDATE, no DELETE | append-only. "How many were finished on Thursday" is asked after the argument starts (A5) |
+| `progress_entries` CHECK `qty <> 0` and `qty < 0 → note IS NOT NULL` | a correction says why; a negative number with no sentence is worse than the wrong one |
+| `progress_entries` UNIQUE `(source_ref, wo_id, stage) WHERE source_ref IS NOT NULL` | a signed lembur sheet posted twice adds nothing (D147) |
+| `work_orders.due_date` NOT NULL | an order with no date cannot be late, so nobody can tell when it is |
+| `process_stages` seeded, not typed | every screen says the same thing, and the order is checkable (Q35) |
+
+**Refused vs warned.** More than the order's quantity at one stage is refused —
+it cannot be true. A stage running *ahead of the one before it* is warned about
+on the board and accepted: it usually means a mis-keyed number or work that
+skipped a step, and refusing the report would only mean the work goes
+unrecorded (A6). The demo carries one on purpose — twelve doors, seven
+finished, four sanded.
+
+### Views
+
+| View | Answers |
+|---|---|
+| `v_work_order` | per order: `done` per stage, `current_stage` (the furthest with anything finished), `completed` (through the last stage), `percent` — counted as **stages finished across the quantity**, not as the furthest stage reached — `days_left`, `late`, and the warnings in words |
+
+Who may write: `production.update` for the workshop's own reports, and
+`approve_overtime` for entries whose `source` is `overtime_sheet` — because
+that posting is the consequence of a signature, and the signature is its
+authority (D147).
 
 ---
 
@@ -1399,8 +1489,10 @@ not have received the right environment variable.
 0015_hr_people.sql           employees + RLS
 0016_hr_attendance.sql       attendance_imports, attendance_scans, day_marks + RLS
 0017_hr_payroll.sql          overtime_claims, payroll_runs + RLS
-0018_views.sql               every v_* above
-0019_seams.sql               post_transaction(), allocate_payment(), audit triggers on those two only
+0018_prod_orders.sql         process_stages (seed), work_orders + RLS
+0019_prod_progress.sql       progress_entries + RLS
+0020_views.sql               every v_* above
+0021_seams.sql               post_transaction(), allocate_payment(), audit triggers on those two only
 ```
 
 Additive migrations may be applied by the agent after a dry run. **Destructive

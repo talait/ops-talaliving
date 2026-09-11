@@ -22,6 +22,8 @@ export const DOC_KINDS = [
    *  same road, countable in the same strip. */
   "Surat Dokter",
   "Surat Lembur",
+  /** A staff session's own report — usually a screenshot of the work (D146). */
+  "Laporan Lembur",
   "Others",
 ] as const;
 export type DocKind = (typeof DOC_KINDS)[number];
@@ -46,6 +48,8 @@ export const SUPPORTING_DOC_KINDS: DocKind[] = [
   "Reference Link",
   "Surat Dokter",
   "Surat Lembur",
+  /** A staff session's own report — usually a screenshot of the work (D146). */
+  "Laporan Lembur",
   "Others",
 ];
 

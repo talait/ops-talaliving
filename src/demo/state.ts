@@ -12,8 +12,9 @@ import type {
 } from "@/services/accounting/contracts";
 import type { Attachment, AttachmentLink } from "@/services/documents/contracts";
 import type {
-  Employee, AttendanceScan, DayMark, OvertimeClaim, PayrollRun,
+  Employee, AttendanceScan, DayMark, OvertimeSheet, OvertimeLine, PayrollRun,
 } from "@/services/hr/contracts";
+import type { WorkOrder, ProgressEntry } from "@/services/production/contracts";
 
 export interface DemoUser extends User {
   modules: ModuleGrant[];
@@ -106,8 +107,17 @@ export interface DemoState {
   attendance_scans: AttendanceScan[];
   /** What HRD says about a day that no reader can know (D142). */
   day_marks: DayMark[];
-  overtime_claims: OvertimeClaim[];
+  /** Overtime is a sheet with lines on it — one night, many names for
+   *  production, one session for staff (D146). */
+  overtime_sheets: OvertimeSheet[];
+  overtime_lines: OvertimeLine[];
   payroll_runs: PayrollRun[];
+
+  /* --- production ------------------------------------------------- */
+  /** What is being made, in what quantity, by when (D148). */
+  work_orders: WorkOrder[];
+  /** Work done, append-only — a correction is a negative entry (A5). */
+  production_progress: ProgressEntry[];
 
   audit_log: AuditRow[];
   outbox: OutboxRow[];

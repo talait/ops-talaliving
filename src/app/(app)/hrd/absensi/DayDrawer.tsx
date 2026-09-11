@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import Link from "next/link";
 import { AlertTriangle, Check, Flag, Plus, Clock, Undo2, Paperclip, Wallet } from "lucide-react";
 import { Drawer } from "@/components/ui/drawer";
 import { Badge, Button } from "@/components/ui/primitives";
@@ -97,15 +98,6 @@ export function DayDrawer({
     setBusy(false);
     if (res.error) { toast("warning", "Tidak terlampir", res.error.message); return; }
     after("Surat dokter terlampir", "Hari ini sekarang terhitung dibayar.");
-  }
-
-  async function claim() {
-    setBusy(true);
-    const res = await hr.claimOvertime({ employee_no: employeeNo, work_date: workDate, hours: otHours, reason: otReason });
-    setBusy(false);
-    if (res.error) { toast(res.error.status === 403 ? "critical" : "warning", "Not claimed", res.error.message); return; }
-    setClaiming(false); setOtReason("");
-    after("Lembur claimed", "Shown now, paid once a supervisor approves it.");
   }
 
   return (
@@ -328,39 +320,27 @@ export function DayDrawer({
               </div>
             )}
 
-            {/* Hours past the day, claimed rather than assumed. */}
+            {/* Hours past the day, shown and never self-claiming.
+                Overtime is a sheet — production or staff — and which one it is
+                decides who signs it (D146). The drawer says the hours exist
+                and sends the person to the sheet rather than growing a third
+                way to record them. */}
             {mayClaim && d.overtime_hours > 0 && (
               <div className="rounded-xl border border-slate-200 px-4 py-3">
                 <p className="flex items-center gap-2 text-[13px] font-medium text-slate-800">
                   <Clock className="h-4 w-4 text-slate-400" />
-                  {formatNumber(d.overtime_hours)} jam past the day on the machine
+                  {formatNumber(d.overtime_hours)} jam lewat jam kerja tercatat di mesin
                 </p>
                 <p className="mt-0.5 text-[12px] text-slate-500">
-                  Shown here from the moment it happened; on a payslip only once a supervisor says it was work.
+                  Mesin tahu dia masih di tempat, bukan bahwa dia bekerja. Jam ini baru dibayar
+                  setelah masuk lembar lembur — produksi ditandatangani pimpinan, staff diputuskan HRD.
                 </p>
-                {claiming ? (
-                  <>
-                    <div className="mt-2 grid gap-2 sm:grid-cols-[120px_1fr]">
-                      <NumberInput value={otHours} min={0} max={12} step={0.5} onChange={setOtHours} />
-                      <input
-                        value={otReason} onChange={(e) => setOtReason(e.target.value)}
-                        placeholder="What was being finished?"
-                        className="h-9 rounded-lg border border-slate-200 px-2 text-sm focus:border-brand-400 focus:outline-none"
-                      />
-                    </div>
-                    <div className="mt-2 flex justify-end gap-2">
-                      <Button size="sm" variant="ghost" onClick={() => setClaiming(false)} disabled={busy}>Cancel</Button>
-                      <Button size="sm" onClick={claim} disabled={busy || otHours <= 0 || !otReason.trim()}>Claim</Button>
-                    </div>
-                  </>
-                ) : (
-                  <Button size="sm" variant="outline" className="mt-2"
-                    onClick={() => { setClaiming(true); setOtHours(d.overtime_hours); }}>
-                    Claim these hours
-                  </Button>
-                )}
+                <Link href="/hrd/lembur">
+                  <Button size="sm" variant="outline" className="mt-2">Buka lembar lembur</Button>
+                </Link>
               </div>
             )}
+
           </div>
         )}
       </Loaded>

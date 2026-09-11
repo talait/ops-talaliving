@@ -1,0 +1,113 @@
+"use client";
+
+import { useState } from "react";
+import { Save } from "lucide-react";
+import { Modal } from "@/components/ui/drawer";
+import { Button } from "@/components/ui/primitives";
+import { NumberInput } from "@/components/ui/number-input";
+import { production } from "@/demo/api";
+import { useToast } from "@/store/toast";
+
+/** Putting something on the floor.
+ *
+ *  The date is required and the form says why: a work order with no date
+ *  cannot be late, which means nobody can tell when it is — and "which of
+ *  these eleven things is late" is the only question this board exists to
+ *  answer (D148).
+ */
+export function NewWorkOrder({
+  onClose, onDone,
+}: {
+  onClose: () => void;
+  onDone: (woNo: string) => void;
+}) {
+  const { toast } = useToast();
+  const [item, setItem] = useState("");
+  const [description, setDescription] = useState("");
+  const [qty, setQty] = useState(1);
+  const [uom, setUom] = useState("unit");
+  const [project, setProject] = useState("");
+  const [due, setDue] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function save() {
+    setBusy(true);
+    const res = await production.createWorkOrder({
+      item_name: item, description, qty, uom,
+      project_code: project || null, due_date: due,
+    });
+    setBusy(false);
+    if (res.error) {
+      toast(res.error.status === 403 ? "critical" : "warning", "Tidak dibuat", res.error.message);
+      return;
+    }
+    toast("success", "Pesanan kerja dibuat", `${res.data.wo_no} · ${qty} ${uom} · jatuh tempo ${due}`);
+    onDone(res.data.wo_no);
+  }
+
+  return (
+    <Modal
+      open onClose={onClose} width="max-w-lg"
+      title="Pesanan kerja baru"
+      footer={
+        <div className="flex items-center justify-end gap-2">
+          <Button variant="ghost" onClick={onClose} disabled={busy}>Batal</Button>
+          <Button icon={Save} onClick={save} disabled={busy || !item.trim() || qty <= 0 || !due}>
+            {busy ? "Menyimpan…" : "Simpan"}
+          </Button>
+        </div>
+      }
+    >
+      <div className="space-y-3">
+        <div>
+          <label htmlFor="w-item" className="block text-xs text-slate-500">Item yang dibuat</label>
+          <input
+            id="w-item" value={item} onChange={(e) => setItem(e.target.value)}
+            placeholder="Meja makan jati 220×100"
+            className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-2 text-sm focus:border-brand-400 focus:outline-none"
+          />
+        </div>
+        <div>
+          <label htmlFor="w-desc" className="block text-xs text-slate-500">Keterangan</label>
+          <input
+            id="w-desc" value={description} onChange={(e) => setDescription(e.target.value)}
+            placeholder="Finishing natural matt, sesuai gambar revisi 2."
+            className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-2 text-sm focus:border-brand-400 focus:outline-none"
+          />
+        </div>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div>
+            <label htmlFor="w-qty" className="block text-xs text-slate-500">Jumlah</label>
+            <NumberInput id="w-qty" value={qty} min={1} max={9999} onChange={setQty} className="mt-1" />
+          </div>
+          <div>
+            <label htmlFor="w-uom" className="block text-xs text-slate-500">Satuan</label>
+            <input
+              id="w-uom" value={uom} onChange={(e) => setUom(e.target.value)}
+              className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-2 text-sm focus:border-brand-400 focus:outline-none"
+            />
+          </div>
+          <div>
+            <label htmlFor="w-due" className="block text-xs text-slate-500">Jatuh tempo</label>
+            <input
+              id="w-due" type="date" value={due} onChange={(e) => setDue(e.target.value)}
+              className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-2 text-sm focus:border-brand-400 focus:outline-none"
+            />
+          </div>
+        </div>
+        <div>
+          <label htmlFor="w-proj" className="block text-xs text-slate-500">Proyek / pelanggan</label>
+          <input
+            id="w-proj" value={project} onChange={(e) => setProject(e.target.value)}
+            placeholder="BABY ISLAND"
+            className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-2 text-sm focus:border-brand-400 focus:outline-none"
+          />
+        </div>
+        <p className="text-[11px] text-slate-500">
+          Tanggal jatuh tempo wajib. Pesanan tanpa tanggal tidak bisa terlambat, artinya tidak ada
+          yang tahu kapan ia terlambat.
+        </p>
+      </div>
+    </Modal>
+  );
+}

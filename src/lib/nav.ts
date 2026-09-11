@@ -5,7 +5,7 @@ import {
   Megaphone, UserRound, Target, HandCoins,
   FolderKanban, Hammer, Truck, Wrench, Stamp,
   PencilRuler, ListTree, CalendarClock,
-  Cpu, ScrollText, Activity, UserCog, KeyRound,
+  Cpu, ScrollText, Activity, UserCog, KeyRound, Clock,
   Settings, FlaskConical, MessagesSquare, Route, type LucideIcon,
 } from "lucide-react";
 
@@ -45,6 +45,7 @@ export const NAV: NavSection[] = [
     items: [
       { label: "Employees", href: "/hrd/karyawan", icon: Users, permission: "hrd.read", badge: "core" },
       { label: "Attendance", href: "/hrd/absensi", icon: CalendarCheck, permission: "hrd.read" },
+      { label: "Overtime", href: "/hrd/lembur", icon: Clock, permission: "hrd.read", badge: "new" },
       { label: "Employee Files", href: "/hrd/berkas-201", icon: FileBadge, permission: "hrd.read" },
       { label: "Leave & Permits", href: "/hrd/cuti", icon: CalendarClock, permission: "hrd.read" },
       { label: "Compliance", href: "/hrd/compliance", icon: ShieldCheck, permission: "hrd.read" },
@@ -113,7 +114,7 @@ export const NAV: NavSection[] = [
     items: [
       { label: "Design", href: "/produksi/desain", icon: PencilRuler, permission: "production.read" },
       { label: "Bill of Materials", href: "/produksi/bom", icon: ListTree, permission: "production.read", badge: "core" },
-      { label: "Planning & Schedule", href: "/produksi/jadwal", icon: CalendarClock, permission: "production.schedule" },
+      { label: "Planning & Schedule", href: "/produksi/jadwal", icon: CalendarClock, permission: "production.read", badge: "new" },
     ],
   },
   {

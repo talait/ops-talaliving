@@ -1,5 +1,5 @@
 import type {
-  Employee, AttendanceScan, DayMark, OvertimeClaim, PayrollRun,
+  Employee, AttendanceScan, DayMark, OvertimeSheet, OvertimeLine, PayrollRun,
 } from "@/services/hr/contracts";
 
 /** The office, and the workshop.
@@ -1109,35 +1109,84 @@ export const DAY_MARKS: DayMark[] = [
   },
 ];
 
-/** Claimed, and waiting — now on two signatures.
+/** The two sheets, as the owner described the paper.
  *
- *  HRD checks the hours against the taps; leadership signs, holding the surat
- *  lembur (D145). One of each here: signed by both, waiting for the letter,
- *  and not yet looked at. */
-export const OVERTIME_CLAIMS: OvertimeClaim[] = [
+ *  `lbr-26-08-31_01` is a **production** sheet: one night, four names, and
+ *  against each name the order, the stage and how many — which is also the
+ *  production report for that night (D147). It carries the scan of the signed
+ *  sheet and both signatures.
+ *
+ *  `lbr-26-09-01_01` and `lbr-26-09-02_01` are **staff** sessions: one person,
+ *  one evening, their own report with a screenshot. No leadership signature —
+ *  one is paid because nobody has said otherwise, the other HRD looked at and
+ *  turned down, with a reason (D146).
+ */
+export const OVERTIME_SHEETS: OvertimeSheet[] = [
   {
-    id: "ovt_01", employee_id: "emp_w009", work_date: "2026-08-31", hours: 2,
-    reason: "Kejar kirim pesanan BABY ISLAND.",
-    claimed_by: "usr_made", claimed_at: "2026-09-01T08:10:00+08:00",
-    hrd_approved_by: "usr_wulan", hrd_approved_at: "2026-09-01T08:30:00+08:00",
+    id: "lbr_01", sheet_no: "lbr-26-08-31_01", kind: "production",
+    work_date: "2026-08-31",
+    purpose: "Kejar kirim meja BABY ISLAND — finishing dan packing.",
+    created_by: "usr_made", created_at: "2026-09-01T08:05:00+08:00",
+    hrd_checked_by: "usr_wulan", hrd_checked_at: "2026-09-01T08:30:00+08:00",
     leader_approved_by: "usr_evin", leader_approved_at: "2026-09-01T17:05:00+08:00",
+    paid: true, unpaid_reason: null,
     declined_by: null, declined_reason: null,
   },
   {
-    id: "ovt_02", employee_id: "emp_w012", work_date: "2026-08-31", hours: 2,
-    reason: "Lanjut finishing supaya kering sebelum dikirim.",
-    claimed_by: "usr_made", claimed_at: "2026-09-01T08:12:00+08:00",
-    hrd_approved_by: "usr_wulan", hrd_approved_at: "2026-09-01T08:35:00+08:00",
+    id: "lbr_02", sheet_no: "lbr-26-09-01_01", kind: "staff",
+    work_date: "2026-09-01",
+    purpose: "Rekap penawaran vendor untuk rapat Senin.",
+    created_by: "usr_andi", created_at: "2026-09-01T21:40:00+08:00",
+    hrd_checked_by: null, hrd_checked_at: null,
     leader_approved_by: null, leader_approved_at: null,
+    paid: true, unpaid_reason: null,
     declined_by: null, declined_reason: null,
   },
   {
-    id: "ovt_03", employee_id: "emp_w015", work_date: "2026-09-01", hours: 1.5,
-    reason: "Bongkar muat plywood yang datang sore.",
-    claimed_by: "usr_made", claimed_at: "2026-09-02T07:50:00+08:00",
-    hrd_approved_by: null, hrd_approved_at: null,
+    id: "lbr_03", sheet_no: "lbr-26-09-02_01", kind: "staff",
+    work_date: "2026-09-02",
+    purpose: "Menunggu file dari desainer, tidak ada pekerjaan yang selesai.",
+    created_by: "usr_andi", created_at: "2026-09-02T22:10:00+08:00",
+    hrd_checked_by: "usr_wulan", hrd_checked_at: "2026-09-03T09:15:00+08:00",
     leader_approved_by: null, leader_approved_at: null,
+    paid: false, unpaid_reason: "Laporan tidak menunjukkan pekerjaan yang selesai — menunggu file bukan lembur.",
     declined_by: null, declined_reason: null,
+  },
+];
+
+/** One line per person. The production lines carry what was made, which stage
+ *  it reached and how many — the same three facts the production board reads
+ *  once the sheet is signed (D147). */
+export const OVERTIME_LINES: OvertimeLine[] = [
+  {
+    id: "lbl_01", sheet_id: "lbr_01", employee_id: "emp_w009", hours: 2,
+    task: "Finishing meja set ke-3, coating kedua.",
+    wo_no: "spk-26-08-24_01", stage: "FINISHING", qty_done: 1,
+  },
+  {
+    id: "lbl_02", sheet_id: "lbr_01", employee_id: "emp_w012", hours: 2,
+    task: "Bantu finishing dan siapkan bahan packing.",
+    wo_no: "spk-26-08-24_01", stage: "FINISHING", qty_done: 0,
+  },
+  {
+    id: "lbl_03", sheet_id: "lbr_01", employee_id: "emp_w016", hours: 2.5,
+    task: "Packing meja set ke-3.",
+    wo_no: "spk-26-08-24_01", stage: "PACKING", qty_done: 1,
+  },
+  {
+    id: "lbl_04", sheet_id: "lbr_01", employee_id: "emp_w015", hours: 1.5,
+    task: "Rakit daun pintu VILLA SANUR.",
+    wo_no: "spk-26-08-30_01", stage: "RAKIT", qty_done: 2,
+  },
+  {
+    id: "lbl_05", sheet_id: "lbr_02", employee_id: "emp_04", hours: 2,
+    task: "Rekap 6 penawaran vendor ke papan rapat, lengkap dengan tautan.",
+    wo_no: null, stage: null, qty_done: null,
+  },
+  {
+    id: "lbl_06", sheet_id: "lbr_03", employee_id: "emp_04", hours: 2,
+    task: "Menunggu file desain untuk BOM lemari.",
+    wo_no: null, stage: null, qty_done: null,
   },
 ];
 

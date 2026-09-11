@@ -1814,3 +1814,74 @@ One column (`paid_leave_days`), two document kinds, two link entities, one
 authority, and two extra timestamps on a claim. No stored balances, no status
 columns beside the signatures, no recalculation job. Everything that decides
 money is read from what somebody actually did, each time it is asked.
+
+---
+
+## F42 — the sheet was the design
+
+The owner corrected the overtime rule with one sentence about paper: leadership
+signs **production** overtime, which is *satu lembar penuh isi banyak nama
+karyawan lembur beserta tugas dan item yang dikerjakan*; staff have a sheet per
+session with a screenshot of the work, and HRD decides — default yes.
+
+Three things fell out of that, in order.
+
+### One form with an optional field would have been wrong
+
+The first instinct is one overtime record with a "needs leadership?" flag. But
+the two documents are not variants. A production night is a **batch**: forty
+names on one page, signed once, because that is how a supervisor actually
+works — he does not sign forty things. A staff session is a **person and an
+evening**, and its evidence is not a signature at all, it is the work: a
+screenshot of what was on the screen.
+
+Modelled as a sheet with lines, both are natural. Modelled as a claim with a
+flag, the production case needs a grouping that does not exist and the staff
+case needs an approval that should not.
+
+### The default is the decision
+
+*HRD memutuskan dibayar atau tidak (default ya)* is not a UI nicety. Read
+literally, it inverts the burden: the person already stayed, their report is
+attached, and what is left to decide is whether to **take the payment away**.
+So a staff sheet ships `paid = true`, and HRD's act is either "I looked, still
+paid" or "not paid, because —", which writes a reason.
+
+The alternative — undecided means unpaid — would have quietly punished every
+session nobody got around to reviewing, and the people it would punish are the
+ones who worked late on something nobody was waiting for.
+
+### The payroll document was carrying production data all along
+
+The production sheet's lines say *item apa, proses sampai mana, berapa*. That
+is not payroll. It is a production report that happens to travel on a payroll
+document, and the moment somebody copies it onto a whiteboard, the workshop's
+version of Thursday night and HRD's version begin to disagree.
+
+So the line carries the work order number, the stage and the quantity, and
+**leadership's signature posts them to the production board** — keyed by sheet
+number, so signing twice adds nothing. Typed once, moved by the act that was
+already happening.
+
+Which is what made a seventh service necessary (D148). The board it posts to
+answers a question the business could not answer before: not *what are we
+building* — a workshop always knows that — but **which of the eleven things on
+the floor is the one that is late**. The fixtures are deliberately not tidy:
+three orders past their date, one not started with four days left, and one
+where finishing is reported on seven doors while only four were sanded. That
+last one is physically impossible, and the board says so in a sentence instead
+of averaging it away.
+
+### The permission that the flow forced
+
+The Direktur may sign a production sheet. He does not hold `production.update`
+— he is not the workshop. But his signature *causes* a production posting, and
+a rule that refused it would leave one act half-done: hours paid, work not
+recorded, and nobody told.
+
+So `recordProgress` accepts `approve_overtime` for entries whose source is
+`overtime_sheet`, and nothing else. The authority for the posting is the
+signature that caused it. Writing that rule at the point it is enforced, with
+the reason beside it, is cheaper than discovering it as a 403 in a demo three
+weeks from now — which is exactly how it was discovered here, on the first
+end-to-end run.

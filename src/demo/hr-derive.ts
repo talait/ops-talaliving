@@ -8,8 +8,8 @@
  */
 import type { DemoState } from "./state";
 import type {
-  Employee, TimesheetDay, DayState, ScanSlot, DayPay, DayMark, OvertimeClaim,
-  OvertimeStage, PayrollLine, PayrollView, PayrollRun,
+  Employee, TimesheetDay, DayState, ScanSlot, DayPay, DayMark,
+  OvertimeSheet, OvertimeStage, PayrollLine, PayrollView, PayrollRun,
 } from "@/services/hr/contracts";
 
 const HOURS = 3_600_000;
@@ -255,29 +255,46 @@ export function timesheetDay(
   };
 }
 
-/** Where a claim has got to (D145).
+/** Where a sheet has got to, and whether its hours reach a payslip.
  *
- *  HRD checks the hours against the taps; leadership signs, and not before the
- *  surat lembur is attached. Derived from the two approvals rather than stored
- *  beside them, so a status can never disagree with the signatures under it.
+ *  Two paths, because the owner described two documents (D146):
+ *
+ *  - **Produksi** — HRD checks the hours, the signed sheet is attached, and
+ *    leadership signs. Nothing is paid until all three.
+ *  - **Staff** — HRD alone, and the default is **paid**: the person already
+ *    stayed and their report is attached, so the decision HRD takes is whether
+ *    to turn it off, not whether to turn it on.
+ *
+ *  Derived from the signatures and the attached paper rather than stored
+ *  beside them, so a status can never disagree with what is under it (A3).
  */
-export function overtimeStage(state: DemoState, claim: OvertimeClaim): OvertimeStage {
-  if (claim.declined_reason) return "declined";
-  if (!claim.hrd_approved_at) return "waiting_hrd";
-  if (claim.leader_approved_at) return "approved";
-  return suratLembur(state, claim.id) ? "waiting_leader" : "waiting_surat";
+export function overtimeStage(state: DemoState, sheet: OvertimeSheet): OvertimeStage {
+  if (sheet.declined_reason) return "declined";
+
+  if (sheet.kind === "staff") {
+    if (!sheet.paid) return "unpaid";
+    return sheet.hrd_checked_at ? "paid_checked" : "paid_default";
+  }
+
+  if (!sheet.hrd_checked_at) return "waiting_hrd";
+  if (sheet.leader_approved_at) return "approved";
+  return sheetEvidence(state, sheet.id, "Surat Lembur") ? "waiting_leader" : "waiting_surat";
 }
 
-export function suratLembur(state: DemoState, claimId: string) {
+/** The paper behind a sheet: the signed form for production, the screenshot
+ *  report for a staff session. Both arrive as attachments on the same road as
+ *  every other document here (ADR-010). */
+export function sheetEvidence(state: DemoState, sheetId: string, kind?: string) {
   return state.attachment_links.find(
-    (l) => l.entity === "overtime" && l.entity_no === claimId && l.kind === "Surat Lembur",
+    (l) => l.entity === "overtime" && l.entity_no === sheetId
+      && (kind ? l.kind === kind : l.kind === "Surat Lembur" || l.kind === "Laporan Lembur"),
   ) ?? null;
 }
 
-/** Paid overtime is overtime both of them approved. */
-export function overtimeApproved(claim: OvertimeClaim): boolean {
-  return claim.hrd_approved_at !== null && claim.leader_approved_at !== null
-    && claim.declined_reason === null;
+/** Do these hours reach a payslip as things stand? */
+export function overtimePayable(state: DemoState, sheet: OvertimeSheet): boolean {
+  const stage = overtimeStage(state, sheet);
+  return stage === "approved" || stage === "paid_default" || stage === "paid_checked";
 }
 
 /** Every day of a period for one person, including the days with nothing on
@@ -324,17 +341,21 @@ export function payrollLine(
   const worked_days = days.reduce((s, d) => s + d.day_value, 0);
   const open = days.filter((d) => d.state === "review");
 
-  const claims = state.overtime_claims.filter(
-    (c) => c.employee_id === employee.id && c.work_date >= from && c.work_date <= to,
-  );
-  /* Both signatures, or it is not paid: HRD checked the hours, leadership
-     signed, and the surat lembur is behind it (D145). */
-  const approvedOt = claims
-    .filter((c) => overtimeApproved(c))
-    .reduce((s, c) => s + c.hours, 0);
-  const pendingOt = claims
-    .filter((c) => !overtimeApproved(c) && c.declined_reason === null)
-    .reduce((s, c) => s + c.hours, 0);
+  /* Overtime arrives as sheets; a person's hours are their lines on the ones
+     covering this period. Whether those hours are paid is a property of the
+     sheet, not of the line (D146). */
+  const myLines = state.overtime_lines
+    .map((l) => ({ line: l, sheet: state.overtime_sheets.find((sh) => sh.id === l.sheet_id) }))
+    .filter((x) => x.sheet
+      && x.line.employee_id === employee.id
+      && x.sheet.work_date >= from && x.sheet.work_date <= to);
+
+  const approvedOt = myLines
+    .filter((x) => overtimePayable(state, x.sheet!))
+    .reduce((s, x) => s + x.line.hours, 0);
+  const pendingOt = myLines
+    .filter((x) => !overtimePayable(state, x.sheet!) && !x.sheet!.declined_reason && x.sheet!.paid)
+    .reduce((s, x) => s + x.line.hours, 0);
 
   const normal_hours = counted.reduce((s, d) => s + d.work_hours, 0);
   /* Hours the machine shows past the day, and the whole of a public holiday.
@@ -380,7 +401,7 @@ export function payrollLine(
     warnings.push(`${Math.round((shown_ot - approvedOt - pendingOt) * 10) / 10} hour(s) past the day on the machine that nobody has claimed`);
   }
   if (pendingOt > 0) {
-    warnings.push(`${pendingOt} overtime hour(s) claimed and not yet approved by both HRD and leadership — not in this figure`);
+    warnings.push(`${pendingOt} overtime hour(s) on a sheet nobody has finished signing — not in this figure`);
   }
   const noLetter = marked.filter((d) => d.mark!.kind === "sick" && d.day_value === 0).length;
   if (noLetter > 0) {

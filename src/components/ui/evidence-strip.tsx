@@ -51,6 +51,9 @@ export function EvidenceStrip({
 }) {
   const { toast } = useToast();
   const [rows, setRows] = useState<AttachmentView[]>([]);
+  const [showLink, setShowLink] = useState(false);
+  const [linkUrl, setLinkUrl] = useState("");
+  const [linking, setLinking] = useState(false);
   const [kind, setKind] = useState<DocKind>(defaultKind);
   const [spreading, setSpreading] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -89,6 +92,28 @@ export function EvidenceStrip({
     await refresh();
   }
 
+  /** Filing an address rather than a file. A marketplace listing is the thing
+   *  a price came from, and photographing the screen loses the only part that
+   *  is checkable by somebody else (D125). */
+  async function attachLink() {
+    const url = linkUrl.trim();
+    if (!url) return;
+    setLinking(true);
+    const made = await documents.addLink({ url });
+    if (made.error) { setLinking(false); toast("warning", "Not filed", made.error.message); return; }
+    const link = await documents.link({
+      attachment_id: made.data.id, entity, entity_no: entityNo,
+      /* A shop page never proves a payment, whatever the kind selector says. */
+      kind: "Reference Link",
+    });
+    setLinking(false);
+    if (link.error) { toast("warning", "Not attached", link.error.message); return; }
+    toast("success", "Link filed", made.data.filename);
+    setLinkUrl("");
+    setShowLink(false);
+    await refresh();
+  }
+
   async function alsoCover(att: AttachmentView, target: CoverTarget) {
     const res = await documents.link({
       attachment_id: att.id, entity: target.entity, entity_no: target.entity_no, kind,
@@ -116,11 +141,27 @@ export function EvidenceStrip({
             return (
               <li key={a.id} className="px-3 py-2">
                 <div className="flex items-center gap-3">
-                  <FileText className="h-4 w-4 shrink-0 text-slate-400" />
+                  {a.url
+                    ? <Link2 className="h-4 w-4 shrink-0 text-slate-400" />
+                    : <FileText className="h-4 w-4 shrink-0 text-slate-400" />}
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[13px] text-slate-700">{a.filename}</span>
+                    {/* A link is worth nothing filed if nobody can open it. */}
+                    {a.url ? (
+                      <a
+                        href={a.url}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        className="block truncate text-[13px] text-brand-700 underline"
+                        title={a.url}
+                      >
+                        {a.filename}
+                      </a>
+                    ) : (
+                      <span className="block truncate text-[13px] text-slate-700">{a.filename}</span>
+                    )}
                     <span className="block text-[11px] text-slate-400">
-                      {kinds.join(", ")} · {(a.bytes / 1024).toFixed(0)} KB
+                      {kinds.join(", ")}
+                      {a.url ? "" : ` · ${(a.bytes / 1024).toFixed(0)} KB`}
                       {here && ` · filed by ${here.linked_by.replace("usr_", "")}`}
                     </span>
                   </span>
@@ -230,14 +271,33 @@ export function EvidenceStrip({
               e.target.value = "";
             }}
           />
-          <div className="mt-2 grid grid-cols-2 gap-2">
+          <div className="mt-2 grid grid-cols-3 gap-2">
             <Button variant="outline" size="sm" icon={Camera} onClick={() => cameraRef.current?.click()}>
               Photograph
             </Button>
             <Button variant="outline" size="sm" icon={Upload} onClick={() => fileRef.current?.click()}>
               Choose a file
             </Button>
+            <Button variant="outline" size="sm" icon={Link2} onClick={() => setShowLink((v) => !v)}>
+              Paste a link
+            </Button>
           </div>
+
+          {showLink && (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <input
+                id={`ev-link-${entityNo}`}
+                value={linkUrl}
+                onChange={(e) => setLinkUrl(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") void attachLink(); }}
+                placeholder="https://tokopedia.com/… — the page the price came from"
+                className="h-8 min-w-[240px] flex-1 rounded-lg border border-slate-200 px-2 text-[13px] focus:border-brand-400 focus:outline-none"
+              />
+              <Button size="sm" disabled={linking || !linkUrl.trim()} onClick={() => void attachLink()}>
+                {linking ? "Filing…" : "File it"}
+              </Button>
+            </div>
+          )}
           <p className="mt-2 text-[11px] text-slate-500">
             {note ?? "Attached here, to this record — the system already knows what it belongs to, so it only asks what kind of document this is."}
           </p>

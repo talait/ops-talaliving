@@ -47,6 +47,7 @@ export async function upload(
   const att: Attachment = {
     id: newId("att"),
     storage_path: `demo/${new Date().toISOString().slice(0, 7)}/${input.filename}`,
+    url: null,
     filename: input.filename, sha256: sha, mime: input.mime, bytes: input.bytes,
     uploaded_by: user.id, uploaded_at: new Date().toISOString(),
     source: "web", duplicate_suspect: duplicate,
@@ -188,4 +189,70 @@ export async function byEntity(entity: LinkEntity, entityNo: string): Promise<Re
 export async function listAttachments(): Promise<Result<AttachmentView[]>> {
   await latency();
   return ok(SERVICE, getState().attachments.map(view));
+}
+
+/** Filing a link as evidence.
+ *
+ *  A marketplace listing, a quotation somebody sent a URL to, an invoice that
+ *  lives in a portal. Photographing the screen would make it a file and lose
+ *  the only thing that made it useful — the address somebody else can open to
+ *  check the price themselves (D125).
+ *
+ *  It is an attachment like any other: same table, same link road, same strip.
+ *  What it is not is a *primary* document: a shop page does not say money
+ *  moved, so it can support a request and never stands as proof of payment.
+ */
+export async function addLink(
+  input: { url: string; title?: string | null },
+  idempotencyKey?: string,
+): Promise<Result<AttachmentView>> {
+  await latency();
+  const cached = replayed<AttachmentView>(SERVICE, "addLink", idempotencyKey);
+  if (cached) return cached;
+
+  const raw = input.url.trim();
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    return invalid(
+      SERVICE, "url_invalid",
+      "That is not an address. Paste the whole link, starting with https://.",
+      { field: "url" },
+    );
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    return invalid(SERVICE, "url_scheme", "Only http and https links can be filed.", { field: "url" });
+  }
+
+  const state = getState();
+  const already = state.attachments.find((a) => a.url === raw);
+  const user = actingUser();
+  const att: Attachment = {
+    id: newId("att"),
+    storage_path: "",
+    url: raw,
+    filename: input.title?.trim() || parsed.hostname.replace(/^www\./, "") + parsed.pathname.slice(0, 40),
+    sha256: "",
+    mime: "text/uri-list",
+    bytes: 0,
+    uploaded_by: user.id,
+    uploaded_at: new Date().toISOString(),
+    source: "web",
+    /* The same shop page filed twice is worth saying and never worth
+       refusing — two lines can legitimately point at one listing. */
+    duplicate_suspect: already !== undefined,
+  };
+  apply((draft) => {
+    draft.attachments.push(att);
+    writeAudit(draft, {
+      service: SERVICE, entity: "attachment", entity_no: att.filename,
+      action: "link", outcome: "ok",
+      reason: already ? "the same address is already on file" : null,
+      detail: { url: raw },
+    });
+  });
+  const result = view(att);
+  remember(SERVICE, "addLink", idempotencyKey, result);
+  return ok(SERVICE, result);
 }

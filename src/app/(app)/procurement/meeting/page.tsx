@@ -9,6 +9,7 @@ import { Button, Card, CardHeader, PageHeader } from "@/components/ui/primitives
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { Loaded, SourceBadge, useLoad } from "@/components/ui/loaded";
 import { StatusPill } from "@/components/ui/status-pill";
+import { Link2 as LinkIcon } from "lucide-react";
 import { MoneyInput } from "@/components/ui/money-input";
 import { NumberInput } from "@/components/ui/number-input";
 import { formatIDR, formatNumber } from "@/lib/format";
@@ -134,6 +135,14 @@ export default function MeetingBoardPage() {
             ? <p className="text-[12px] leading-snug text-slate-500">{l.purpose}</p>
             : <p className="text-[12px] leading-snug text-amber-700">No note on what this is for.</p>}
           <p className="truncate font-mono text-[10px] text-slate-400" title={meta}>{meta}</p>
+          {/* The refusal exists in the API either way; saying it here means
+              nobody meets it mid-meeting (D125). */}
+          {!l.has_support && !l.approval?.approved && (
+            <p className="mt-1 flex items-center gap-1 text-[12px] text-amber-700">
+              <LinkIcon className="h-3 w-3 shrink-0" />
+              Nothing behind it yet — needs the shop link, the invoice or the bill.
+            </p>
+          )}
           {l.note?.instructions && (
             <p className="mt-1 rounded bg-brand-50 px-2 py-1 text-[12px] leading-snug text-brand-900">
               {l.note.instructions}
@@ -275,7 +284,23 @@ export default function MeetingBoardPage() {
     {
       key: "status",
       header: "Status",
-      render: (l) => <StatusPill kind="line" status={l.status} />,
+      /* Both statuses in this list mean "approved, not paid" — the card says
+         so in its title. The only thing that separates them is whether the
+         line sits in a payment round, so that is what the column shows;
+         printing two different words for one meaning is how a board teaches
+         people to ignore a column (D123). */
+      render: (l) => (
+        <div className="whitespace-nowrap">
+          <StatusPill kind="line" status={l.status} />
+          <p className="mt-0.5 text-[11px] text-slate-500">
+            {l.round_no === null
+              ? "no money earmarked for it yet"
+              : l.status === "WAITING FOR PAYMENT"
+                ? <>cash is in the account · {l.round_no}</>
+                : <>waiting on funding · {l.round_no}</>}
+          </p>
+        </div>
+      ),
     },
   ];
 
@@ -301,7 +326,17 @@ export default function MeetingBoardPage() {
           const payTotal = toPay.reduce((s, l) => s + l.coverage.remaining, 0);
 
           const chosen = waiting.filter((l) => picked[l.id]);
-          const chosenTotal = chosen.reduce((s, l) => s + amountOf(l), 0);
+          const chosenBare = chosen.filter((l) => !l.has_support);
+          /* What is being approved and what still has to be paid are two
+             different numbers, and on this board they are only the same when
+             none of the picked lines has been paid already. A line bought
+             first and approved later commits no new money: approving it is
+             recording a decision about money that has gone (D124). */
+          const chosenApproved = chosen.reduce((s, l) => s + amountOf(l), 0);
+          const chosenTotal = chosen.reduce(
+            (s, l) => s + Math.max(amountOf(l) - l.coverage.covered, 0), 0,
+          );
+          const chosenAlreadyPaid = chosenApproved - chosenTotal;
 
           return (
             <>
@@ -319,14 +354,30 @@ export default function MeetingBoardPage() {
                   <p className="text-[13px] text-brand-900">
                     <span className="text-xl font-bold tabular-nums">{formatIDR(chosenTotal)}</span>{" "}
                     to pay if this goes through
+                    {chosenAlreadyPaid > 0 && (
+                      <span className="block text-[12px] text-brand-800">
+                        {formatIDR(chosenApproved)} approved, of which{" "}
+                        <strong className="tabular-nums">{formatIDR(chosenAlreadyPaid)}</strong> has
+                        already left the account — approving it commits nothing more.
+                      </span>
+                    )}
                   </p>
+                  {chosenBare.length > 0 && (
+                    <p className="w-full text-[12px] text-amber-800">
+                      {chosenBare.length === 1
+                        ? "One of these has no document behind it and will be refused: "
+                        : `${chosenBare.length} of these have no document behind them and will be refused: `}
+                      {chosenBare.map((l) => l.line_no_full).join(", ")}. Attach the link or the
+                      invoice on the requests board first.
+                    </p>
+                  )}
                   <div className="ml-auto flex flex-wrap items-center gap-2">
                     <Button variant="ghost" size="sm" onClick={() => setPicked({})} disabled={busy}>
                       Clear
                     </Button>
                     {mayDecide ? (
                       <Button size="sm" icon={Check} disabled={busy} onClick={() => approveSelected(chosen)}>
-                        {busy ? "Recording…" : `Approve ${chosen.length} · ${formatIDR(chosenTotal)}`}
+                        {busy ? "Recording…" : `Approve ${chosen.length} · ${formatIDR(chosenApproved)}`}
                       </Button>
                     ) : (
                       <Button size="sm" icon={Send} disabled={busy || !mayAsk} onClick={() => sendSelected(chosen)}>

@@ -1347,3 +1347,60 @@ Build the screen that has to show a number somebody can check against
 reality. The purchase tracker and the payment calendar produced four of the
 six business findings; the screens that mostly list and filter produced almost
 none. **A screen that cannot be wrong cannot teach you anything.**
+
+## F33 — three questions about one screen, and a self-test stuck in the past
+
+The owner read the meeting board and asked three things. All three were right,
+and the third one found a defect nobody was looking for.
+
+**"An item already paid should not count toward *to pay if this goes
+through*."** It was counting. The board's picked-total summed what each line
+asked for, and some picked lines are *paid, not approved* — bought first,
+approved later. Approving those commits no new money. The fix is one rule:
+the total counts `amount − already paid`, floored at zero. But the approval
+figure is still the real figure for the decision, so both are shown when they
+differ, with the already-paid part named (D124).
+
+**"What is the difference between APPROVED *Approved, not paid* and WAITING
+FOR PAYMENT *Approved, not paid*? Aren't they the same?"** For the decision in
+the room — yes, identical. The ladder separates them by whether the line sits
+in a funding round that has been approved or transferred: *approved* versus
+*approved and the cash is already in the paying account*. A real distinction,
+and one the screen was not showing, so it printed two different words for what
+read as one meaning. Fixed by saying the thing that differs — *waiting on
+funding* or *cash is in the account* — rather than repeating the caption
+(D123).
+
+Worth noting what building that fix exposed: the first attempt showed *"in
+round X"* versus *"not in a payment round"*, which was also wrong. Every line
+in the list was in a round. Only looking at the running screen showed that the
+difference is the round's **state**, not its existence.
+
+**"What does *worth knowing before the yes, rather than on Friday* mean?"**
+It meant: if you approve everything still waiting, the transfer needed goes up
+to X, and it is better to see that while deciding than to have the person
+making the payments discover it days later. "On Friday" assumed a weekly
+payment run this business has never described. The sentence now says the thing
+instead of gesturing at it.
+
+### And the defect nobody asked about
+
+The demo's own refusal probes — the page whose whole point is *proof that the
+refusals are real* — led with:
+
+> A8 — approving above the amount requested · expect `422
+> approved_above_requested`
+
+**That rule was deleted in D76**, because prices move between the request and
+the meeting. The probe had been failing ever since, on a page nobody opens
+unless they are already suspicious.
+
+A self-test that asserts a deleted rule is worse than no test: it produces a
+red row that everybody learns to ignore, and it occupies the slot where a live
+rule's test should be. The slot now holds the rule that replaced it — a
+request with no document behind it is refused (D125) — and it passes, with the
+five probes beside it.
+
+**The general shape: a test is a claim with an expiry date.** When a decision
+is reversed, the thing asserting the old decision has to be found and changed
+in the same act, or it becomes furniture.

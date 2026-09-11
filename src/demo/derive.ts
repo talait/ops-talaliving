@@ -25,6 +25,7 @@ import type {
   CashComponent, CashEvent, CashMonthDetail, CashDayRow, Transaction as TrxRow,
 } from "@/services/accounting/contracts";
 import type { DocKind } from "@/services/documents/contracts";
+import { REQUEST_SUPPORT_KINDS } from "@/services/documents/contracts";
 import { LOCALE } from "@/lib/format";
 
 /** One definition, read from settings — never a literal repeated in three
@@ -303,6 +304,9 @@ export function prLineView(state: DemoState, line: PrLine): PrLineView {
     note: currentNote(state, line.id),
     pending_request: pendingRequest(state, line.id),
     trx_nos: fundingTransactions(state, line.line_no_full).map((t) => t.trx_no),
+    round_no: lineInRound(state, line.id)?.round_no ?? null,
+    round_status: lineInRound(state, line.id)?.status ?? null,
+    has_support: [...lineEvidenceKinds(state, line)].some((k) => REQUEST_SUPPORT_KINDS.includes(k)),
   };
 }
 

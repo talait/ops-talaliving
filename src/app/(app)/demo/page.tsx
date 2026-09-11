@@ -72,14 +72,18 @@ export default function DemoDiagnosticsPage() {
     const original = state.session_user_id;
 
     await identity.actAs("usr_evin");
-    const above = await procurement.approveLine({
-      line_no: "pr-26-09-10_01-L01", approved: true, approved_amount: 99_000_000,
+    /* This slot used to assert a cap on approving above what was requested.
+       D76 deleted that rule — prices move between the request and the meeting
+       — and the probe went on asserting it, quietly failing, testing a past
+       that no longer exists (F33). Replaced with the rule that now stands. */
+    const bare = await procurement.approveLine({
+      line_no: "pr-26-09-10_01-L03", approved: true,
     });
     results.push({
-      name: "A8 — approving above the amount requested",
-      expect: "422 approved_above_requested",
-      got: above.error ? `${above.error.status} ${above.error.code}` : "accepted",
-      pass: above.error?.status === 422 && above.error.code === "approved_above_requested",
+      name: "D125 — approving a request with no document behind it",
+      expect: "422 support_required",
+      got: bare.error ? `${bare.error.status} ${bare.error.code}` : "accepted",
+      pass: bare.error?.status === 422 && bare.error.code === "support_required",
     });
 
     await identity.actAs("usr_andi");

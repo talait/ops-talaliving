@@ -13,6 +13,9 @@ export const DOC_KINDS = [
   "Receiving Item",
   "Delivery Note",
   "Purchase Order",
+  /** A shop page, a marketplace listing, a quotation somebody sent a link to.
+   *  What a request is usually built from before any nota exists (D125). */
+  "Reference Link",
   "Others",
 ] as const;
 export type DocKind = (typeof DOC_KINDS)[number];
@@ -34,6 +37,22 @@ export const PRIMARY_DOC_KINDS: DocKind[] = [
 export const SUPPORTING_DOC_KINDS: DocKind[] = [
   "Delivery Note",
   "Purchase Order",
+  "Reference Link",
+  "Others",
+];
+
+/** What a request must carry before anybody is asked to decide on it.
+ *
+ *  A request with nothing behind it asks somebody to approve a number. The
+ *  owner's rule: *setiap pengajuan untuk pembayaran harus dilengkapi dengan
+ *  dokumen pendukung* — a link to the shop page, an invoice, a bill. Any of
+ *  these will do, because at request time the nota usually does not exist yet
+ *  and the link is what the price came from (D125).
+ */
+export const REQUEST_SUPPORT_KINDS: DocKind[] = [
+  "Reference Link",
+  "Receipt / Invoice / Nota",
+  "Purchase Order",
   "Others",
 ];
 
@@ -47,9 +66,20 @@ export const LEDGER_DOC_KINDS: DocKind[] = [
 
 export type LinkEntity = "transaction" | "pr_line" | "po" | "receipt";
 
+/** A piece of evidence — a **file or a link**, never both.
+ *
+ *  A marketplace listing is not a file, and photographing the screen to make
+ *  it one loses the thing that made it useful: the address somebody else can
+ *  open to see the price. So a link is first-class evidence, on the same road
+ *  as everything else (D125) — it reaches a record through the same
+ *  `attachment_link`, appears in the same strip, and counts the same way.
+ */
 export interface Attachment {
   id: string;
+  /** Empty for a link. */
   storage_path: string;
+  /** The address, for a link. Null for a file. */
+  url: string | null;
   filename: string;
   sha256: string;
   mime: string;

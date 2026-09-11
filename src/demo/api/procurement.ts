@@ -10,13 +10,14 @@ import type {
 import type { PrLine as PrLineRow } from "@/services/procurement/contracts";
 import { PROBLEM_CONDITIONS, VARIANCE_REASON_LABEL } from "@/services/procurement/contracts";
 import type { DocKind } from "@/services/documents/contracts";
+import { REQUEST_SUPPORT_KINDS } from "@/services/documents/contracts";
 import { LOCALE } from "@/lib/format";
 import { getState, apply, newId, nextDocNumber, writeAudit, writeOutbox } from "../store";
 import {
   prLineView, approvalQueue, lineCoverage, roundSummary, poStatus, isApproved,
   boughtCategories, itemsBoughtFrom, itemSources, purchaseFacts, openLines,
   pendingRequest, byTime, vendorJourney,
-  varianceOf, currentApproval,
+  varianceOf, currentApproval, lineEvidenceKinds,
 } from "../derive";
 import {
   latency, actingUser, requireAuthority, conflict, replayed, remember, paged,
@@ -308,6 +309,11 @@ export async function decidedLines(limit = 12): Promise<Result<PrLineView[]>> {
 /** The whole decision. `approved_amount` may be reduced below what was asked
  *  and never raised — money can only shrink on its way through approval (A8).
  */
+/** Does anything stand behind this request? See `REQUEST_SUPPORT_KINDS`. */
+function lineHasSupport(state: ReturnType<typeof getState>, line: PrLineRow): boolean {
+  return [...lineEvidenceKinds(state, line)].some((k) => REQUEST_SUPPORT_KINDS.includes(k));
+}
+
 export async function approveLine(
   input: {
     line_no: string;
@@ -356,6 +362,30 @@ export async function approveLine(
    * Rp 4.275.000 is making a real decision, not a mistake. What that leaves
    * behind is a difference between requested and approved, which the line
    * already carries and reports. */
+  /* Nothing to approve a number against.
+   *
+   *  The owner's rule: *setiap pengajuan untuk pembayaran harus dilengkapi
+   *  dengan dokumen pendukung* — the shop link, the invoice, the bill. It is
+   *  refused rather than warned about because approving a figure with nothing
+   *  behind it is exactly the habit this system exists to end, and because the
+   *  fix takes ten seconds on the line itself (D125).
+   *
+   *  Un-approving is never blocked: withdrawing a yes must stay possible even
+   *  on a line whose paperwork is a mess. */
+  if (input.approved && !lineHasSupport(state, line)) {
+    apply((draft) => {
+      writeAudit(draft, {
+        service: SERVICE, entity: "pr_line", entity_no: input.line_no,
+        action: "approve", outcome: "refused", reason: "no supporting document",
+      });
+    });
+    return invalid(
+      SERVICE, "support_required",
+      `${input.line_no} has nothing behind it. Attach what the price came from — a link to the shop page, an invoice, a bill, or the order — then approve it.`,
+      { field: "documents", accepted: REQUEST_SUPPORT_KINDS },
+    );
+  }
+
   const qty = input.approved_qty ?? line.qty;
   const amount = input.approved_amount ?? line.item_total;
 
@@ -467,12 +497,27 @@ export async function requestApproval(
 
   const user = actingUser();
   const fresh: string[] = [];
+  const bare: string[] = [];
   for (const lineNo of input.line_nos) {
     const line = state.pr_lines.find((l) => l.line_no_full === lineNo);
     if (!line || line.removed_at) continue;
     if (isApproved(state, line.id)) continue;
     if (pendingRequest(state, line.id)) continue;  /* already asked; asking twice is nagging, not a record */
+    /* Sending a bare number to somebody's phone is worse than sending
+       nothing: they cannot check it there, so they either say yes blind or
+       put the phone down (D125). */
+    if (!lineHasSupport(state, line)) { bare.push(lineNo); continue; }
     fresh.push(lineNo);
+  }
+
+  if (bare.length > 0) {
+    return invalid(
+      SERVICE, "support_required",
+      bare.length === 1
+        ? `${bare[0]} has nothing behind it. Attach the shop link, the invoice or the bill before asking anybody to decide.`
+        : `${bare.length} of these have nothing behind them — ${bare.join(", ")}. Attach the shop link, the invoice or the bill before asking anybody to decide.`,
+      { field: "documents", lines: bare, accepted: REQUEST_SUPPORT_KINDS },
+    );
   }
 
   if (fresh.length === 0) {

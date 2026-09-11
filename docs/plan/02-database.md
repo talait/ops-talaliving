@@ -295,6 +295,46 @@ PO bills nothing however large its contract, which sounds obvious and was
 wrong in the first build: the owner's own sketch showed Rp 33,3 juta payable
 on an order nobody had sent.
 
+### 15. Evidence is a file **or a link** (D125)
+
+A marketplace listing is what a price came from, and photographing the screen
+turns it into a file that nobody else can check. So an attachment is one or
+the other, never both, and a link travels the same road as a file: same table,
+same `attachment_link`, same strip.
+
+```sql
+alter table core.attachment
+  add column url text,
+  alter column storage_path drop not null,
+  add constraint attachment_is_file_or_link check (
+    (storage_path is not null and url is null)
+    or (storage_path is null and url is not null)
+  );
+```
+
+A link is never a **primary** document: a shop page does not say money moved.
+It is what a *request* stands on, which is the other half of this rule —
+
+```sql
+-- refused at approval, not warned about: a request for payment carries what
+-- stands behind it (D125)
+create or replace function procure.assert_request_is_supported() returns trigger as $$
+begin
+  if new.approved and not exists (
+    select 1 from core.attachment_link l
+    where l.entity = 'pr_line' and l.entity_no = (
+      select line_no_full from procure.pr_line where id = new.line_id)
+      and l.kind in ('Reference Link', 'Receipt / Invoice / Nota', 'Purchase Order', 'Others')
+  ) then
+    raise exception 'This request has nothing behind it';
+  end if;
+  return new;
+end $$ language plpgsql;
+```
+
+Un-approving is never blocked by it: withdrawing a yes has to stay possible on
+a line whose paperwork is a mess.
+
 ### What is deliberately absent
 
 | Not modelled | Why |

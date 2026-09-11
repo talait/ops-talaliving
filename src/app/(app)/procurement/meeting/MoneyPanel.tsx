@@ -18,8 +18,10 @@ import { useSession } from "@/store/session";
  *  can disagree with either (D9).
  *
  *  The second row is the one that changes a decision: what the transfer
- *  becomes if everything still waiting is approved today. Approving without
- *  it means finding out on Friday.
+ *  becomes if everything still waiting is approved today. Without it, the
+ *  shortfall is discovered by the person trying to make the payments, days
+ *  after the room agreed to them — and by then the decision is somebody
+ *  else's problem to unwind.
  */
 export function MoneyPanel({ lines }: { lines: PrLineView[] }) {
   const { can } = useSession();
@@ -96,9 +98,11 @@ export function MoneyPanel({ lines }: { lines: PrLineView[] }) {
         <p className="flex items-start gap-2 border-t border-slate-100 bg-amber-50/60 px-4 py-2.5 text-[13px] text-amber-900">
           <ArrowRightLeft className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <span>
-            Approve everything still waiting and the transfer becomes{" "}
-            <strong className="tabular-nums">{formatIDR(transferIfAll)}</strong> — worth
-            knowing before the yes, rather than on Friday.
+            Approve everything still waiting and{" "}
+            <strong className="tabular-nums">{formatIDR(transferIfAll)}</strong> has to be moved
+            into the paying account, not{" "}
+            <strong className="tabular-nums">{formatIDR(transfer)}</strong> — better seen now
+            than by whoever tries to make the payments.
           </span>
         </p>
       )}

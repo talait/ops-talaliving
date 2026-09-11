@@ -726,6 +726,10 @@ export interface PrLineView extends PrLine {
   submitted_at: string | null;
   evidence_count: number;
   has_payment_proof: boolean;
+  /** Does anything stand behind this request — a shop link, an invoice, a
+   *  bill, an order? Nobody should be asked to approve a number with nothing
+   *  behind it (D125). */
+  has_support: boolean;
   variance: VarianceView;
   /** The latest word from leadership, if there is one. */
   note: LineNote | null;
@@ -733,6 +737,15 @@ export interface PrLineView extends PrLine {
   pending_request: ApprovalRequest | null;
   /** The ledger rows that funded this line, by public id. */
   trx_nos: string[];
+  /** The payment round this line sits in, and what state that round is in.
+   *
+   *  This is the **only** thing separating `APPROVED` from `WAITING FOR
+   *  PAYMENT`: both mean approved and unpaid, and the second one adds that the
+   *  cash for it has been approved or already moved into the paying account. A
+   *  screen showing both statuses has to show this too, or it prints two
+   *  different words for what reads as one meaning (D123). */
+  round_no: string | null;
+  round_status: PaymentRound["status"] | null;
   coverage: LineCoverage;
   approval: PrApproval | null;
   doc_no: string;

@@ -12,6 +12,9 @@ import type {
 } from "@/services/accounting/contracts";
 import type { Attachment, AttachmentLink } from "@/services/documents/contracts";
 import type {
+  Property, PropertyAgent, SalesRep, Referral, ScrapeRow,
+} from "@/services/marketing/contracts";
+import type {
   LogPurchase, LogPiece, SawnBoard,
   StockLocation, StockMove, StockSetting,
 } from "@/services/inventory/contracts";
@@ -165,6 +168,17 @@ export interface DemoState {
   log_purchases: LogPurchase[];
   log_pieces: LogPiece[];
   sawn_boards: SawnBoard[];
+
+  /* --- marketing: the Package programme ---------------------------- */
+  /** Scraped, enriched, scored — then three agents each, approached in order
+   *  until one agrees (D183). */
+  properties: Property[];
+  property_agents: PropertyAgent[];
+  /** The agent who agreed, and what they have introduced since (D185). */
+  sales_reps: SalesRep[];
+  referrals: Referral[];
+  /** What the scrape found, before it is a property. */
+  scrape_rows: ScrapeRow[];
 
   audit_log: AuditRow[];
   outbox: OutboxRow[];

@@ -1463,6 +1463,72 @@ to argue (D139).
 
 ---
 
+## Schema `mkt` — the Package programme
+
+```mermaid
+erDiagram
+    scrape_rows ||--o| properties : "promoted to"
+    properties ||--o{ property_agents : "three, in order"
+    property_agents ||--o| sales_reps : "onboarded as"
+    sales_reps ||--o{ referrals : "introduces"
+    properties {
+        uuid id PK
+        text ref UK "TL-0001 — the tracker's own numbering"
+        text area "SP NORTH | SP MIDDLE | SP SOUTH"
+        text name
+        text status "QUALIFIED | DISQUALIFIED — <reason>"
+        boolean is_condo
+        int rooms
+        numeric adr
+        text adr_flag "CHECK when one source only"
+        int score "0-5, from the enrichment"
+        boolean validated "a person agreed with the score (D184)"
+    }
+    property_agents {
+        uuid id PK
+        uuid property_id FK
+        int slot "1,2,3 — the order they are approached"
+        text name
+        text phone
+        outreach_stage_t stage
+        date sent_on "the clock starts here"
+        date replied_on "and stops here"
+        date next_action_on
+        uuid rep_id FK "set when they agreed"
+    }
+    sales_reps {
+        uuid id PK
+        text rep_no UK
+        text name
+        numeric commission_percent "per person, 0-20"
+        date onboarded_on
+    }
+    referrals {
+        uuid id PK
+        text referral_no UK
+        uuid rep_id FK
+        text owner_name
+        text unit
+        referral_status_t status "LEAD|SURVEYED|QUOTED|WON|LOST"
+        text project_code "required on WON"
+        numeric contract_value "required on WON"
+        text commission_trx_no "the ledger row that paid it"
+    }
+```
+
+**`move_on` is not a column.** Seven days of silence since `sent_on` is a
+predicate, computed on read (D183) — the sheet's own MOVE ON column is one
+somebody has to maintain, and a column somebody has to maintain is wrong by
+Friday.
+
+| Constraint | Why |
+|---|---|
+| `property_agents` UNIQUE `(property_id, slot)` | three agents, in a fixed order |
+| `property_agents` CHECK `stage = 'DEAL' → rep_id IS NOT NULL` | a deal against nobody is a commission nobody can compute (D185) |
+| `sales_reps` CHECK `commission_percent > 0 AND <= 20` | a number that will be paid many times |
+| `referrals` CHECK `status = 'WON' → project_code IS NOT NULL AND contract_value IS NOT NULL` | commission comes from a contract that exists, never from a quotation (D186) |
+| `scrape_rows` UNIQUE `(area, lower(name))` | re-importing the scrape adds nothing |
+
 ## Schema `prod` — work orders, stages, progress
 
 A seventh service (D148). The overtime sheet demanded it: each production line

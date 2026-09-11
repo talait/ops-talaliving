@@ -93,9 +93,8 @@ export const NAV: NavSection[] = [
     title: "Marketing",
     icon: Megaphone,
     items: [
-      { label: "CRM", href: "/marketing/crm", icon: UserRound, permission: "marketing.read" },
-      { label: "Campaigns", href: "/marketing/kampanye", icon: Target, permission: "marketing.read" },
-      { label: "Sales", href: "/marketing/penjualan", icon: HandCoins, permission: "marketing.read" },
+      { label: "Package — pipeline", href: "/marketing/pipeline", icon: Target, permission: "marketing.read", badge: "new" },
+      { label: "Representative & komisi", href: "/marketing/agen", icon: HandCoins, permission: "marketing.read", badge: "new" },
     ],
   },
   {

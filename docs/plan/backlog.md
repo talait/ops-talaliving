@@ -25,7 +25,7 @@ that only shows what is left teaches nobody anything.
 | S3 | ~~**Desain, for the drafters**~~ | **built 2026-09-11 (M30)** — `/produksi/desain`, D179 |
 | S4 | ~~**Pay schemes as configuration**~~ | **built 2026-09-11 (M28)** — `/it/aturan-gaji`, D173–D176. Overtime now follows the national ladder (Q31 answered); undertime is built and off by default |
 | S5 | ~~**Rekening koran upload for the leadership accounts**~~ | **built 2026-09-11 (M31)** — `/accounting/rekening-koran`, D180–D182. Q42 answered: the statement is the only road, and the USD rate is typed per line |
-| S6 | **Package: the agent-commission programme** | its own session; the owner has an artifact (D166) |
+| S6 | ~~**Package: the agent-commission programme**~~ | **built 2026-09-12 (M32)** — `/marketing/pipeline` and `/marketing/agen`, D183–D186, from the owner's own pipeline dashboard as the reference |
 
 ## Asked for, not yet scheduled
 

@@ -15,3 +15,4 @@ export type { Result, ApiError, Outcome } from "@/services/_shared/envelope";
 export * as hr from "./hr";
 export * as production from "./production";
 export * as inventory from "./inventory";
+export * as marketing from "./marketing";

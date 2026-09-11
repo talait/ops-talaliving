@@ -340,6 +340,28 @@ signature, not the first), and in Phase 2 `hr.attendance.imported`
 (so the workshop supervisor's chat gets the day's unreadable list without
 anybody opening the app).
 
+## `marketing` — the Package programme
+
+The ninth service (D183). Two funnels joined where an agent agrees.
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/properties` · `/properties/{ref}` | each with its agents, the furthest stage reached, and who to chase next |
+| GET | `/pipeline/metrics?area=` | the funnel by **property**, and the scrape → enrichment gap per area |
+| GET | `/pipeline/queue?area=` | past the seven-day line first, then due today. Both **derived** from the sent date (D183) |
+| PUT | `/properties/{ref}/agents/{id}/stage` | stamps the sent date on the first message and the reply date on any answer. **422 on `DEAL` without an onboarded rep** (D185) |
+| POST | `/properties/{ref}/agents/{id}/move-on` | recycle this agent **and** message the next, in one act. Reason required |
+| POST | `/properties/{ref}/agents/{id}/onboard` | the agent said yes: creates the representative with a commission rate. 409 if already onboarded; 422 outside 0–20% |
+| PUT | `/properties/{ref}/validate` | a person agrees with the enrichment's score (D184) |
+| GET | `/reps` | each with their referrals, the value won, and commission earned vs unpaid |
+| POST | `/reps/{rep_no}/referrals` | an owner they introduced |
+| PUT | `/referrals/{no}/status` | **422 on `WON`** without a project code and a contract value (D186) |
+| GET | `/scrape` · POST `/scrape/import` | what the map scrape found. A row already here is skipped, never duplicated |
+| POST | `/scrape/{id}/promote` | becomes a property, `validated: false` until a person says otherwise |
+
+Events: `marketing.agent.deal`, `marketing.rep.onboarded` — the two moments
+somebody outside the module needs to know about.
+
 ## `production`
 
 | Method | Path | Notes |

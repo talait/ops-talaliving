@@ -2282,3 +2282,38 @@ Two fixes, and the second is the more interesting one:
 The general rule this is the third instance of: a derived date is as capable of
 being quietly wrong as a derived figure, and a wrong date is worse, because
 sorting by it hides the right one.
+
+## F52 — the column that is wrong by Friday
+
+The Package tracker came to us as a working Google Sheet with a read-only
+dashboard on top, and the sheet is good: three agents per property, a stage
+ladder, and a **MOVE ON** column somebody ticks when an agent has gone quiet for
+seven days.
+
+That column is the whole reason the module was worth rebuilding rather than
+mirroring. It encodes a rule — *seven days of silence, go to the next agent* —
+as a piece of data a person has to maintain. Which means:
+
+- it is only as current as the last time somebody swept the sheet;
+- it disagrees with the date beside it the moment anybody forgets;
+- and nothing anywhere can tell the difference between "not yet seven days" and
+  "nobody has looked".
+
+Rebuilt, the flag is derived from `sent_on` and today, and cannot be forgotten.
+The demo carries the case: K. Webb was messaged on 2 September and has not
+replied, so the queue says **10 hari tanpa balasan** and offers the move. The
+same row in the sheet still reads `MSG SENT`, because the sweep has not
+happened this week.
+
+### Two more things the rebuild had to change
+
+**The funnel counts properties, not agents.** A building where one agent is at
+DEAL is not also a building at QUEUED; counting it in both is how a funnel stops
+adding up to the number of buildings. So each property enters the funnel once,
+at its **furthest** agent.
+
+**Moving on is one act, not two.** Recycling the silent agent and messaging the
+next one are the same decision, and doing half of it is how a property stalls
+with nobody chasing anybody — the state the sheet produces most often. One
+button does both, and it asks for the sentence that explains it, because that
+sentence is what somebody reads a year later when the same agent comes up again.

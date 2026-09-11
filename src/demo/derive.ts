@@ -21,6 +21,10 @@ import type {
 } from "@/services/procurement/contracts";
 import { COUNTING_CONDITIONS, PROBLEM_CONDITIONS } from "@/services/procurement/contracts";
 import type {
+  Property, PropertyAgent, PropertyView, PropertyAgentView,
+  OutreachStage, PipelineMetrics, RepView,
+} from "@/services/marketing/contracts";
+import type {
   Transaction, AccountBalance, TransactionView, InboxHealth,
   FundingView, FundingDetail, FundingSpendGroup, FundingSpendRow,
   CashPlan, CashRow, CashCell, CashCellState, CashMonth, CashUnplanned, CashDue,
@@ -1666,4 +1670,158 @@ function daysApartIso(from: string, to: string): number {
   const [fy, fm, fd] = from.slice(0, 10).split("-").map(Number);
   const [ty, tm, td] = to.slice(0, 10).split("-").map(Number);
   return Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)) / 86_400_000);
+}
+
+/* ── Marketing: the Package pipeline ─────────────────────────────────────── */
+
+/** Seven days of silence and the approach moves to the next agent.
+ *
+ *  This is the tracker's own rule, carried verbatim (D183). It is a **derived**
+ *  flag rather than a stored one on purpose: the sheet has a MOVE ON column
+ *  somebody has to remember to fill in, and a column somebody has to remember
+ *  is a column that is wrong by Friday.
+ */
+const MOVE_ON_DAYS = 7;
+
+function agentView(a: PropertyAgent, today: string): PropertyAgentView {
+  const waiting = a.sent_on && !a.replied_on ? daysApartIso(a.sent_on, today) : null;
+  return {
+    ...a,
+    waiting_days: waiting,
+    move_on: waiting != null && waiting >= MOVE_ON_DAYS
+      && a.stage !== "RECYCLED" && a.stage !== "SKIP" && a.stage !== "DEAL",
+    due: !!a.next_action_on && a.next_action_on <= today
+      && a.stage !== "RECYCLED" && a.stage !== "SKIP" && a.stage !== "DEAL",
+  };
+}
+
+const LADDER: OutreachStage[] = [
+  "QUEUED", "MSG SENT", "REPLIED", "CALL SET", "FORM BACK", "PRESENTATION", "DEAL",
+];
+const rank = (s: OutreachStage) => LADDER.indexOf(s);
+
+export function propertyView(state: DemoState, property: Property, today: string): PropertyView {
+  const agents = state.property_agents
+    .filter((a) => a.property_id === property.id)
+    .sort((a, b) => a.slot - b.slot)
+    .map((a) => agentView(a, today));
+
+  /* The furthest any agent reached. A property with one agent at DEAL is not
+     also a property at QUEUED, and counting it twice is how a funnel stops
+     adding up (D183). */
+  const best = agents.reduce<OutreachStage>((acc, a) => (rank(a.stage) > rank(acc) ? a.stage : acc), "QUEUED");
+
+  /* Who to chase: the first agent still in play. `SKIP` and `RECYCLED` are
+     exits, and an agent who replied is somebody else's move. */
+  const next = agents.find((a) => a.stage !== "RECYCLED" && a.stage !== "SKIP") ?? null;
+
+  return {
+    ...property,
+    agents,
+    best_stage: best,
+    next_agent: next,
+    /* Everybody approached, nobody agreed — the property goes back on the pile
+       rather than sitting in the funnel for ever. */
+    exhausted: agents.length > 0
+      && agents.every((a) => a.stage === "RECYCLED" || a.stage === "SKIP"),
+  };
+}
+
+export function propertyViews(state: DemoState, today: string): PropertyView[] {
+  return state.properties
+    .map((p) => propertyView(state, p, today))
+    /* Trouble first, then the best prospects: anything past the move-on line,
+       then by score, then by how far it has got. */
+    .sort((a, b) => {
+      const aMove = a.agents.some((x) => x.move_on) ? 0 : 1;
+      const bMove = b.agents.some((x) => x.move_on) ? 0 : 1;
+      if (aMove !== bMove) return aMove - bMove;
+      if (a.score !== b.score) return b.score - a.score;
+      return rank(b.best_stage) - rank(a.best_stage);
+    });
+}
+
+export function pipelineMetrics(state: DemoState, today: string, area?: string): PipelineMetrics {
+  const props = propertyViews(state, today).filter((p) => !area || p.area === area);
+  const agents = props.flatMap((p) => p.agents);
+
+  const messaged = agents.filter((a) => rank(a.stage) >= rank("MSG SENT") || a.stage === "RECYCLED").length;
+  const replied = agents.filter((a) => rank(a.stage) >= rank("REPLIED")).length;
+  const qualified = props.filter((p) => p.status === "QUALIFIED");
+
+  const byArea = new Map<string, { scraped: number; enriched: number; converted: number }>();
+  for (const row of state.scrape_rows) {
+    if (area && row.area !== area) continue;
+    const cur = byArea.get(row.area) ?? { scraped: 0, enriched: 0, converted: 0 };
+    cur.scraped += 1;
+    if (row.enriched) cur.enriched += 1;
+    if (row.property_ref) cur.converted += 1;
+    byArea.set(row.area, cur);
+  }
+
+  return {
+    properties: props.length,
+    qualified: qualified.length,
+    validated: qualified.filter((p) => p.validated).length,
+    messaged,
+    replied,
+    /* No rate over nothing: zero messages is not a zero per cent reply rate
+       (the same rule the BOM cost follows — a missing figure, not a wrong one). */
+    reply_rate: messaged > 0 ? Math.round((replied / messaged) * 100) : null,
+    forms_back: agents.filter((a) => rank(a.stage) >= rank("FORM BACK")).length,
+    deals: agents.filter((a) => a.stage === "DEAL").length,
+    funnel: LADDER.map((stage) => ({ stage, properties: props.filter((p) => p.best_stage === stage).length })),
+    scrape: [...byArea.entries()]
+      .map(([a, v]) => ({ area: a, ...v }))
+      .sort((x, y) => x.area.localeCompare(y.area)),
+  };
+}
+
+/** What to do today: every agent past the move-on line first, then anything
+ *  due. Ordered so the top of the list is the thing that is already late. */
+export function followUpQueue(state: DemoState, today: string, area?: string) {
+  const out: { property: PropertyView; agent: PropertyAgentView; kind: "move_on" | "due" }[] = [];
+  for (const p of propertyViews(state, today)) {
+    if (area && p.area !== area) continue;
+    for (const a of p.agents) {
+      if (a.move_on) out.push({ property: p, agent: a, kind: "move_on" });
+      else if (a.due) out.push({ property: p, agent: a, kind: "due" });
+    }
+  }
+  return out.sort((x, y) => (x.kind === y.kind ? 0 : x.kind === "move_on" ? -1 : 1));
+}
+
+/** A representative, and what the business owes them.
+ *
+ *  Commission is computed from the **contract value of projects that actually
+ *  exist** — never from a quote, never from a lead's hoped-for size (D186). A
+ *  referral without a project code contributes nothing to the figure, and the
+ *  screen shows it as work in progress rather than as money.
+ */
+export function repViews(state: DemoState): RepView[] {
+  return state.sales_reps.map((rep) => {
+    const referrals = state.referrals
+      .filter((r) => r.rep_id === rep.id)
+      .sort((a, b) => b.introduced_on.localeCompare(a.introduced_on));
+    const won = referrals.filter((r) => r.status === "WON" && r.contract_value != null);
+    const wonValue = won.reduce((s, r) => s + (r.contract_value ?? 0), 0);
+    const earned = Math.round(wonValue * rep.commission_percent / 100);
+    const paid = won
+      .filter((r) => r.commission_trx_no)
+      .reduce((s, r) => s + Math.round((r.contract_value ?? 0) * rep.commission_percent / 100), 0);
+
+    return {
+      ...rep,
+      referrals,
+      leads: referrals.length,
+      won: won.length,
+      won_value: wonValue,
+      commission_earned: earned,
+      commission_unpaid: earned - paid,
+      from_properties: [...new Set(state.property_agents
+        .filter((a) => a.rep_id === rep.id)
+        .map((a) => state.properties.find((p) => p.id === a.property_id)?.ref)
+        .filter((x): x is string => !!x))],
+    };
+  });
 }

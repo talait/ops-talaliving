@@ -1255,6 +1255,7 @@ export async function createPo(
       expected_delivery: input.expected_delivery || null,
       approval_asked_at: null, approval_asked_by: null,
       approved_at: null, approved_by: null, approval_note: null,
+      revision: 0, sent_revision: 0,
     });
     lines.forEach((l, i) => {
       draft.po_lines.push({
@@ -1994,8 +1995,24 @@ export async function amendPoLine(
 
   const user = actingUser();
   apply((draft) => {
+    const row = draft.purchase_orders.find((p) => p.po_no === input.po_no);
     const old = draft.po_lines.find((l) => l.id === line.id);
-    if (!old) return;
+    if (!old || !row) return;
+
+    /* A confirmation is a yes to particular numbers. Change them and the yes
+       no longer refers to anything somebody saw, so it falls away and has to
+       be asked for again (D135). Once the order has been *sent*, the vendor
+       already has it and re-confirming changes nothing they hold — so an
+       issued order is amended without going back to leadership (owner). */
+    const droppedApproval = row.status === "DRAFT" && row.approved_at !== null;
+    if (droppedApproval) {
+      row.approved_at = null;
+      row.approved_by = null;
+      row.approval_asked_at = null;
+      row.approval_asked_by = null;
+    }
+    /* Sent, and now different from the copy the vendor holds. */
+    if (row.status === "ISSUED") row.revision += 1;
     const fresh = {
       ...old,
       id: newId("pol"),
@@ -2019,6 +2036,8 @@ export async function amendPoLine(
         after: { qty, unit_price, line_total: fresh.line_total },
         already_received: received,
         by: user.email,
+        dropped_approval: droppedApproval,
+        revision: row.revision,
       },
     });
   });
@@ -2330,4 +2349,39 @@ export async function setExpectedDelivery(
     });
   });
   return getPoDetail(input.po_no);
+}
+
+/** Telling the vendor about an amendment.
+ *
+ *  Amending an issued order does not go back to leadership — the vendor
+ *  already has it, and re-confirming changes nothing they hold (owner). What
+ *  it does change is that the paper in their hand is now wrong, so the order
+ *  carries a **revision** and says *changed, not re-sent* until somebody says
+ *  they have sent it (D135). The PDF prints the revision, which is what lets
+ *  two pieces of paper be told apart.
+ */
+export async function markPoResent(poNo: string): Promise<Result<PoDetail>> {
+  await latency();
+  const denied = requireModule(SERVICE, "procurement");
+  if (denied) return denied;
+
+  const state = getState();
+  const po = state.purchase_orders.find((p) => p.po_no === poNo);
+  if (!po) return notFound(SERVICE, "po_not_found", `No purchase order ${poNo}.`);
+  if (po.revision === po.sent_revision) {
+    return conflict(SERVICE, "nothing_to_send", `The vendor already has revision ${po.revision} — nothing changed since.`);
+  }
+
+  const user = actingUser();
+  apply((draft) => {
+    const row = draft.purchase_orders.find((p) => p.po_no === poNo);
+    if (!row) return;
+    row.sent_revision = row.revision;
+    writeAudit(draft, {
+      service: SERVICE, entity: "purchase_order", entity_no: poNo,
+      action: "resend", outcome: "ok", reason: null,
+      detail: { revision: row.revision, by: user.email },
+    });
+  });
+  return getPoDetail(poNo);
 }

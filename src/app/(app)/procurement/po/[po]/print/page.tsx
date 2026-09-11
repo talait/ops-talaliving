@@ -46,7 +46,9 @@ export default function PoPrintPage({ params }: { params: { po: string } }) {
               </div>
               <div className="text-right">
                 <p className="text-lg font-bold tracking-tight">PURCHASE ORDER</p>
-                <p className="font-mono text-[13px]">{d.po_no}</p>
+                <p className="font-mono text-[13px]">
+                  {d.po_no}{d.revision > 0 && <span className="font-bold"> · REV {d.revision}</span>}
+                </p>
                 <p className="text-[12px] text-slate-500">
                   {d.issued_at ? d.issued_at.slice(0, 10) : "draft — not yet issued"}
                 </p>

@@ -468,6 +468,12 @@ export interface PurchaseOrder {
   approved_by: string | null;
   /** What leadership said when they confirmed it, if anything. */
   approval_note: string | null;
+  /** Bumped every time an issued order is amended. The vendor holds a piece of
+   *  paper; this is what lets two of them be told apart (D135). */
+  revision: number;
+  /** The revision the vendor has actually been sent. Behind `revision` means
+   *  the paper in their hand is out of date. */
+  sent_revision: number;
 }
 
 export interface PoLine {
@@ -875,6 +881,8 @@ export interface PoDetail {
   expected_delivery: string | null;
   /** Days late, once everything was supposed to be here and is not. */
   days_late: number | null;
+  revision: number;
+  sent_revision: number;
   approval_asked_at: string | null;
   approval_asked_by_name: string | null;
   approved_at: string | null;

@@ -1565,6 +1565,8 @@ export function poDetail(state: DemoState, poId: string): PoDetail | null {
     status: po.status,
     expected_delivery: po.expected_delivery,
     days_late,
+    revision: po.revision,
+    sent_revision: po.sent_revision,
     approval_asked_at: po.approval_asked_at,
     approval_asked_by_name: asker?.full_name ?? null,
     approved_at: po.approved_at,

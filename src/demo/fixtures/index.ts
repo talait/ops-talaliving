@@ -32,7 +32,7 @@ export * from "./reference";
  *  changes every count, and their own work is exactly what the snapshot is
  *  for. A version somebody types when they edit the fixtures separates "the
  *  demo data moved" from "somebody used the demo". */
-export const FIXTURE_VERSION = "2026-09-11.3";
+export const FIXTURE_VERSION = "2026-09-11.4";
 
 export function stateSignature(state: DemoState): string {
   return [

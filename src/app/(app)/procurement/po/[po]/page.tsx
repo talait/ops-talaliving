@@ -227,6 +227,34 @@ export default function PoDetailPage({ params }: { params: { po: string } }) {
               </div>
             )}
 
+            {d.revision > d.sent_revision && (
+              /* Amending an issued order does not go back to leadership — the
+                 vendor already has it. What it does mean is that the paper in
+                 their hand is wrong (D135). */
+              <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-2.5 text-[13px] text-amber-900">
+                <PenLine className="h-4 w-4 shrink-0" />
+                <span>
+                  Changed since it was sent — the supplier has revision {d.sent_revision}, this is{" "}
+                  <strong>revision {d.revision}</strong>.
+                </span>
+                {mayEdit && (
+                  <Button
+                    size="sm" variant="outline" className="ml-auto" disabled={busy}
+                    onClick={async () => {
+                      setBusy(true);
+                      const res = await procurement.markPoResent(d.po_no);
+                      setBusy(false);
+                      if (res.error) { toast("warning", "Not marked", res.error.message); return; }
+                      toast("success", `Revision ${d.revision} sent`, "Print it and send it on WhatsApp if you have not already.");
+                      reload();
+                    }}
+                  >
+                    I have sent revision {d.revision}
+                  </Button>
+                )}
+              </div>
+            )}
+
             {d.expected_delivery && (
               <div className={cn(
                 "mb-4 flex flex-wrap items-center gap-2 rounded-xl border px-4 py-2.5 text-[13px]",

@@ -20,6 +20,64 @@
  *  by the people who use the sheet today.
  */
 
+/* ── Where in the world ───────────────────────────────────────────────────
+ *
+ *  `SP NORTH` is a district of one city on one coast, and it only reads as a
+ *  location because everybody in the room shares a country. Once the scrape
+ *  runs anywhere else, a flat `area` column becomes a list of strings nobody
+ *  can group, compare or spell consistently — *Seminyak* beside *SP MIDDLE*
+ *  beside *Downtown Dubai* (D187).
+ *
+ *  So geography is a **market**: country → region → city → the local district
+ *  label, which stays exactly as the team writes it. Everything above that
+ *  label exists so a figure can roll up — this city, this country, everywhere.
+ *
+ *  Two things ride on the market rather than on the property, because they are
+ *  properties of the *place* and getting them per-row wrong is expensive:
+ *
+ *  - **Currency.** An ADR of 106 is not a number until you know whether it is
+ *    dollars, rupiah or dirhams. Nothing in this module ever adds two of them
+ *    together, and no rate is invented to make it possible (the same rule the
+ *    bank statement follows, D181).
+ *  - **Time zone.** Whether to ring an agent now depends on what time it is
+ *    *there*, and that is the one question a list of names cannot answer.
+ */
+export interface Market {
+  id: string;
+  /** `AU-QLD-GOLDCOAST-SPNORTH`. Stable, and what a property references. */
+  code: string;
+  /** ISO-3166 alpha-2. */
+  country_code: string;
+  country_name: string;
+  /** State, province, prefecture — whatever the country calls the level
+   *  between a country and a city. Null where a country has none worth
+   *  carrying. */
+  region: string | null;
+  city: string;
+  /** The local label, verbatim: `SP NORTH`, `Seminyak`, `Downtown`. */
+  area_label: string;
+  /** ISO-4217, for the ADR quoted in this market. */
+  currency: string;
+  /** IANA, for "what time is it there". */
+  timezone: string;
+  /** The language outreach is written in here. Carried as data because the
+   *  message templates will need it, not because anything reads it yet. */
+  language: string;
+  active: boolean;
+}
+
+export interface MarketView extends Market {
+  /** `Gold Coast · SP NORTH`, for a row that has one line to say where. */
+  label: string;
+  /** `Australia · Queensland · Gold Coast · SP NORTH`, for a drawer. */
+  full_path: string;
+  properties: number;
+  scraped: number;
+}
+
+/** How far up to group a figure. The same metrics, at three altitudes. */
+export type MarketLevel = "country" | "city" | "area";
+
 /** Where an approach to one agent has got to.
  *
  *  Ordered, and the order is load-bearing: the funnel, the *furthest agent per
@@ -57,8 +115,9 @@ export interface Property {
   /** `TL-0001`. The tracker's own numbering, kept because it is what people
    *  say to each other. */
   ref: string;
-  /** `SP NORTH`, `SP MIDDLE`, `SP SOUTH`. */
-  area: string;
+  /** The market this sits in, by code (D187). The country, city and local
+   *  label all hang off it — the property does not repeat them. */
+  market_code: string;
   name: string;
   maps_url: string | null;
   address: string | null;
@@ -120,7 +179,9 @@ export interface SalesRep {
   agency: string | null;
   phone: string | null;
   email: string | null;
-  area: string | null;
+  /** The market they were recruited in. Null for a rep who works across
+   *  several — which happens, and is not an error. */
+  market_code: string | null;
   /** Per cent of the project value. Per person, because it is negotiated
    *  per person. */
   commission_percent: number;
@@ -167,7 +228,7 @@ export interface Referral {
 /** One row of the scrape, before it becomes a property. */
 export interface ScrapeRow {
   id: string;
-  area: string;
+  market_code: string;
   name: string;
   maps_url: string | null;
   /** The enrichment run has been through it. */
@@ -189,6 +250,8 @@ export interface PropertyAgentView extends PropertyAgent {
 }
 
 export interface PropertyView extends Property {
+  /** Resolved once, here, so no screen has to join a code to a city. */
+  market: MarketView;
   agents: PropertyAgentView[];
   /** The furthest any of its agents has got — what the funnel counts, because
    *  a property with one agent at DEAL is not also a property at QUEUED. */
@@ -212,11 +275,21 @@ export interface PipelineMetrics {
   deals: number;
   /** Stage → how many properties are furthest at it. */
   funnel: { stage: OutreachStage; properties: number }[];
-  /** Per area: scraped, enriched, already properties. */
-  scrape: { area: string; scraped: number; enriched: number; converted: number }[];
+  /** Grouped at whatever level was asked for — country, city or local area
+   *  (D187). `key` is the grouping value, `label` is what to print. */
+  level: MarketLevel;
+  scrape: {
+    key: string; label: string;
+    scraped: number; enriched: number; converted: number;
+    /** What the ADRs in this group are quoted in. More than one means the
+     *  group spans currencies and **no average is offered** — a mean across
+     *  dollars and rupiah is not a number. */
+    currencies: string[];
+  }[];
 }
 
 export interface RepView extends SalesRep {
+  market: MarketView | null;
   referrals: Referral[];
   leads: number;
   won: number;

@@ -2317,3 +2317,30 @@ next one are the same decision, and doing half of it is how a property stalls
 with nobody chasing anybody — the state the sheet produces most often. One
 button does both, and it asks for the sentence that explains it, because that
 sentence is what somebody reads a year later when the same agent comes up again.
+
+## F53 — the prefix that was rebuilt from the label
+
+Making the pipeline worldwide meant one filter had to work at three altitudes:
+all countries, one country's cities, one city's districts. The market code
+already encodes exactly that — `AU-QLD-GOLDCOAST-SPNORTH` — so the filter is a
+prefix match and nothing else is needed.
+
+The first version built the city prefix **from the labels** instead:
+country code, then an abbreviation of the region, then the city name with the
+spaces removed. For Queensland that produced `AU-QUE-GOLDCOAST`, against seeds
+that say `AU-QLD-GOLDCOAST`.
+
+Nothing threw. The chip rendered, the click registered, and the screen showed
+**0 properti** — which is a legitimate answer for a city with no properties in
+it, and therefore indistinguishable from the truth. It was caught only because
+the Gold Coast obviously has six.
+
+The fix is one line — the city prefix is the market code minus its last
+segment — and the rule behind it is worth more than the fix: **never
+reconstruct a key from the words it was rendered from.** `QLD` and
+`Queensland` are the same fact in two vocabularies, and the moment code
+translates between them it owns a mapping that nobody maintains.
+
+The same shape has now appeared three times in this project: a document kind
+stored as a display string (C1), a category rebuilt from a name, and this. Each
+time the honest version is to carry the key and show the label.

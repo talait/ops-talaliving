@@ -1,6 +1,27 @@
 import type {
-  Property, PropertyAgent, SalesRep, Referral, ScrapeRow,
+  Market, Property, PropertyAgent, SalesRep, Referral, ScrapeRow,
 } from "@/services/marketing/contracts";
+
+/** Where the scrape runs (D187).
+ *
+ *  Three countries on purpose, and at three different stages, because the
+ *  question the owner asked is what happens when this stops being one coast:
+ *
+ *  - **Gold Coast** — the live market, three districts, everything running.
+ *  - **Sydney** — scraped last week, nothing enriched, no property yet. What a
+ *    new market looks like on its first day.
+ *  - **Badung (Bali)** — same, and in **rupiah**, which is the whole reason
+ *    currency lives on the market: an ADR of 106 and an ADR of 1.850.000 are
+ *    not comparable, not addable, and not worth an invented rate.
+ */
+export const MARKETS: Market[] = [
+  { id: "mkt_01", code: "AU-QLD-GOLDCOAST-SPNORTH", country_code: "AU", country_name: "Australia", region: "Queensland", city: "Gold Coast", area_label: "SP NORTH", currency: "AUD", timezone: "Australia/Brisbane", language: "en", active: true },
+  { id: "mkt_02", code: "AU-QLD-GOLDCOAST-SPMIDDLE", country_code: "AU", country_name: "Australia", region: "Queensland", city: "Gold Coast", area_label: "SP MIDDLE", currency: "AUD", timezone: "Australia/Brisbane", language: "en", active: true },
+  { id: "mkt_03", code: "AU-QLD-GOLDCOAST-SPSOUTH", country_code: "AU", country_name: "Australia", region: "Queensland", city: "Gold Coast", area_label: "SP SOUTH", currency: "AUD", timezone: "Australia/Brisbane", language: "en", active: true },
+  { id: "mkt_04", code: "AU-NSW-SYDNEY-BONDI", country_code: "AU", country_name: "Australia", region: "New South Wales", city: "Sydney", area_label: "BONDI", currency: "AUD", timezone: "Australia/Sydney", language: "en", active: true },
+  { id: "mkt_05", code: "ID-BA-BADUNG-SEMINYAK", country_code: "ID", country_name: "Indonesia", region: "Bali", city: "Badung", area_label: "SEMINYAK", currency: "IDR", timezone: "Asia/Makassar", language: "id", active: true },
+  { id: "mkt_06", code: "ID-BA-BADUNG-CANGGU", country_code: "ID", country_name: "Indonesia", region: "Bali", city: "Badung", area_label: "CANGGU", currency: "IDR", timezone: "Asia/Makassar", language: "id", active: true },
+];
 
 /** The Package pipeline, as the tracker actually holds it (D183).
  *
@@ -22,7 +43,7 @@ import type {
  */
 export const PROPERTIES: Property[] = [
   {
-    id: "prp_01", ref: "TL-0001", area: "SP NORTH", name: "Chateau Beachside",
+    id: "prp_01", ref: "TL-0001", market_code: "AU-QLD-GOLDCOAST-SPNORTH", name: "Chateau Beachside",
     maps_url: "https://maps.google.com/?q=Chateau+Beachside", address: "Marine Parade, Surfers Paradise",
     status: "QUALIFIED", is_condo: true, rooms: 100, adr: 69, adr_flag: "OK",
     chain: null, reno_signal: "Lobi direnovasi 2024, unit belum",
@@ -31,7 +52,7 @@ export const PROPERTIES: Property[] = [
     created_at: "2026-08-18T09:00:00+08:00",
   },
   {
-    id: "prp_02", ref: "TL-0002", area: "SP MIDDLE", name: "Mantra on View",
+    id: "prp_02", ref: "TL-0002", market_code: "AU-QLD-GOLDCOAST-SPMIDDLE", name: "Mantra on View",
     maps_url: "https://maps.google.com/?q=Mantra+on+View", address: "Hanlan St, Surfers Paradise",
     status: "QUALIFIED", is_condo: true, rooms: 355, adr: 106, adr_flag: "OK",
     chain: "Mantra", reno_signal: "Beberapa pemilik unit menjual dengan catatan 'needs update'",
@@ -40,7 +61,7 @@ export const PROPERTIES: Property[] = [
     import_id: "imp_scr01", created_at: "2026-08-18T09:00:00+08:00",
   },
   {
-    id: "prp_03", ref: "TL-0003", area: "SP SOUTH", name: "Meriton Suites Southport",
+    id: "prp_03", ref: "TL-0003", market_code: "AU-QLD-GOLDCOAST-SPSOUTH", name: "Meriton Suites Southport",
     maps_url: "https://maps.google.com/?q=Meriton+Suites+Southport", address: "Queen St, Southport",
     status: "QUALIFIED", is_condo: true, rooms: 208, adr: 115, adr_flag: "CHECK",
     chain: "Meriton", reno_signal: null, reno_source: null, review_note: null, rating: 4.5,
@@ -48,7 +69,7 @@ export const PROPERTIES: Property[] = [
     import_id: "imp_scr01", created_at: "2026-08-18T09:00:00+08:00",
   },
   {
-    id: "prp_04", ref: "TL-0004", area: "SP NORTH", name: "Paradise Island Resort",
+    id: "prp_04", ref: "TL-0004", market_code: "AU-QLD-GOLDCOAST-SPNORTH", name: "Paradise Island Resort",
     maps_url: null, address: "Stanhill Dr, Chevron Island",
     status: "QUALIFIED", is_condo: true, rooms: 120, adr: 64, adr_flag: "OK",
     chain: null, reno_signal: "Strata meeting membahas perbaikan interior",
@@ -57,7 +78,7 @@ export const PROPERTIES: Property[] = [
     created_at: "2026-08-18T09:00:00+08:00",
   },
   {
-    id: "prp_05", ref: "TL-0005", area: "SP NORTH", name: "Budds Beach Apartments",
+    id: "prp_05", ref: "TL-0005", market_code: "AU-QLD-GOLDCOAST-SPNORTH", name: "Budds Beach Apartments",
     maps_url: null, address: "Stanhill Dr, Surfers Paradise",
     status: "QUALIFIED", is_condo: true, rooms: 48, adr: 58, adr_flag: "OK",
     chain: null, reno_signal: null, reno_source: null, review_note: null, rating: 3.6,
@@ -65,7 +86,7 @@ export const PROPERTIES: Property[] = [
     created_at: "2026-08-18T09:00:00+08:00",
   },
   {
-    id: "prp_06", ref: "TL-0006", area: "SP MIDDLE", name: "Dorsett Gold Coast",
+    id: "prp_06", ref: "TL-0006", market_code: "AU-QLD-GOLDCOAST-SPMIDDLE", name: "Dorsett Gold Coast",
     maps_url: null, address: "Surfers Paradise Blvd",
     status: "DISQUALIFIED — NOT CONDO", is_condo: false, rooms: 313, adr: 119, adr_flag: "OK",
     chain: "Dorsett", reno_signal: null, reno_source: null, review_note: null, rating: 4.4,
@@ -116,7 +137,7 @@ export const PROPERTY_AGENTS: PropertyAgent[] = AGENTS.map(
 export const SALES_REPS: SalesRep[] = [
   {
     id: "rep_01", rep_no: "agn-26-09-02_01", name: "R. Novak", agency: "Kollosche",
-    phone: "+61 498 765 432", email: "r.novak@kollosche.com.au", area: "SP MIDDLE",
+    phone: "+61 498 765 432", email: "r.novak@kollosche.com.au", market_code: "AU-QLD-GOLDCOAST-SPMIDDLE",
     commission_percent: 4, onboarded_on: "2026-09-02", active: true,
     note: "Dari TL-0002 Mantra on View. Komisi 4% nilai kontrak, dibayar setelah termin pertama masuk.",
   },
@@ -156,15 +177,24 @@ export const REFERRALS: Referral[] = [
 /** What the scrape found, and what the enrichment has been through. The gap
  *  between the two columns is the queue nobody could see (D183). */
 export const SCRAPE_ROWS: ScrapeRow[] = [
-  { id: "scr_01", area: "SP NORTH", name: "Chateau Beachside", maps_url: null, enriched: true, property_ref: "TL-0001", scraped_on: "2026-08-15" },
-  { id: "scr_02", area: "SP NORTH", name: "Paradise Island Resort", maps_url: null, enriched: true, property_ref: "TL-0004", scraped_on: "2026-08-15" },
-  { id: "scr_03", area: "SP NORTH", name: "Budds Beach Apartments", maps_url: null, enriched: true, property_ref: "TL-0005", scraped_on: "2026-08-15" },
-  { id: "scr_04", area: "SP NORTH", name: "Chevron Renaissance", maps_url: null, enriched: false, property_ref: null, scraped_on: "2026-09-05" },
-  { id: "scr_05", area: "SP NORTH", name: "Artique Surfers Paradise", maps_url: null, enriched: false, property_ref: null, scraped_on: "2026-09-05" },
-  { id: "scr_06", area: "SP MIDDLE", name: "Mantra on View", maps_url: null, enriched: true, property_ref: "TL-0002", scraped_on: "2026-08-15" },
-  { id: "scr_07", area: "SP MIDDLE", name: "Dorsett Gold Coast", maps_url: null, enriched: true, property_ref: "TL-0006", scraped_on: "2026-08-15" },
-  { id: "scr_08", area: "SP MIDDLE", name: "Q1 Resort & Spa", maps_url: null, enriched: false, property_ref: null, scraped_on: "2026-09-05" },
-  { id: "scr_09", area: "SP SOUTH", name: "Meriton Suites Southport", maps_url: null, enriched: true, property_ref: "TL-0003", scraped_on: "2026-08-15" },
-  { id: "scr_10", area: "SP SOUTH", name: "Broadbeach Savannah", maps_url: null, enriched: false, property_ref: null, scraped_on: "2026-09-05" },
-  { id: "scr_11", area: "SP SOUTH", name: "Phoenician Resort", maps_url: null, enriched: false, property_ref: null, scraped_on: "2026-09-05" },
+  { id: "scr_01", market_code: "AU-QLD-GOLDCOAST-SPNORTH", name: "Chateau Beachside", maps_url: null, enriched: true, property_ref: "TL-0001", scraped_on: "2026-08-15" },
+  { id: "scr_02", market_code: "AU-QLD-GOLDCOAST-SPNORTH", name: "Paradise Island Resort", maps_url: null, enriched: true, property_ref: "TL-0004", scraped_on: "2026-08-15" },
+  { id: "scr_03", market_code: "AU-QLD-GOLDCOAST-SPNORTH", name: "Budds Beach Apartments", maps_url: null, enriched: true, property_ref: "TL-0005", scraped_on: "2026-08-15" },
+  { id: "scr_04", market_code: "AU-QLD-GOLDCOAST-SPNORTH", name: "Chevron Renaissance", maps_url: null, enriched: false, property_ref: null, scraped_on: "2026-09-05" },
+  { id: "scr_05", market_code: "AU-QLD-GOLDCOAST-SPNORTH", name: "Artique Surfers Paradise", maps_url: null, enriched: false, property_ref: null, scraped_on: "2026-09-05" },
+  { id: "scr_06", market_code: "AU-QLD-GOLDCOAST-SPMIDDLE", name: "Mantra on View", maps_url: null, enriched: true, property_ref: "TL-0002", scraped_on: "2026-08-15" },
+  { id: "scr_07", market_code: "AU-QLD-GOLDCOAST-SPMIDDLE", name: "Dorsett Gold Coast", maps_url: null, enriched: true, property_ref: "TL-0006", scraped_on: "2026-08-15" },
+  { id: "scr_08", market_code: "AU-QLD-GOLDCOAST-SPMIDDLE", name: "Q1 Resort & Spa", maps_url: null, enriched: false, property_ref: null, scraped_on: "2026-09-05" },
+  { id: "scr_09", market_code: "AU-QLD-GOLDCOAST-SPSOUTH", name: "Meriton Suites Southport", maps_url: null, enriched: true, property_ref: "TL-0003", scraped_on: "2026-08-15" },
+  { id: "scr_10", market_code: "AU-QLD-GOLDCOAST-SPSOUTH", name: "Broadbeach Savannah", maps_url: null, enriched: false, property_ref: null, scraped_on: "2026-09-05" },
+  { id: "scr_11", market_code: "AU-QLD-GOLDCOAST-SPSOUTH", name: "Phoenician Resort", maps_url: null, enriched: false, property_ref: null, scraped_on: "2026-09-05" },
+
+  /* Two markets opened last week. Nothing enriched, nothing promoted — what a
+     new country looks like on day one, and the reason the figures have to roll
+     up by city and by country rather than by a flat list of districts. */
+  { id: "scr_12", market_code: "AU-NSW-SYDNEY-BONDI", name: "Bondi Beachside Apartments", maps_url: null, enriched: false, property_ref: null, scraped_on: "2026-09-09" },
+  { id: "scr_13", market_code: "AU-NSW-SYDNEY-BONDI", name: "Pacific Bondi Beach", maps_url: null, enriched: false, property_ref: null, scraped_on: "2026-09-09" },
+  { id: "scr_14", market_code: "ID-BA-BADUNG-SEMINYAK", name: "The Seminyak Suite", maps_url: null, enriched: false, property_ref: null, scraped_on: "2026-09-10" },
+  { id: "scr_15", market_code: "ID-BA-BADUNG-SEMINYAK", name: "Seminyak Icon Residences", maps_url: null, enriched: false, property_ref: null, scraped_on: "2026-09-10" },
+  { id: "scr_16", market_code: "ID-BA-BADUNG-CANGGU", name: "Canggu Beachfront Villas", maps_url: null, enriched: false, property_ref: null, scraped_on: "2026-09-10" },
 ];

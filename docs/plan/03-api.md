@@ -346,9 +346,10 @@ The ninth service (D183). Two funnels joined where an agent agrees.
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/properties` · `/properties/{ref}` | each with its agents, the furthest stage reached, and who to chase next |
-| GET | `/pipeline/metrics?area=` | the funnel by **property**, and the scrape → enrichment gap per area |
-| GET | `/pipeline/queue?area=` | past the seven-day line first, then due today. Both **derived** from the sent date (D183) |
+| GET | `/markets` | country → region → city → local label, with each market's currency, time zone and language (D187) |
+| GET | `/properties?scope=` | `scope` is a **prefix of the market code**: `AU`, `AU-QLD-GOLDCOAST`, or one district |
+| GET | `/pipeline/metrics?scope=&level=` | the funnel by **property**; the scrape → enrichment gap grouped at `country`, `city` or `area`, with the currencies each group spans |
+| GET | `/pipeline/queue?scope=` | past the seven-day line first, then due today — both **derived** from the sent date (D183) — each row carrying the agent's local time |
 | PUT | `/properties/{ref}/agents/{id}/stage` | stamps the sent date on the first message and the reply date on any answer. **422 on `DEAL` without an onboarded rep** (D185) |
 | POST | `/properties/{ref}/agents/{id}/move-on` | recycle this agent **and** message the next, in one act. Reason required |
 | POST | `/properties/{ref}/agents/{id}/onboard` | the agent said yes: creates the representative with a commission rate. 409 if already onboarded; 422 outside 0–20% |
@@ -356,7 +357,7 @@ The ninth service (D183). Two funnels joined where an agent agrees.
 | GET | `/reps` | each with their referrals, the value won, and commission earned vs unpaid |
 | POST | `/reps/{rep_no}/referrals` | an owner they introduced |
 | PUT | `/referrals/{no}/status` | **422 on `WON`** without a project code and a contract value (D186) |
-| GET | `/scrape` · POST `/scrape/import` | what the map scrape found. A row already here is skipped, never duplicated |
+| GET | `/scrape` · POST `/scrape/import` | what the map scrape found. A row already here is skipped; a row naming a market nobody has defined is **reported, not created** (D187) |
 | POST | `/scrape/{id}/promote` | becomes a property, `validated: false` until a person says otherwise |
 
 Events: `marketing.agent.deal`, `marketing.rep.onboarded` — the two moments

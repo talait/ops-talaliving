@@ -8,7 +8,7 @@ import { Paged } from "@/components/ui/pager";
 import { formatNumber } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { marketing } from "@/demo/api";
-import { STAGE_LABEL, type PropertyView } from "@/services/marketing/contracts";
+import { STAGE_LABEL, type MarketLevel, type PropertyView } from "@/services/marketing/contracts";
 import { PropertyDrawer } from "./PropertyDrawer";
 import { useSession } from "@/store/session";
 import { useToast } from "@/store/toast";
@@ -28,10 +28,19 @@ import { useToast } from "@/store/toast";
 export default function PipelinePage() {
   const { can } = useSession();
   const { toast } = useToast();
-  const [area, setArea] = useState<string>("");
+  /* One filter, three altitudes: the scope is a **prefix of the market code**,
+     so `AU` is a country, `AU-QLD-GOLDCOAST` a city and the whole code one
+     district (D187). The grouping of the scrape panel follows the depth
+     somebody has drilled to, which is what makes the same screen work for one
+     coast and for twelve countries. */
+  const [scope, setScope] = useState<string>("");
+  /* Nothing chosen → compare countries. A country chosen → compare its cities.
+     A city or a district chosen → compare districts. */
+  const level: MarketLevel = scope === "" ? "country" : scope.split("-").length === 1 ? "city" : "area";
+  const [markets] = useLoad(() => marketing.listMarkets(), []);
   const [properties, reloadProps] = useLoad(() => marketing.listProperties(), []);
-  const [metrics, reloadMetrics] = useLoad(() => marketing.getMetrics({ area: area || undefined }), [area]);
-  const [queue, reloadQueue] = useLoad(() => marketing.getQueue({ area: area || undefined }), [area]);
+  const [metrics, reloadMetrics] = useLoad(() => marketing.getMetrics({ scope: scope || undefined, level }), [scope, level]);
+  const [queue, reloadQueue] = useLoad(() => marketing.getQueue({ scope: scope || undefined }), [scope]);
   const [open, setOpen] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const mayEdit = can("marketing.update");
@@ -66,17 +75,55 @@ export default function PipelinePage() {
       <Loaded state={metrics} onRetry={reloadMetrics}>
         {(m) => (
           <>
-            <div className="mb-4 flex flex-wrap gap-1.5">
-              {["", ...m.scrape.map((s) => s.area)].map((a) => (
-                <Button
-                  key={a || "all"} size="sm"
-                  variant={area === a ? "primary" : "outline"}
-                  onClick={() => setArea(a)}
-                >
-                  {a || "Semua area"}
-                </Button>
-              ))}
-            </div>
+            <Loaded state={markets} skeletonRows={1}>
+              {(all) => {
+                /* Countries always; then the cities of the country in scope;
+                   then its districts. Drilling down never hides the level
+                   above it, because "back to all of Australia" is one click
+                   somebody needs constantly. */
+                /* Every prefix is taken **from the market code itself** rather
+                   than rebuilt from the labels: `AU-QLD-GOLDCOAST-SPNORTH`
+                   minus its last segment is the city, and its first segment is
+                   the country. Deriving it from the words instead produced
+                   `AU-QUE-GOLDCOAST` against a seed that says `QLD`, and the
+                   filter silently matched nothing (F53). */
+                const cityPrefix = (code: string) => code.split("-").slice(0, -1).join("-");
+                const countries = [...new Map(all.map((x) => [x.country_code, x.country_name])).entries()];
+                const country = scope.split("-")[0];
+                const cities = scope
+                  ? [...new Map(all.filter((x) => x.country_code === country)
+                    .map((x) => [cityPrefix(x.code), x.city])).entries()]
+                  : [];
+                const areas = scope.split("-").length > 1
+                  ? all.filter((x) => x.code.startsWith(`${scope}-`) || x.code === scope)
+                    .map((x) => [x.code, x.area_label] as [string, string])
+                  : [];
+                return (
+                  <div className="mb-4 flex flex-wrap items-center gap-1.5">
+                    <Button size="sm" variant={scope === "" ? "primary" : "outline"} onClick={() => setScope("")}>
+                      Semua negara
+                    </Button>
+                    {countries.map(([code, name]) => (
+                      <Button key={code} size="sm" variant={scope === code ? "primary" : "outline"} onClick={() => setScope(code)}>
+                        {name}
+                      </Button>
+                    ))}
+                    {cities.length > 0 && <span className="mx-1 text-slate-300">·</span>}
+                    {cities.map(([code, name]) => (
+                      <Button key={code} size="sm" variant={scope === code ? "primary" : "outline"} onClick={() => setScope(code)}>
+                        {name}
+                      </Button>
+                    ))}
+                    {areas.length > 0 && <span className="mx-1 text-slate-300">·</span>}
+                    {areas.map(([code, name]) => (
+                      <Button key={code} size="sm" variant={scope === code ? "primary" : "outline"} onClick={() => setScope(code)}>
+                        {name}
+                      </Button>
+                    ))}
+                  </div>
+                );
+              }}
+            </Loaded>
 
             <div className="mb-4 rounded-xl border border-slate-200 bg-white shadow-card">
               <dl className="grid divide-y divide-slate-100 sm:grid-cols-3 sm:divide-y-0 lg:grid-cols-6 lg:divide-x">
@@ -123,8 +170,11 @@ export default function PipelinePage() {
                           )} />
                           <span className="text-[13px] font-medium text-slate-800">{row.agent_name}</span>
                           <span className="text-[12px] text-slate-500">
-                            {row.property_name} · {row.area} · agen {row.slot}
+                            {row.property_name} · {row.market_label} · agen {row.slot}
                           </span>
+                          {/* Whether to ring somebody depends on the time
+                              THERE, which a list of names cannot say (D187). */}
+                          <span className="text-[11px] text-slate-400">{localTime(row.timezone)}</span>
                           <Badge tone="slate">{STAGE_LABEL[row.stage]}</Badge>
                           <span className="flex-1" />
                           {row.kind === "move_on" ? (
@@ -175,13 +225,13 @@ export default function PipelinePage() {
                 <Card>
                   <CardHeader
                     title="Scrape → enrichment"
-                    subtitle="Yang sudah ditemukan di peta, dan berapa yang sudah lewat enrichment."
+                    subtitle={`Dikelompokkan per ${m.level === "country" ? "negara" : m.level === "city" ? "kota" : "area"} — ikut sedalam apa Anda menyaring.`}
                     icon={Radar}
                   />
                   <ul className="divide-y divide-slate-100">
                     {m.scrape.map((s) => (
-                      <li key={s.area} className="flex flex-wrap items-center gap-x-3 px-5 py-2 text-[12px]">
-                        <span className="min-w-[110px] font-medium text-slate-800">{s.area}</span>
+                      <li key={s.key} className="flex flex-wrap items-center gap-x-3 px-5 py-2 text-[12px]">
+                        <span className="min-w-[150px] font-medium text-slate-800">{s.label}</span>
                         <span className="text-slate-600">
                           {s.enriched}/{s.scraped} diperkaya
                           {s.enriched < s.scraped && (
@@ -190,6 +240,12 @@ export default function PipelinePage() {
                         </span>
                         <span className="flex-1" />
                         <span className="text-slate-500">{s.converted} jadi properti</span>
+                        {/* More than one currency in a group means no average
+                            is offered: a mean across dollars and rupiah is not
+                            a number (D187). */}
+                        <span className={cn("text-[11px]", s.currencies.length > 1 ? "text-amber-700" : "text-slate-400")}>
+                          {s.currencies.join(" · ") || "—"}
+                        </span>
                       </li>
                     ))}
                     {m.scrape.length === 0 && (
@@ -205,7 +261,7 @@ export default function PipelinePage() {
 
       <Loaded state={properties} onRetry={reloadProps}>
         {(all) => {
-          const shown = all.filter((p) => !area || p.area === area);
+          const shown = all.filter((p) => !scope || p.market_code === scope || p.market_code.startsWith(`${scope}-`));
           return (
             <Card className="mt-4">
               <CardHeader
@@ -237,6 +293,18 @@ export default function PipelinePage() {
   );
 }
 
+/** What time it is where the agent is. The only question a list of names
+ *  cannot answer, and the one that decides whether to ring now (D187). */
+function localTime(timezone: string): string {
+  try {
+    return new Intl.DateTimeFormat("id-ID", {
+      timeZone: timezone, hour: "2-digit", minute: "2-digit",
+    }).format(new Date()) + " di sana";
+  } catch {
+    return "";
+  }
+}
+
 function Row({ property: p, onOpen }: { property: PropertyView; onOpen: () => void }) {
   const flagged = p.agents.some((a) => a.move_on);
   return (
@@ -245,7 +313,10 @@ function Row({ property: p, onOpen }: { property: PropertyView; onOpen: () => vo
         <span className="min-w-[200px] flex-1">
           <span className="block text-[13px] font-medium text-slate-800">{p.name}</span>
           <span className="block font-mono text-[10px] text-slate-400">
-            {p.ref} · {p.area} · {p.rooms ?? "?"} kamar · ADR {p.adr ? `$${formatNumber(p.adr)}` : "?"}
+            {p.ref} · {p.market.label} · {p.rooms ?? "?"} kamar · ADR{" "}
+            {/* The currency belongs to the market, never assumed — 106 is not
+                a number until you know what it is in (D187). */}
+            {p.adr ? `${p.market.currency} ${formatNumber(p.adr)}` : "?"}
           </span>
         </span>
         <Badge tone={p.score >= 4 ? "green" : p.score === 3 ? "amber" : "slate"}>

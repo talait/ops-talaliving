@@ -21,6 +21,7 @@ import type {
 } from "@/services/procurement/contracts";
 import { COUNTING_CONDITIONS, PROBLEM_CONDITIONS } from "@/services/procurement/contracts";
 import type {
+  Market, MarketView, MarketLevel,
   Property, PropertyAgent, PropertyView, PropertyAgentView,
   OutreachStage, PipelineMetrics, RepView,
 } from "@/services/marketing/contracts";
@@ -1700,6 +1701,47 @@ const LADDER: OutreachStage[] = [
 ];
 const rank = (s: OutreachStage) => LADDER.indexOf(s);
 
+/** A market, resolved once so no screen has to join a code to a city (D187). */
+export function marketView(state: DemoState, market: Market): MarketView {
+  return {
+    ...market,
+    label: `${market.city} · ${market.area_label}`,
+    full_path: [market.country_name, market.region, market.city, market.area_label]
+      .filter(Boolean).join(" · "),
+    properties: state.properties.filter((p) => p.market_code === market.code).length,
+    scraped: state.scrape_rows.filter((r) => r.market_code === market.code).length,
+  };
+}
+
+export function marketViews(state: DemoState): MarketView[] {
+  return state.markets
+    .map((m) => marketView(state, m))
+    .sort((a, b) => a.country_name.localeCompare(b.country_name)
+      || a.city.localeCompare(b.city)
+      || a.area_label.localeCompare(b.area_label));
+}
+
+/** The market a row belongs to, or a placeholder that says the code is wrong.
+ *  A row pointing at a market nobody defined is a data problem worth seeing on
+ *  the screen, not a crash and not a silent blank. */
+function marketOf(state: DemoState, code: string): MarketView {
+  const found = state.markets.find((m) => m.code === code);
+  if (found) return marketView(state, found);
+  return {
+    id: "", code, country_code: "??", country_name: "Pasar tidak dikenal",
+    region: null, city: code, area_label: code,
+    currency: "", timezone: "UTC", language: "en", active: false,
+    label: code, full_path: code, properties: 0, scraped: 0,
+  };
+}
+
+/** Grouping key and label at whichever altitude was asked for. */
+function groupOf(m: MarketView, level: MarketLevel): { key: string; label: string } {
+  if (level === "country") return { key: m.country_code, label: m.country_name };
+  if (level === "city") return { key: `${m.country_code}|${m.city}`, label: `${m.country_name} · ${m.city}` };
+  return { key: m.code, label: m.full_path };
+}
+
 export function propertyView(state: DemoState, property: Property, today: string): PropertyView {
   const agents = state.property_agents
     .filter((a) => a.property_id === property.id)
@@ -1717,6 +1759,7 @@ export function propertyView(state: DemoState, property: Property, today: string
 
   return {
     ...property,
+    market: marketOf(state, property.market_code),
     agents,
     best_stage: best,
     next_agent: next,
@@ -1741,22 +1784,37 @@ export function propertyViews(state: DemoState, today: string): PropertyView[] {
     });
 }
 
-export function pipelineMetrics(state: DemoState, today: string, area?: string): PipelineMetrics {
-  const props = propertyViews(state, today).filter((p) => !area || p.area === area);
+/** Does this market sit inside the filter? A filter is a prefix of the market
+ *  code — `AU` is every Australian market, `AU-QLD-GOLDCOAST` is the city, the
+ *  whole code is one district. One rule, three altitudes (D187). */
+function inScope(code: string, scope?: string): boolean {
+  return !scope || code === scope || code.startsWith(`${scope}-`);
+}
+
+export function pipelineMetrics(
+  state: DemoState, today: string, scope?: string, level: MarketLevel = "area",
+): PipelineMetrics {
+  const props = propertyViews(state, today).filter((p) => inScope(p.market_code, scope));
   const agents = props.flatMap((p) => p.agents);
 
   const messaged = agents.filter((a) => rank(a.stage) >= rank("MSG SENT") || a.stage === "RECYCLED").length;
   const replied = agents.filter((a) => rank(a.stage) >= rank("REPLIED")).length;
   const qualified = props.filter((p) => p.status === "QUALIFIED");
 
-  const byArea = new Map<string, { scraped: number; enriched: number; converted: number }>();
+  const groups = new Map<string, {
+    label: string; scraped: number; enriched: number; converted: number; currencies: Set<string>;
+  }>();
   for (const row of state.scrape_rows) {
-    if (area && row.area !== area) continue;
-    const cur = byArea.get(row.area) ?? { scraped: 0, enriched: 0, converted: 0 };
+    if (!inScope(row.market_code, scope)) continue;
+    const market = marketOf(state, row.market_code);
+    const g = groupOf(market, level);
+    const cur = groups.get(g.key)
+      ?? { label: g.label, scraped: 0, enriched: 0, converted: 0, currencies: new Set<string>() };
     cur.scraped += 1;
     if (row.enriched) cur.enriched += 1;
     if (row.property_ref) cur.converted += 1;
-    byArea.set(row.area, cur);
+    if (market.currency) cur.currencies.add(market.currency);
+    groups.set(g.key, cur);
   }
 
   return {
@@ -1771,18 +1829,23 @@ export function pipelineMetrics(state: DemoState, today: string, area?: string):
     forms_back: agents.filter((a) => rank(a.stage) >= rank("FORM BACK")).length,
     deals: agents.filter((a) => a.stage === "DEAL").length,
     funnel: LADDER.map((stage) => ({ stage, properties: props.filter((p) => p.best_stage === stage).length })),
-    scrape: [...byArea.entries()]
-      .map(([a, v]) => ({ area: a, ...v }))
-      .sort((x, y) => x.area.localeCompare(y.area)),
+    level,
+    scrape: [...groups.entries()]
+      .map(([key, v]) => ({
+        key, label: v.label,
+        scraped: v.scraped, enriched: v.enriched, converted: v.converted,
+        currencies: [...v.currencies].sort(),
+      }))
+      .sort((x, y) => x.label.localeCompare(y.label)),
   };
 }
 
 /** What to do today: every agent past the move-on line first, then anything
  *  due. Ordered so the top of the list is the thing that is already late. */
-export function followUpQueue(state: DemoState, today: string, area?: string) {
+export function followUpQueue(state: DemoState, today: string, scope?: string) {
   const out: { property: PropertyView; agent: PropertyAgentView; kind: "move_on" | "due" }[] = [];
   for (const p of propertyViews(state, today)) {
-    if (area && p.area !== area) continue;
+    if (!inScope(p.market_code, scope)) continue;
     for (const a of p.agents) {
       if (a.move_on) out.push({ property: p, agent: a, kind: "move_on" });
       else if (a.due) out.push({ property: p, agent: a, kind: "due" });
@@ -1812,6 +1875,7 @@ export function repViews(state: DemoState): RepView[] {
 
     return {
       ...rep,
+      market: rep.market_code ? marketOf(state, rep.market_code) : null,
       referrals,
       leads: referrals.length,
       won: won.length,

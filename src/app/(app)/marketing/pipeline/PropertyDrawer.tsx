@@ -23,6 +23,17 @@ import { useToast } from "@/store/toast";
  *  needs a sentence — the note is what somebody reads a year later when the
  *  same agent comes up again (D183).
  */
+/** The time where the property is, not where the reader is. */
+function localTime(timezone: string): string {
+  try {
+    return new Intl.DateTimeFormat("id-ID", {
+      timeZone: timezone, hour: "2-digit", minute: "2-digit", weekday: "short",
+    }).format(new Date());
+  } catch {
+    return "—";
+  }
+}
+
 export function PropertyDrawer({
   propertyRef, mayEdit, onClose, onChanged,
 }: {
@@ -89,14 +100,20 @@ export function PropertyDrawer({
         <Drawer
           open onClose={onClose} width="max-w-2xl"
           title={p.name}
-          subtitle={<span className="font-mono text-[11px]">{p.ref} · {p.area} · {p.status}</span>}
+          subtitle={
+            <span className="font-mono text-[11px]">
+              {p.ref} · {p.market.full_path} · {p.status}
+            </span>
+          }
         >
           <div className="space-y-4">
             <dl className="grid grid-cols-2 gap-2 rounded-xl border border-slate-200 bg-slate-50/60 px-4 py-3 sm:grid-cols-4">
               {([
                 ["Skor", p.score ? String(p.score) : "—", p.validated ? "sudah divalidasi orang" : "belum divalidasi"],
                 ["Kamar", p.rooms ? formatNumber(p.rooms) : "?", p.is_condo === false ? "bukan strata" : "strata"],
-                ["ADR", p.adr ? `$${formatNumber(p.adr)}` : "?", p.adr_flag === "CHECK" ? "perlu dicek" : "—"],
+                /* The currency is the market's, never assumed (D187). */
+                ["ADR", p.adr ? `${p.market.currency} ${formatNumber(p.adr)}` : "?",
+                  p.adr_flag === "CHECK" ? "perlu dicek" : p.market.currency],
                 ["Tahap terjauh", STAGE_LABEL[p.best_stage], `${p.agents.length} agen`],
               ] as [string, string, string][]).map(([k, v, note]) => (
                 <div key={k}>
@@ -118,6 +135,13 @@ export function PropertyDrawer({
                 {p.notes && <p className="mt-0.5">{p.notes}</p>}
               </div>
             )}
+
+            {/* Ringing an agent at nine in the evening their time is the
+                mistake a worldwide pipeline makes first (D187). */}
+            <p className="text-[12px] text-slate-600">
+              Sekarang <span className="font-medium">{localTime(p.market.timezone)}</span> di{" "}
+              {p.market.city} — {p.market.country_name}, bahasa {p.market.language.toUpperCase()}.
+            </p>
 
             <div className="flex flex-wrap items-center gap-2">
               {p.maps_url && (

@@ -179,7 +179,7 @@ function RepCard({
     <Card>
       <CardHeader
         title={`${rep.name}${rep.agency ? ` · ${rep.agency}` : ""}`}
-        subtitle={`${rep.rep_no} · ${rep.area ?? "—"} · komisi ${formatNumber(rep.commission_percent)}% · onboarding ${rep.onboarded_on}${rep.from_properties.length ? ` · dari ${rep.from_properties.join(", ")}` : ""}`}
+        subtitle={`${rep.rep_no} · ${rep.market?.label ?? "lintas pasar"} · komisi ${formatNumber(rep.commission_percent)}% · onboarding ${rep.onboarded_on}${rep.from_properties.length ? ` · dari ${rep.from_properties.join(", ")}` : ""}`}
         icon={UserCheck}
         action={
           <div className="flex flex-wrap items-center gap-2">

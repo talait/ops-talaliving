@@ -1467,14 +1467,27 @@ to argue (D139).
 
 ```mermaid
 erDiagram
+    markets ||--o{ properties : "sits in"
+    markets ||--o{ scrape_rows : "targets"
     scrape_rows ||--o| properties : "promoted to"
     properties ||--o{ property_agents : "three, in order"
     property_agents ||--o| sales_reps : "onboarded as"
     sales_reps ||--o{ referrals : "introduces"
+    markets {
+        uuid id PK
+        text code UK "AU-QLD-GOLDCOAST-SPNORTH"
+        text country_code "ISO-3166 alpha-2"
+        text region "state, province — null where a country has none"
+        text city
+        text area_label "the local label, verbatim: SP NORTH, SEMINYAK"
+        text currency "ISO-4217, for the ADR quoted here"
+        text timezone "IANA — what time it is THERE"
+        text language
+    }
     properties {
         uuid id PK
         text ref UK "TL-0001 — the tracker's own numbering"
-        text area "SP NORTH | SP MIDDLE | SP SOUTH"
+        text market_code FK "country → city → district (D187)"
         text name
         text status "QUALIFIED | DISQUALIFIED — <reason>"
         boolean is_condo
@@ -1527,7 +1540,9 @@ Friday.
 | `property_agents` CHECK `stage = 'DEAL' → rep_id IS NOT NULL` | a deal against nobody is a commission nobody can compute (D185) |
 | `sales_reps` CHECK `commission_percent > 0 AND <= 20` | a number that will be paid many times |
 | `referrals` CHECK `status = 'WON' → project_code IS NOT NULL AND contract_value IS NOT NULL` | commission comes from a contract that exists, never from a quotation (D186) |
-| `scrape_rows` UNIQUE `(area, lower(name))` | re-importing the scrape adds nothing |
+| `scrape_rows` UNIQUE `(market_code, lower(name))` | re-importing the scrape adds nothing |
+| `markets.code` is `COUNTRY[-REGION]-CITY-AREA` | every filter is a **prefix** of it, so one query serves country, city and district (D187) |
+| no figure mixes two `markets.currency` values | an ADR of 106 and one of 1.850.000 are not addable, and no rate is invented to make them so (D181) |
 
 ## Schema `prod` — work orders, stages, progress
 

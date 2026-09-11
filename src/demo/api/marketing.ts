@@ -12,11 +12,13 @@
  */
 import { ok, invalid, notFound, type Result } from "@/services/_shared/envelope";
 import type {
-  Property, PropertyView, PipelineMetrics, OutreachStage,
+  Property, PropertyView, PipelineMetrics, OutreachStage, MarketLevel, MarketView,
   SalesRep, RepView, Referral, ReferralStatus, ScrapeRow,
 } from "@/services/marketing/contracts";
 import { getState, apply, newId, nextDocNumber, writeAudit, writeOutbox } from "../store";
-import { propertyView, propertyViews, pipelineMetrics, followUpQueue, repViews } from "../derive";
+import {
+  propertyView, propertyViews, pipelineMetrics, followUpQueue, repViews, marketViews,
+} from "../derive";
 import { latency, actingUser, requireModule, conflict, replayed, remember } from "./_kit";
 
 const SERVICE = "marketing" as const;
@@ -27,12 +29,25 @@ function officeToday(): string {
   return new Date(Date.now() + 8 * 3_600_000).toISOString().slice(0, 10);
 }
 
-export async function listProperties(opts: { area?: string } = {}): Promise<Result<PropertyView[]>> {
+/** Every market the scrape has touched — country, city, district (D187). */
+export async function listMarkets(): Promise<Result<MarketView[]>> {
+  await latency();
+  const denied = requireModule(SERVICE, "marketing");
+  if (denied) return denied;
+  return ok(SERVICE, marketViews(getState()));
+}
+
+/** `scope` is a **prefix of the market code**: `AU` is a country,
+ *  `AU-QLD-GOLDCOAST` a city, the whole code one district. One filter, three
+ *  altitudes, and no screen has to know which is which. */
+export async function listProperties(opts: { scope?: string } = {}): Promise<Result<PropertyView[]>> {
   await latency();
   const denied = requireModule(SERVICE, "marketing");
   if (denied) return denied;
   const rows = propertyViews(getState(), officeToday());
-  return ok(SERVICE, opts.area ? rows.filter((p) => p.area === opts.area) : rows);
+  return ok(SERVICE, opts.scope
+    ? rows.filter((p) => p.market_code === opts.scope || p.market_code.startsWith(`${opts.scope}-`))
+    : rows);
 }
 
 export async function getProperty(ref: string): Promise<Result<PropertyView>> {
@@ -45,23 +60,26 @@ export async function getProperty(ref: string): Promise<Result<PropertyView>> {
   return ok(SERVICE, propertyView(state, p, officeToday()));
 }
 
-export async function getMetrics(opts: { area?: string } = {}): Promise<Result<PipelineMetrics>> {
+export async function getMetrics(
+  opts: { scope?: string; level?: MarketLevel } = {},
+): Promise<Result<PipelineMetrics>> {
   await latency();
   const denied = requireModule(SERVICE, "marketing");
   if (denied) return denied;
-  return ok(SERVICE, pipelineMetrics(getState(), officeToday(), opts.area));
+  return ok(SERVICE, pipelineMetrics(getState(), officeToday(), opts.scope, opts.level ?? "area"));
 }
 
-export async function getQueue(opts: { area?: string } = {}): Promise<Result<{
-  property_ref: string; property_name: string; area: string;
+export async function getQueue(opts: { scope?: string } = {}): Promise<Result<{
+  property_ref: string; property_name: string; market_label: string; timezone: string;
   agent_id: string; agent_name: string; slot: number; stage: OutreachStage;
   kind: "move_on" | "due"; waiting_days: number | null; next_action_on: string | null;
 }[]>> {
   await latency();
   const denied = requireModule(SERVICE, "marketing");
   if (denied) return denied;
-  return ok(SERVICE, followUpQueue(getState(), officeToday(), opts.area).map(({ property, agent, kind }) => ({
-    property_ref: property.ref, property_name: property.name, area: property.area,
+  return ok(SERVICE, followUpQueue(getState(), officeToday(), opts.scope).map(({ property, agent, kind }) => ({
+    property_ref: property.ref, property_name: property.name,
+    market_label: property.market.label, timezone: property.market.timezone,
     agent_id: agent.id, agent_name: agent.name, slot: agent.slot, stage: agent.stage,
     kind, waiting_days: agent.waiting_days, next_action_on: agent.next_action_on,
   })));
@@ -236,7 +254,7 @@ export async function onboardRep(
     draft.sales_reps.push({
       id: repId, rep_no: no, name: row.name, agency: row.agency,
       phone: row.phone, email: input.email?.trim() || row.email,
-      area: property.area,
+      market_code: property.market_code,
       commission_percent: input.commission_percent,
       onboarded_on: officeToday(), active: true,
       note: input.note?.trim() || `Dari ${property.ref} ${property.name}.`,
@@ -356,7 +374,8 @@ export async function listScrape(): Promise<Result<ScrapeRow[]>> {
   await latency();
   const denied = requireModule(SERVICE, "marketing");
   if (denied) return denied;
-  return ok(SERVICE, [...getState().scrape_rows].sort((a, b) => a.area.localeCompare(b.area) || a.name.localeCompare(b.name)));
+  return ok(SERVICE, [...getState().scrape_rows]
+    .sort((a, b) => a.market_code.localeCompare(b.market_code) || a.name.localeCompare(b.name)));
 }
 
 /** Importing what the scrape found.
@@ -367,7 +386,7 @@ export async function listScrape(): Promise<Result<ScrapeRow[]>> {
  *  records whether it has been through.
  */
 export async function importScrape(
-  input: { filename: string; rows: { area: string; name: string; maps_url?: string | null; enriched?: boolean }[] },
+  input: { filename: string; rows: { market_code: string; name: string; maps_url?: string | null; enriched?: boolean }[] },
   idempotencyKey?: string,
 ): Promise<Result<{ added: number; skipped: number }>> {
   await latency();
@@ -386,14 +405,17 @@ export async function importScrape(
   apply((draft) => {
     for (const r of input.rows) {
       const name = r.name.trim();
-      const area = r.area.trim();
-      if (!name || !area) { skipped += 1; continue; }
+      const code = r.market_code.trim();
+      /* A row whose market nobody has defined is reported, not invented: a
+         scrape into a city we have not set up is a decision for a person
+         (D187, the same rule as an unknown machine number in D143). */
+      if (!name || !code || !draft.markets.some((m) => m.code === code)) { skipped += 1; continue; }
       const exists = draft.scrape_rows.some(
-        (x) => x.area.toLowerCase() === area.toLowerCase() && x.name.trim().toLowerCase() === name.toLowerCase(),
+        (x) => x.market_code === code && x.name.trim().toLowerCase() === name.toLowerCase(),
       );
       if (exists) { skipped += 1; continue; }
       draft.scrape_rows.push({
-        id: newId("scr"), area, name,
+        id: newId("scr"), market_code: code, name,
         maps_url: r.maps_url ?? null,
         enriched: !!r.enriched,
         property_ref: null,
@@ -436,7 +458,7 @@ export async function promoteScrapeRow(
     const seq = draft.properties.length + 1;
     ref = `TL-${String(seq).padStart(4, "0")}`;
     draft.properties.push({
-      id: newId("prp"), ref, area: row.area, name: row.name,
+      id: newId("prp"), ref, market_code: row.market_code, name: row.name,
       maps_url: row.maps_url, address: null,
       status: input.status?.trim() || "QUALIFIED",
       is_condo: null, rooms: input.rooms ?? null, adr: input.adr ?? null, adr_flag: null,
@@ -452,7 +474,7 @@ export async function promoteScrapeRow(
     writeAudit(draft, {
       service: SERVICE, entity: "property", entity_no: ref,
       action: "promote", outcome: "ok", reason: null,
-      detail: { from_scrape: row.name, area: row.area, by: user.email },
+      detail: { from_scrape: row.name, market: row.market_code, by: user.email },
     });
   });
   return getProperty(ref);

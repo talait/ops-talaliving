@@ -5,10 +5,12 @@ import type {
   OvertimeSheet, OvertimeLine, OvertimeSheetView, OvertimeKind,
   PayrollRun, PayrollView, PayBasis,
   AdjustmentKind, PayrollAdjustmentView,
+  PayRules, PayRuleSet, PayRuleSetView,
 } from "@/services/hr/contracts";
 import { getState, apply, newId, nextDocNumber, writeAudit, writeOutbox } from "../store";
 import {
   timesheet, timesheetDay, payrollView, overtimeStage, overtimePayable, sheetEvidence,
+  activePayRules, payrollLine, payrollLineWith,
 } from "../hr-derive";
 import { latency, actingUser, requireModule, requireAuthority, conflict, replayed, remember } from "./_kit";
 
@@ -942,6 +944,173 @@ export async function attachSuratDokter(
     });
   });
   return ok(SERVICE, { mark_id: mark.id, attachment_id: input.attachment_id });
+}
+
+/* ── Pay rules ────────────────────────────────────────────────────────────
+ *
+ *  The policy, as data (D168). Nothing here computes anything: these endpoints
+ *  read the rule book and write the next version of it. What the rules *do* is
+ *  in `payrollLine`, which is the only place that should know.
+ */
+export async function listPayRules(): Promise<Result<PayRuleSetView[]>> {
+  await latency();
+  const state = getState();
+  const today = new Date(Date.now() + 8 * 3_600_000).toISOString().slice(0, 10);
+  const current = activePayRules(state, today);
+  return ok(SERVICE, [...state.pay_rule_sets]
+    .sort((a, b) => b.effective_from.localeCompare(a.effective_from))
+    .map((r) => ({
+      ...r,
+      created_by_name: state.users.find((u) => u.id === r.created_by)?.full_name ?? "—",
+      is_current: r.id === current.id,
+    })));
+}
+
+/** Changing the rules writes the **next** version, from a date forward.
+ *
+ *  Never an edit, for the reason the whole model exists: a payslip already
+ *  given to somebody must stay recomputable under the rule it was computed
+ *  under (D173). So this refuses a date that is not in the future of the
+ *  latest version — backdating would rewrite payslips that have been handed
+ *  out, which is the one thing a pay system must not do quietly.
+ */
+export async function savePayRules(
+  input: { effective_from: string; note: string; rules: PayRules },
+  idempotencyKey?: string,
+): Promise<Result<PayRuleSetView>> {
+  await latency();
+  const cached = replayed<PayRuleSetView>(SERVICE, "savePayRules", idempotencyKey);
+  if (cached) return cached;
+
+  const denied = requireModule(SERVICE, "payroll");
+  if (denied) return denied;
+  if (!input.note?.trim()) {
+    return invalid(
+      SERVICE, "note_required",
+      "Tulis alasannya. Aturan gaji yang berubah tanpa keterangan adalah aturan yang tidak bisa dijelaskan ke karyawan.",
+      { field: "note" },
+    );
+  }
+
+  const state = getState();
+  const latest = [...state.pay_rule_sets].sort((a, b) => a.effective_from.localeCompare(b.effective_from)).pop();
+  if (latest && input.effective_from <= latest.effective_from) {
+    return invalid(
+      SERVICE, "effective_from_backdated",
+      `Versi terakhir berlaku sejak ${latest.effective_from}. Aturan baru harus berlaku setelahnya.`,
+      { field: "effective_from" },
+    );
+  }
+  /* Never into the past. Days that have already been worked were worked under
+     a rule somebody could have read at the time; changing what they are worth
+     afterwards is the one thing a pay system must not do quietly (D173). */
+  const today = new Date(Date.now() + 8 * 3_600_000).toISOString().slice(0, 10);
+  if (input.effective_from < today) {
+    return invalid(
+      SERVICE, "effective_from_in_past",
+      `${input.effective_from} sudah lewat. Aturan gaji berlaku ke depan — hari yang sudah dikerjakan dihitung dengan aturan yang berlaku saat itu.`,
+      { field: "effective_from" },
+    );
+  }
+  /* And never *inside* an open period, whatever its status. A version dated
+     mid-period is silently ignored by the payroll — which picks the rule in
+     force when the period opened — so it would look applied and do nothing. */
+  const clash = state.payroll_runs.find(
+    (r) => input.effective_from > r.period_start && input.effective_from <= r.period_end,
+  );
+  if (clash) {
+    return conflict(
+      SERVICE, "inside_existing_run",
+      `${clash.run_no} berjalan ${clash.period_start} → ${clash.period_end}, dan periode itu dihitung dengan aturan yang berlaku saat dibuka. Pilih tanggal setelah ${clash.period_end}.`,
+    );
+  }
+
+  const user = actingUser();
+  let created: PayRuleSet | null = null;
+  apply((draft) => {
+    const version = Math.max(0, ...draft.pay_rule_sets.map((r) => r.version)) + 1;
+    const row: PayRuleSet = {
+      id: newId("prs"), version,
+      effective_from: input.effective_from,
+      note: input.note.trim(),
+      rules: input.rules,
+      created_by: user.id,
+      created_at: new Date().toISOString(),
+    };
+    draft.pay_rule_sets.push(row);
+    created = row;
+    writeAudit(draft, {
+      service: SERVICE, entity: "pay_rules", entity_no: `v${version}`,
+      action: "create_version", outcome: "ok", reason: row.note,
+      detail: { effective_from: row.effective_from, rules: row.rules, by: user.email },
+    });
+    writeOutbox(draft, {
+      service: SERVICE, event_type: "hr.pay_rules.changed",
+      payload: { version, effective_from: row.effective_from, note: row.note },
+    });
+  });
+
+  const row = created as unknown as PayRuleSet;
+  const view: PayRuleSetView = {
+    ...row,
+    created_by_name: user.full_name,
+    is_current: true,
+  };
+  remember(SERVICE, "savePayRules", idempotencyKey, view);
+  return ok(SERVICE, view);
+}
+
+/** What a proposed rule book would do to a period, person by person.
+ *
+ *  The whole reason this exists: a multiplier is an abstraction until somebody
+ *  sees that it moves Karjo from Rp 210.000 to Rp 245.000. Nothing is saved —
+ *  the rules are applied to the same days and the same approved sheets, and the
+ *  difference is shown before anybody commits to it (D175).
+ */
+export async function previewPayRules(
+  input: { rules: PayRules; period_start: string; period_end: string },
+): Promise<Result<{
+  period: string;
+  before_total: number;
+  after_total: number;
+  lines: { employee_no: string; full_name: string; before: number; after: number; note: string }[];
+}>> {
+  await latency();
+  const state = getState();
+  const people = state.employees.filter(
+    (e) => e.joined_on <= input.period_end && (e.left_on === null || e.left_on >= input.period_start),
+  );
+
+  const lines = people.map((e) => {
+    const current = payrollLine(state, e, input.period_start, input.period_end);
+    const proposed = payrollLineWith(state, e, input.period_start, input.period_end, input.rules);
+    const notes: string[] = [];
+    if (proposed.overtime_pay !== current.overtime_pay) {
+      notes.push(`lembur ${formatDelta(current.overtime_pay, proposed.overtime_pay)}`);
+    }
+    if (proposed.undertime_amount !== current.undertime_amount) {
+      notes.push(`undertime ${formatDelta(-current.undertime_amount, -proposed.undertime_amount)}`);
+    }
+    return {
+      employee_no: e.employee_no,
+      full_name: e.full_name,
+      before: current.gross,
+      after: proposed.gross,
+      note: notes.join(" · ") || "tidak berubah",
+    };
+  });
+
+  return ok(SERVICE, {
+    period: `${input.period_start} → ${input.period_end}`,
+    before_total: lines.reduce((s, l) => s + l.before, 0),
+    after_total: lines.reduce((s, l) => s + l.after, 0),
+    lines: lines.filter((l) => l.before !== l.after),
+  });
+}
+
+function formatDelta(before: number, after: number): string {
+  const d = after - before;
+  return `${d > 0 ? "+" : ""}${new Intl.NumberFormat("id-ID").format(d)}`;
 }
 
 export async function listPayrollRuns(): Promise<Result<PayrollRun[]>> {

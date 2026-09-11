@@ -1288,6 +1288,35 @@ slots are computed, never stored.
 | `payroll_adjustments` writable only while the run is `DRAFT` | an approved run is a figure somebody signed; moving money inside it afterwards is a new run, not an edit (D155) |
 | `overtime_lines.form_amount` NULL-able | most nights have no figure on the paper; a nought there would mean *worked for free* rather than *not stated* (D154) |
 
+### The rule book
+
+```mermaid
+erDiagram
+    pay_rule_sets {
+        uuid id PK
+        int version UK
+        date effective_from UK "inclusive; the period's START decides"
+        text note "required — why it changed"
+        jsonb rules "the whole book, one document"
+        uuid created_by FK
+        timestamptz created_at
+    }
+```
+
+The rules themselves are `jsonb` rather than forty columns, deliberately: the
+shape changes when a policy gains a step (a third overtime tier, a second grace
+window), and a schema migration per policy tweak is exactly the deployment this
+model exists to avoid (D173). What is **not** flexible is the versioning — a
+row is never updated, and a payslip is computed under the version in force when
+its period opened.
+
+| Constraint | Why |
+|---|---|
+| `pay_rule_sets` no UPDATE, no DELETE | a payslip from March must stay recomputable under March's rule (D173) |
+| `effective_from` must be `>= current_date` | days already worked were worked under a rule somebody could have read at the time |
+| `effective_from` not inside an existing run's period | the payroll picks the rule in force when the period **opened**, so a mid-period version would look applied and do nothing |
+| `note` NOT NULL, non-empty | a pay rule that changed without a sentence is one nobody can explain to the person whose wage moved |
+
 ### What makes a marked day paid
 
 Two of the six marks can be worth money, and both depend on something outside

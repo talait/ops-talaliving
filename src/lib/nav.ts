@@ -125,6 +125,7 @@ export const NAV: NavSection[] = [
       { label: "Audit Log", href: "/it/audit", icon: ScrollText, permission: "it.read" },
       { label: "Activity Log", href: "/it/aktivitas", icon: Activity, permission: "it.read" },
       { label: "Users", href: "/it/pengguna", icon: UserCog, permission: "it.manage_users" },
+      { label: "Aturan penggajian", href: "/it/aturan-gaji", icon: Scale, permission: "payroll.read", badge: "new" },
       { label: "Roles & Permissions", href: "/it/peran", icon: KeyRound, permission: "it.manage_roles" },
     ],
   },

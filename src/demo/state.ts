@@ -17,7 +17,7 @@ import type {
 } from "@/services/inventory/contracts";
 import type {
   Employee, AttendanceScan, DayMark, OvertimeSheet, OvertimeLine, PayrollRun,
-  PayrollAdjustment,
+  PayrollAdjustment, PayRuleSet,
 } from "@/services/hr/contracts";
 import type {
   WorkOrder, ProgressEntry, Product, BomComponent,
@@ -121,6 +121,9 @@ export interface DemoState {
   overtime_sheets: OvertimeSheet[];
   overtime_lines: OvertimeLine[];
   payroll_runs: PayrollRun[];
+  /** The rule book, dated. Never edited: a change writes the next version, so
+   *  a payslip from March stays recomputable under March's rule (D173). */
+  pay_rule_sets: PayRuleSet[];
   /** Added or taken off a payslip by a person, with a reason (D155). */
   payroll_adjustments: PayrollAdjustment[];
 

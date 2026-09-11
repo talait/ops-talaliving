@@ -365,6 +365,120 @@ export interface PayrollRun {
   note: string | null;
 }
 
+/* ── Pay rules: the policy, as data ───────────────────────────────────────
+ *
+ *  Four situations exist in this workshop and every one of them is a **policy
+ *  that changes without the software changing** (D168): a day's wage, an
+ *  hour's wage, what an overtime hour multiplies by, and what a short day
+ *  costs. Hard-coding any of them means a policy change arrives as a
+ *  deployment — and, worse, that nobody can see what the rule *is* without
+ *  reading TypeScript.
+ *
+ *  So the rules are rows, they are **dated**, and they are never edited:
+ *  changing one writes a new version from a date forward. A payslip from March
+ *  must be recomputable under March's rule, which is not possible if today's
+ *  edit reached backwards.
+ */
+
+/** How an overtime hour is priced. */
+export type OvertimeMode =
+  /** The national formula: the first hour at 1,5×, the rest at 2×, and a rest
+   *  day on its own ladder (Kepmenaker 102/2004). What this business uses
+   *  (owner, answering Q31). */
+  | "statutory"
+  /** One multiplier for every hour, whatever the day. Some workshops pay this
+   *  way; it stays available because switching should be a setting, not a
+   *  rewrite. */
+  | "flat"
+  /** Pay only what the paper form says, and nothing where it says nothing
+   *  (D154). */
+  | "form_only";
+
+/** A step in the ladder: from `after_hours` onward, each hour multiplies by
+ *  this. `{after_hours: 0, multiplier: 1.5}` then `{after_hours: 1,
+ *  multiplier: 2}` is the ordinary Indonesian working day. */
+export interface OvertimeTier {
+  after_hours: number;
+  multiplier: number;
+}
+
+/** What a short day costs. */
+export type UndertimeMode =
+  /** Nothing is deducted automatically. The default, because what a short day
+   *  costs here has not been stated, and a deduction invented by software
+   *  reaches somebody's pocket (D174). */
+  | "off"
+  /** Every hour short, at the ordinary hourly rate. */
+  | "pro_rata"
+  /** Short by more than half a day costs half a day; less costs nothing. */
+  | "half_day_step";
+
+export type LateMode = "manual" | "pro_rata";
+
+/** The rule book, as it stands on one date. */
+export interface PayRules {
+  overtime_mode: OvertimeMode;
+  /** Ordinary working day. */
+  workday_tiers: OvertimeTier[];
+  /** Weekly rest day and tanggal merah — a different, steeper ladder. */
+  restday_tiers: OvertimeTier[];
+  /** Used when `overtime_mode` is `flat`. */
+  flat_multiplier: number;
+  /** A monthly salary divided by this is an hour of it. 173 is the figure the
+   *  regulation uses (40 hours × 52 weeks ÷ 12). */
+  monthly_divisor: number;
+  /** Which days count as the weekly rest day: `6day` means Sunday only,
+   *  `5day` means Saturday and Sunday. */
+  week_pattern: "6day" | "5day";
+  /** Overtime is rounded to this many minutes before it is priced. 0 is exact
+   *  — a figure the machine produced, not one somebody negotiated. */
+  overtime_rounding_minutes: number;
+  undertime_mode: UndertimeMode;
+  /** Minutes short before undertime counts at all. */
+  undertime_grace_minutes: number;
+  /** Minutes past the start of the office day before somebody is late. */
+  late_after_minutes: number;
+  /** `manual` means the minutes are shown and the rupiah is typed by a person
+   *  with a reason (D155, Q41). */
+  late_mode: LateMode;
+}
+
+/** One dated version of the rule book. Never edited — a change writes the next
+ *  one, and the old one keeps its payslips honest (D173). */
+export interface PayRuleSet {
+  id: string;
+  version: number;
+  /** Inclusive. The version in force for a period is the latest one whose date
+   *  is on or before the period's **start**: a rule that changed mid-week does
+   *  not split a payslip in two. */
+  effective_from: string;
+  note: string;
+  rules: PayRules;
+  created_by: string;
+  created_at: string;
+}
+
+export interface PayRuleSetView extends PayRuleSet {
+  created_by_name: string;
+  /** True for the version a payroll run today would use. */
+  is_current: boolean;
+}
+
+/** One line of the overtime sum, so a payslip can show the ladder instead of
+ *  a total nobody can take apart (D144, D173). */
+export interface OvertimePart {
+  /** `lbr-26-09-02_01`, or `form` where the paper carried its own figure. */
+  source: string;
+  work_date: string;
+  hours: number;
+  multiplier: number;
+  /** What an ordinary hour of this person's time is worth. */
+  hourly: number;
+  amount: number;
+  /** `Hari kerja · jam ke-1`, `Hari libur · jam 1–7`, `Sesuai form`. */
+  label: string;
+}
+
 export interface PayrollLine {
   employee_id: string;
   employee_no: string;
@@ -388,6 +502,12 @@ export interface PayrollLine {
   overtime_pending_hours: number;
   base_pay: number;
   overtime_pay: number;
+  /** The overtime sum, tier by tier — what makes the figure arguable (D173). */
+  overtime_parts: OvertimePart[];
+  /** Hours short of the contracted day, and what the active rule says that
+   *  costs. Zero when the rule is `off`, which is the default (D174). */
+  undertime_hours: number;
+  undertime_amount: number;
   gross: number;
   /** What was added or taken off by hand, each with its reason (D155). */
   adjustments: { kind: AdjustmentKind; label: string; amount: number; reason: string }[];

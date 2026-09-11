@@ -281,6 +281,9 @@ dies — the same reason `john-lau` set 15 MB under Next's 16 MB.
 | POST | `/payroll` | open a run for a period. 409 if a run already covers those dates |
 | POST | `/payroll/{run_no}/approve` | requires `approve_funds`. **422 while any day in the period is still unread** (D139) |
 | GET | `/payroll/period?from=&to=` | the same figures for **any** period, run or no run — the week slider reads this (D158). `opened:false` and an empty `run_no` where nothing has been opened |
+| GET | `/pay-rules` | every dated version, newest first, with the one in force marked |
+| POST | `/pay-rules` | writes the **next** version. 422 in the past or before the latest version; 409 inside an existing run's period (D173) |
+| POST | `/pay-rules/preview` | applies a proposed book to a real period and returns only the lines that move. Nothing is saved (D175) |
 | GET | `/payroll/{run_no}/adjustments` | what was added or taken off by hand, each with its reason (D155) |
 | POST | `/payroll/{run_no}/adjustments` | 422 without a reason; **403 once the run leaves `DRAFT`** |
 | DELETE | `/payroll/{run_no}/adjustments/{id}` | same rule — an approved run is not edited |

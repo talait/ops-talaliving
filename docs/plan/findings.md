@@ -2210,3 +2210,44 @@ questions somebody actually asks: *how much wood is on the rack*, *which
 finishing is running out*. Filing is now two levels, and **whether an item is
 counted at all is a property of its category**, not a checkbox somebody has to
 remember: a service is never on a rack, and neither is the electricity bill.
+
+## F50 — the multiplier that moved a monthly salary by seventy per cent
+
+Making the pay rules configurable was supposed to be plumbing. It changed a
+number instead, and the change is worth writing down because it had been wrong
+in plain sight for four milestones.
+
+Overtime for a salaried person was priced at `base_rate / 21 / daily_hours` —
+a month divided by twenty-one working days divided by eight hours. It is a
+reasonable-looking guess. The regulation's own figure is **173** hours a month
+(40 × 52 ÷ 12), and the difference is not small:
+
+| | Rp / hour | 2 hours of overtime |
+|---|---|---|
+| `/ 21 / 8` with no multiplier | 38.690 | **77.380** |
+| `/ 173`, national ladder (1,5× then 2×) | 37.572 | **131.502** |
+
+The hourly rate barely moved. The **pay** moved by 70%, because the ladder was
+missing entirely: this system had been paying overtime at the ordinary rate and
+saying so on the screen (Q31), which was honest and also not what the business
+does. One sentence from the owner — *lembur normal sesuai peraturan nasional* —
+replaced a guess that had been visible, marked, and unchallenged since M17.
+
+### Three rules that came out of building it
+
+**A rule change cannot be backdated.** Days already worked were worked under a
+rule somebody could have read at the time. The first version of the guard only
+checked that the new version came after the previous one, which let a change
+dated 1 August through on 11 September — and the test caught it saving happily.
+
+**A version dated inside an existing run is refused, not ignored.** Payroll
+picks the rule in force when the period *opened*, so a version dated mid-period
+would look applied and do nothing. Silently doing nothing is worse than
+refusing: the setting reads as changed, and the payslip disagrees.
+
+**Undertime ships off.** The owner named it as a scheme that exists here, but
+not what a short hour costs — and the demo had no short day in it at all, which
+is how the first preview came back saying *nothing changes*. The fixture now
+has one (Sumiati leaves at 14:47 on the third), and turning the rule on moves
+her week by Rp 23.963. That is the number the decision needs, and it did not
+exist until somebody had to look at it.

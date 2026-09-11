@@ -85,7 +85,10 @@ export const ATTENDANCE_SCANS: AttendanceScan[] = [
   { id: "scn_0021", employee_id: "emp_w006", work_date: "2026-09-03", at: "2026-09-03T07:25:57+08:00", verify: "FP", location: "104", source: "import", import_id: "imp_seed01", reason: null, recorded_by: null, recorded_at: "2026-09-03T23:59:00+08:00" },
   { id: "scn_0022", employee_id: "emp_w006", work_date: "2026-09-03", at: "2026-09-03T12:01:16+08:00", verify: "FACE", location: "104", source: "import", import_id: "imp_seed01", reason: null, recorded_by: null, recorded_at: "2026-09-03T23:59:00+08:00" },
   { id: "scn_0023", employee_id: "emp_w006", work_date: "2026-09-03", at: "2026-09-03T12:47:21+08:00", verify: "FACE", location: "104", source: "import", import_id: "imp_seed01", reason: null, recorded_by: null, recorded_at: "2026-09-03T23:59:00+08:00" },
-  { id: "scn_0024", employee_id: "emp_w006", work_date: "2026-09-03", at: "2026-09-03T16:30:05+08:00", verify: "FP", location: "104", source: "import", import_id: "imp_seed01", reason: null, recorded_by: null, recorded_at: "2026-09-03T23:59:00+08:00" },
+  /* Pulang jam setengah dua: satu hari pendek yang tetap dibayar penuh karena
+     upahnya harian. Ada di fixture dengan sengaja — aturan undertime (D174)
+     tidak bisa ditimbang kalau tidak ada satu pun hari yang kurang jam. */
+  { id: "scn_0024", employee_id: "emp_w006", work_date: "2026-09-03", at: "2026-09-03T14:47:12+08:00", verify: "FP", location: "104", source: "import", import_id: "imp_seed01", reason: null, recorded_by: null, recorded_at: "2026-09-03T23:59:00+08:00" },
   { id: "scn_0025", employee_id: "emp_w006", work_date: "2026-09-04", at: "2026-09-04T07:25:16+08:00", verify: "FP", location: "104", source: "import", import_id: "imp_seed01", reason: null, recorded_by: null, recorded_at: "2026-09-04T23:59:00+08:00" },
   { id: "scn_0026", employee_id: "emp_w006", work_date: "2026-09-04", at: "2026-09-04T07:25:16+08:00", verify: "FP", location: "104", source: "import", import_id: "imp_seed01", reason: null, recorded_by: null, recorded_at: "2026-09-04T23:59:00+08:00" },
   { id: "scn_0027", employee_id: "emp_w006", work_date: "2026-09-04", at: "2026-09-04T11:31:00+08:00", verify: "FP", location: "104", source: "import", import_id: "imp_seed01", reason: null, recorded_by: null, recorded_at: "2026-09-04T23:59:00+08:00" },

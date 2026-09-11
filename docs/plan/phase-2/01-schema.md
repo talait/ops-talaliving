@@ -31,7 +31,8 @@ saying why.
 
 ## The ladder
 
-`0001`–`0006` exist and apply. The rest are specified here and not yet written.
+`0001`–`0022` exist and apply from nothing; `core`, `procure` and most of
+`acct` are built. The rest are specified here and not yet written.
 
 | # | File | Tables | Notes that decide the shape |
 |---|---|---|---|
@@ -53,9 +54,10 @@ saying why.
 | 0016 | `procure_seams` | procurement's write functions | **Done**, for the fifteen that carry a decision: `submit_pr`, `approve_line`, `remove_line`, `note_line`, `explain_variance`, `answer_request`, `approve_po`, `issue_po`, `amend_po_line`, `close_po`, `confirm_receipt`, `approve_round`, `transfer_round`, `merge_vendor`, `curate_vendor`. The creation seams are listed as outstanding in `02-api.md` |
 | 0017 | `procure_create_seams` | procurement's creating functions | **Done.** `create_pr`, `quick_add_line`, `add_draft_line`, `update_line`, `request_approval`, `sync_round`, `close_round`, `create_po`, `request_po_approval`, `set_expected_delivery`, `mark_po_resent`, `create_receipt`, `create_vendor`, `create_item`, `curate_item`, `update_vendor_contact` |
 | 0018 | `procure_detail_views` | `v_po_detail`, `v_pr_document` | **Done.** One row each, nested parts as jsonb — a drawer that needs three calls is one that renders in three stages |
-| 0019 | `acct_review` | `evidence_inbox` | five roads, none of them delete (F26, D94) |
-| 0018 | `acct_calendar` | `cash_components`, `cash_overrides`, `cash_settlements` | three tables, **no projection stored** — the twelve months are a view (D109–D115) |
-| 0019 | `acct_views` + `acct_seams` | `v_transaction`, `v_cash_plan`, `v_inbox_health`; `post_transaction()`, `allocate_payment()`, `resolve_inbox()` | the two money seams (ADR-006) |
+| 0019 | `acct_review` | `evidence_inbox`, `bank_statements`, `statement_lines` | **Done.** Five roads out, none of them delete (F26, D94). For the two leadership accounts a statement is not a check on typed rows — it is the only way their rows exist (D180) |
+| 0020 | `acct_views` | `v_account_balance`, `v_transaction`, `v_transaction_detail`, `v_allocation`, `v_vendor_payment`, `v_inbox_health`, `v_bank_statement`, `v_statement_suggestion` | **Done.** The database owns the balance (D9); the leadership figure is *locked, not hidden* (D87) |
+| 0021 | `acct_seams` | `post_transaction`, `void_transaction`, `allocate_payment`, `supersede_allocation`, `resolve_inbox` | **Done.** The two money seams (ADR-006), `post_ledger` or 403 |
+| 0022 | `acct_calendar` | `cash_components`, `cash_overrides`, `cash_settlements`, `v_cash_plan` | three tables, **no projection stored** — the twelve months are a view (D109–D115). The largest single view left in `acct` |
 | 00xx | `hr_people` | `employees` | `paid_leave_days` per person (D144); nobody is deleted, `left_on` retires |
 | 00xx | `hr_attendance` | `attendance_imports`, `attendance_scans`, `day_marks` | one row per **tap** (D141); a mark never overrides a scan (D142); re-upload is a no-op (D143) |
 | 00xx | `hr_overtime` | `overtime_sheets`, `overtime_lines` | two kinds of sheet (D146); leadership signs **after** HRD (D145); `form_amount` is the GAJI column of the paper (D154) |
@@ -122,6 +124,24 @@ view and the seam are all suspects.
 | `acct.inbox_origin_t` / `_status_t` | `upload/chat/email/bank`; no `CANCELLED` | `chat/web`; `CANCELLED` | two doors exist, not four. And withdrawing a document is not the same act as accounting rejecting it — the difference is who to ask about it |
 | `prod.work_order_status_t` | + `IN_PROGRESS` | `OPEN`, `DONE`, `CANCELLED` | how far along it is comes from the progress entries (A3) |
 | `core.doc_kind_t` | 13 | 14 | `laporan_lembur` was missing; a staff session's own report is a kind the screens already file (D146), and a kind the database cannot store is evidence that lands under `other` |
+
+### The shadowing rule, and why it is a script
+
+Five separate times this session, a PL/pgSQL local shared a name with a column
+— `covered`, `code`, `round_no`, `trx_no` — and Postgres refused the query as
+ambiguous. It is right to refuse; the problem is **when**. The migration
+applies, the function is created, and the failure waits for whichever branch
+reaches that line. Two of the five were found by a smoke test; the others would
+have been found by a user.
+
+Five of those is not five mistakes, it is a missing check. So:
+
+- **every local is prefixed `v_`, every argument `p_`**, and
+- `supabase/local/check_shadowing.sh` reads the `declare` blocks out of the
+  migrations, compares them against every column in the six schemas, and fails.
+  `smoke.sh` runs it first, before any assertion.
+
+It found twelve more that nothing had reached yet.
 
 ### Three bugs the smoke found that reading would not have
 

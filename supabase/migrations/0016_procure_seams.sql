@@ -99,7 +99,7 @@ returns jsonb
 language plpgsql security definer set search_path = procure, core, pg_temp as $$
 declare
   l procure.pr_lines; already boolean; supported boolean;
-  qty numeric; amount numeric; replayed jsonb; res jsonb;
+  v_qty numeric; v_amount numeric; replayed jsonb; res jsonb;
 begin
   replayed := core.idem_replay('procurement','approve_line:' || p_line_no, p_key);
   if replayed is not null then return replayed; end if;
@@ -152,15 +152,15 @@ begin
   -- and a leader approving Rp 4.500.000 for something asked at Rp 4.275.000 is
   -- making a real decision, not a mistake. What that leaves behind is a gap
   -- between requested and approved, which the line already reports.
-  qty    := coalesce(p_approved_qty, l.qty);
-  amount := coalesce(p_approved_amount, l.item_total);
+  v_qty    := coalesce(p_approved_qty, l.qty);
+  v_amount := coalesce(p_approved_amount, l.item_total);
 
   insert into procure.pr_approvals
     (line_id, step, approved, approved_qty, approved_amount,
      recorded_by, recorded_by_email, channel)
   values (l.id, 'GOODS', p_approved,
-          case when p_approved then qty else null end,
-          case when p_approved then amount else null end,
+          case when p_approved then v_qty else null end,
+          case when p_approved then v_amount else null end,
           auth.uid(), procure.actor_email(), p_channel);
 
   -- Leadership's own words, recorded with the decision when they write any, as
@@ -181,12 +181,12 @@ begin
    where line_id = l.id and answered_at is null;
 
   perform core.emit('procurement','procurement.line.approved', p_line_no,
-    jsonb_build_object('line_no', p_line_no, 'approved', p_approved, 'amount', amount));
+    jsonb_build_object('line_no', p_line_no, 'approved', p_approved, 'amount', v_amount));
 
   res := core.ok('procurement','pr_line', p_line_no,
     case when p_approved then 'approve' else 'unapprove' end,
     jsonb_build_object('line_no', p_line_no, 'approved', p_approved,
-                       'approved_qty', qty, 'approved_amount', amount));
+                       'approved_qty', v_qty, 'approved_amount', v_amount));
   return core.idem_remember('procurement','approve_line:' || p_line_no, p_key, res);
 end $$;
 
@@ -746,7 +746,7 @@ create or replace function procure.transfer_round(
   p_key text default null)
 returns jsonb
 language plpgsql security definer set search_path = procure, core, pg_temp as $$
-declare r procure.payment_rounds; total numeric; requested numeric; replayed jsonb; res jsonb;
+declare r procure.payment_rounds; total numeric; v_requested numeric; replayed jsonb; res jsonb;
 begin
   replayed := core.idem_replay('procurement','transfer_round:' || p_round_no, p_key);
   if replayed is not null then return replayed; end if;
@@ -792,18 +792,18 @@ begin
 
   select coalesce(sum(amount), 0) into total
     from procure.round_transfers where round_id = r.id;
-  select requested_total into requested
+  select requested_total into v_requested
     from procure.v_round_summary where round_id = r.id;
 
   update procure.payment_rounds set status = 'TRANSFERRED' where id = r.id;
 
   perform core.emit('procurement','procurement.round.transferred', p_round_no,
     jsonb_build_object('round_no', p_round_no, 'amount', p_amount,
-                       'transferred_total', total, 'requested_total', requested));
+                       'transferred_total', total, 'requested_total', v_requested));
   res := core.ok('procurement','payment_round', p_round_no,'transfer',
     jsonb_build_object('round_no', p_round_no, 'status','TRANSFERRED',
                        'transferred_total', total,
-                       'shortfall', greatest(requested - total, 0)));
+                       'shortfall', greatest(v_requested - total, 0)));
   return core.idem_remember('procurement','transfer_round:' || p_round_no, p_key, res);
 end $$;
 

@@ -12,8 +12,10 @@ local/        NEVER applied to Supabase
   00_shim.sql   the auth schema, auth.uid() and the three roles, so the real
                 migrations run unchanged on a bare Postgres
   rebuild.sh    drop everything, apply the ladder from nothing
-  smoke.sh      run every smoke file, report per file
+  smoke.sh      the static check, then every smoke file, reported per file
   smoke/        one per schema: each proves a refusal and a derivation
+  check_shadowing.sh
+                PL/pgSQL locals that share a name with a column
 ```
 
 ## Running the whole stack locally — free, and nothing touches production
@@ -49,7 +51,7 @@ Settings → API → Exposed schemas.
 > **Not verified in the session that wrote this.** `supabase start` needs to
 > pull its images from Docker Hub and ghcr, and this session's egress policy
 > answers 403 for both, so the stack has never actually been up here. The
-> migrations, the views, the seams and all four smoke files are proved against a
+> migrations, the views, the seams and all six smoke files are proved against a
 > throwaway Postgres 16; what is *unproved* is the GoTrue half — the
 > provisioning trigger firing on a real sign-up, and RLS applying through a real
 > JWT rather than a session GUC. Expect to debug that on first run rather than
@@ -90,6 +92,17 @@ database is one environment variable away. So it refuses:
 Each file in `smoke/` wraps itself in `begin`/`rollback`, so it leaves nothing
 behind, the order cannot matter, and any one of them runs on its own with plain
 `psql -f` — which is what you want when only one of them is failing.
+
+## One convention, enforced rather than remembered
+
+**Every PL/pgSQL local is prefixed `v_`; every argument is prefixed `p_`.**
+
+Not style. A local sharing a name with a column makes every query below it
+ambiguous, and Postgres refuses — correctly, and **at run time**. The migration
+applies, the function is created, and the failure waits for whichever branch
+reaches that line. It happened five times in one session before anybody noticed
+it was a pattern, so `check_shadowing.sh` now reads the `declare` blocks out of
+the migrations and fails on any local that collides. `smoke.sh` runs it first.
 
 ## Before anything reaches the real project
 

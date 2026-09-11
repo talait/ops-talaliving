@@ -28,7 +28,7 @@ create or replace function procure.create_pr(
 returns jsonb
 language plpgsql security definer set search_path = procure, core, pg_temp as $$
 declare
-  doc_no text; doc_id uuid; proj uuid; n int;
+  v_doc_no text; v_doc_id uuid; proj uuid; n int;
   replayed jsonb; res jsonb;
 begin
   replayed := core.idem_replay('procurement','create_pr', p_key);
@@ -57,16 +57,16 @@ begin
     end if;
   end if;
 
-  doc_no := core.next_doc_number('pr');
+  v_doc_no := core.next_doc_number('pr');
 
   insert into procure.pr_documents (doc_no, doc_type, status, requested_by, project_id)
-  values (doc_no, p_doc_type, 'DRAFT', auth.uid(), proj)
-  returning id into doc_id;
+  values (v_doc_no, p_doc_type, 'DRAFT', auth.uid(), proj)
+  returning id into v_doc_id;
 
   insert into procure.pr_lines
     (doc_id, doc_no, line_no, item_id, description, qty, uom, unit_price,
      item_total, vendor_id, category, purpose, need_by, source_wo_no)
-  select doc_id, doc_no, ord,
+  select v_doc_id, v_doc_no, ord,
          nullif(l ->> 'item_id','')::uuid,
          l ->> 'description',
          nullif(l ->> 'qty','')::numeric,
@@ -90,11 +90,11 @@ begin
 
   get diagnostics n = row_count;
 
-  perform core.emit('procurement','procurement.pr.created', doc_no,
-    jsonb_build_object('doc_no', doc_no, 'lines', n));
+  perform core.emit('procurement','procurement.pr.created', v_doc_no,
+    jsonb_build_object('doc_no', v_doc_no, 'lines', n));
 
-  res := core.ok('procurement','pr_document', doc_no,'create',
-    jsonb_build_object('doc_no', doc_no, 'status','DRAFT','lines', n));
+  res := core.ok('procurement','pr_document', v_doc_no,'create',
+    jsonb_build_object('doc_no', v_doc_no, 'status','DRAFT','lines', n));
   return core.idem_remember('procurement','create_pr', p_key, res);
 end $$;
 
@@ -111,7 +111,7 @@ create or replace function procure.quick_add_line(
   p_line jsonb, p_project_code text default null, p_key text default null)
 returns jsonb
 language plpgsql security definer set search_path = procure, core, pg_temp as $$
-declare created jsonb; submitted jsonb; doc_no text; replayed jsonb; res jsonb;
+declare created jsonb; submitted jsonb; v_doc_no text; replayed jsonb; res jsonb;
 begin
   replayed := core.idem_replay('procurement','quick_add_line', p_key);
   if replayed is not null then return replayed; end if;
@@ -125,12 +125,12 @@ begin
   created := procure.create_pr(jsonb_build_array(p_line), p_project_code);
   if not core.said_ok(created) then return created; end if;
 
-  doc_no := created -> 'data' ->> 'doc_no';
-  submitted := procure.submit_pr(doc_no);
+  v_doc_no := created -> 'data' ->> 'doc_no';
+  submitted := procure.submit_pr(v_doc_no);
   if not core.said_ok(submitted) then return submitted; end if;
 
-  res := core.ok('procurement','pr_line', doc_no || '-L01','quick_add',
-    jsonb_build_object('doc_no', doc_no, 'line_no', doc_no || '-L01'));
+  res := core.ok('procurement','pr_line', v_doc_no || '-L01','quick_add',
+    jsonb_build_object('doc_no', v_doc_no, 'line_no', v_doc_no || '-L01'));
   return core.idem_remember('procurement','quick_add_line', p_key, res);
 end $$;
 
@@ -194,7 +194,7 @@ end $$;
 create or replace function procure.update_line(p_line_no text, p_patch jsonb)
 returns jsonb
 language plpgsql security definer set search_path = procure, core, pg_temp as $$
-declare l procure.pr_lines; approved boolean; v_covered numeric; before jsonb; after jsonb;
+declare l procure.pr_lines; v_approved boolean; v_covered numeric; v_before jsonb; v_after jsonb;
 begin
   if not core.has_permission('procurement.update') then
     return core.refused('procurement','pr_line', p_line_no,'edit_line',
@@ -211,12 +211,12 @@ begin
       format('%s has been removed. Ask for it again rather than editing it back to life.', p_line_no));
   end if;
 
-  select coalesce(a.approved, false) into approved
+  select coalesce(a.approved, false) into v_approved
     from procure.v_line_approval a where a.line_id = l.id and a.step = 'GOODS';
-  if coalesce(approved, false) then
+  if coalesce(v_approved, false) then
     return core.conflict('procurement','pr_line', p_line_no,'edit_line',
       'already_approved',
-      format('%s has been approved. Editing it now would rewrite what the approver said yes to — ask the CEO to un-approve it first, or remove it and ask again.', p_line_no));
+      format('%s has been v_approved. Editing it now would rewrite what the approver said yes to — ask the CEO to un-approve it first, or remove it and ask again.', p_line_no));
   end if;
 
   select cov.covered into v_covered from procure.v_line_coverage cov where cov.line_id = l.id;
@@ -227,7 +227,7 @@ begin
       jsonb_build_object('covered', v_covered));
   end if;
 
-  before := jsonb_build_object(
+  v_before := jsonb_build_object(
     'description', l.description, 'qty', l.qty, 'uom', l.uom,
     'unit_price', l.unit_price, 'item_total', l.item_total,
     'vendor_id', l.vendor_id, 'category', l.category,
@@ -259,12 +259,12 @@ begin
     'unit_price', unit_price, 'item_total', item_total,
     'vendor_id', vendor_id, 'category', category,
     'purpose', purpose, 'need_by', need_by)
-    into after from procure.pr_lines where id = l.id;
+    into v_after from procure.pr_lines where id = l.id;
 
   -- The old values, not just the fact that something changed: "who changed the
   -- quantity, and from what" is the question asked six months later.
   return core.ok('procurement','pr_line', p_line_no,'edit_line',
-    jsonb_build_object('line_no', p_line_no), before, after);
+    jsonb_build_object('line_no', p_line_no), v_before, v_after);
 end $$;
 
 -- ── asking leadership ─────────────────────────────────────────────────────
@@ -280,9 +280,9 @@ create or replace function procure.request_approval(
 returns jsonb
 language plpgsql security definer set search_path = procure, core, pg_temp as $$
 declare
-  approver core.users; batch_no text; batch_id uuid; batch_tok text;
+  approver core.users; v_batch_no text; v_batch_id uuid; batch_tok text;
   bare text[] := '{}'; fresh text[] := '{}';
-  ln text; l procure.pr_lines; approved boolean; supported boolean;
+  ln text; l procure.pr_lines; v_approved boolean; supported boolean;
   replayed jsonb; res jsonb;
 begin
   replayed := core.idem_replay('procurement','request_approval', p_key);
@@ -311,9 +311,9 @@ begin
     select * into l from procure.pr_lines where line_no_full = ln;
     continue when not found or l.removed_at is not null;
 
-    select coalesce(a.approved, false) into approved
+    select coalesce(a.approved, false) into v_approved
       from procure.v_line_approval a where a.line_id = l.id and a.step = 'GOODS';
-    continue when coalesce(approved, false);
+    continue when coalesce(v_approved, false);
     -- Already asked. Asking twice is nagging, not a record — and the partial
     -- unique index in `0009` would refuse the second card anyway.
     continue when exists (select 1 from procure.v_pending_request r where r.line_id = l.id);
@@ -341,7 +341,7 @@ begin
       'Nothing to send — every one of those is already decided or already waiting for an answer.');
   end if;
 
-  batch_no := core.next_doc_number('ask');
+  v_batch_no := core.next_doc_number('ask');
   -- Unguessable and **never derived from the batch number**. The token is what
   -- the chat card carries back, so a predictable one would let anybody who can
   -- guess a document number answer somebody else's list — and two sends
@@ -350,25 +350,25 @@ begin
 
   insert into procure.approval_batches
     (batch_no, token, sent_to, sent_to_email, sent_by, sent_by_email, channel)
-  values (batch_no, batch_tok, approver.full_name, approver.email,
+  values (v_batch_no, batch_tok, approver.full_name, approver.email,
           auth.uid(), procure.actor_email(), 'chat')
-  returning id into batch_id;
+  returning id into v_batch_id;
 
   insert into procure.approval_requests
     (line_id, batch_id, token, sent_to, sent_to_email, sent_by, sent_by_email,
      channel, meeting_note)
-  select pl.id, batch_id, core.new_token(),
+  select pl.id, v_batch_id, core.new_token(),
          approver.full_name, approver.email, auth.uid(), procure.actor_email(),
          'chat', nullif(p_notes ->> pl.line_no_full, '')
     from procure.pr_lines pl
    where pl.line_no_full = any(fresh);
 
-  perform core.emit('procurement','procurement.approval.requested', batch_no,
-    jsonb_build_object('batch_no', batch_no, 'to', approver.email,
+  perform core.emit('procurement','procurement.approval.requested', v_batch_no,
+    jsonb_build_object('batch_no', v_batch_no, 'to', approver.email,
                        'lines', to_jsonb(fresh)));
 
-  res := core.ok('procurement','approval_batch', batch_no,'request',
-    jsonb_build_object('batch_no', batch_no, 'token', batch_tok,
+  res := core.ok('procurement','approval_batch', v_batch_no,'request',
+    jsonb_build_object('batch_no', v_batch_no, 'token', batch_tok,
                        'sent_to', approver.email, 'lines', to_jsonb(fresh)));
   return core.idem_remember('procurement','request_approval', p_key, res);
 end $$;
@@ -383,7 +383,7 @@ end $$;
 create or replace function procure.sync_round()
 returns jsonb
 language plpgsql security definer set search_path = procure, core, pg_temp as $$
-declare r procure.payment_rounds; round_no text; added int := 0; opened boolean := false;
+declare r procure.payment_rounds; v_round_no text; added int := 0; opened boolean := false;
 begin
   if not core.has_permission('procurement.update') then
     return core.refused('procurement','payment_round', null,'sync',
@@ -399,13 +399,13 @@ begin
   end if;
 
   if r.id is null then
-    round_no := core.next_doc_number('fund');
+    v_round_no := core.next_doc_number('fund');
     insert into procure.payment_rounds (round_no, status, opened_by)
-    values (round_no, 'OPEN', auth.uid())
+    values (v_round_no, 'OPEN', auth.uid())
     returning * into r;
     opened := true;
   else
-    round_no := r.round_no;
+    v_round_no := r.round_no;
   end if;
 
   insert into procure.payment_round_lines (round_id, line_id, requested_amount)
@@ -418,15 +418,15 @@ begin
   get diagnostics added = row_count;
 
   if added = 0 and not opened then
-    return core.noop('procurement','payment_round', round_no,'sync',
+    return core.noop('procurement','payment_round', v_round_no,'sync',
       'nothing new to roll in',
-      jsonb_build_object('round_no', round_no, 'added', 0));
+      jsonb_build_object('round_no', v_round_no, 'added', 0));
   end if;
 
-  perform core.emit('procurement','procurement.round.synced', round_no,
-    jsonb_build_object('round_no', round_no, 'added', added));
-  return core.ok('procurement','payment_round', round_no,'sync',
-    jsonb_build_object('round_no', round_no, 'added', added, 'opened', opened));
+  perform core.emit('procurement','procurement.round.synced', v_round_no,
+    jsonb_build_object('round_no', v_round_no, 'added', added));
+  return core.ok('procurement','payment_round', v_round_no,'sync',
+    jsonb_build_object('round_no', v_round_no, 'added', added, 'opened', opened));
 end $$;
 
 -- Closing a round says the batch is finished. Lines still owed inside it are
@@ -488,7 +488,7 @@ create or replace function procure.create_po(
 returns jsonb
 language plpgsql security definer set search_path = procure, core, pg_temp as $$
 declare
-  v procure.vendors; po_no text; po_id uuid; n int; priceless text;
+  v procure.vendors; v_po_no text; v_po_id uuid; n int; priceless text;
   replayed jsonb; res jsonb;
 begin
   replayed := core.idem_replay('procurement','create_po', p_key);
@@ -531,16 +531,16 @@ begin
       jsonb_build_object('field','dp_percent'));
   end if;
 
-  po_no := core.next_doc_number('po');
+  v_po_no := core.next_doc_number('po');
 
   insert into procure.purchase_orders
     (po_no, vendor_id, status, created_by, note, expected_delivery)
-  values (po_no, v.id, 'DRAFT', auth.uid(), nullif(btrim(p_note), ''), p_expected_delivery)
-  returning id into po_id;
+  values (v_po_no, v.id, 'DRAFT', auth.uid(), nullif(btrim(p_note), ''), p_expected_delivery)
+  returning id into v_po_id;
 
   insert into procure.po_lines
     (po_id, line_no, item_id, description, qty, uom, unit_price, line_total)
-  select po_id, ord,
+  select v_po_id, ord,
          nullif(l ->> 'item_id','')::uuid,
          btrim(l ->> 'description'),
          (l ->> 'qty')::numeric,
@@ -555,15 +555,15 @@ begin
   -- order as fully payable once 30% had been paid.
   if p_dp_percent is not null and p_dp_percent > 0 then
     insert into procure.po_schedule (po_id, term_no, kind, basis, basis_value, due_rule) values
-      (po_id, po_no || '-M01','DP',   'percent', p_dp_percent,       'on_issue'),
-      (po_id, po_no || '-M02','FINAL','percent', 100 - p_dp_percent, 'on_delivery');
+      (v_po_id, v_po_no || '-M01','DP',   'percent', p_dp_percent,       'on_issue'),
+      (v_po_id, v_po_no || '-M02','FINAL','percent', 100 - p_dp_percent, 'on_delivery');
   end if;
 
-  perform core.emit('procurement','procurement.po.created', po_no,
-    jsonb_build_object('po_no', po_no, 'vendor', p_vendor_code, 'lines', n));
+  perform core.emit('procurement','procurement.po.created', v_po_no,
+    jsonb_build_object('po_no', v_po_no, 'vendor', p_vendor_code, 'lines', n));
 
-  res := core.ok('procurement','purchase_order', po_no,'create',
-    jsonb_build_object('po_no', po_no, 'status','DRAFT','lines', n));
+  res := core.ok('procurement','purchase_order', v_po_no,'create',
+    jsonb_build_object('po_no', v_po_no, 'status','DRAFT','lines', n));
   return core.idem_remember('procurement','create_po', p_key, res);
 end $$;
 
@@ -866,7 +866,7 @@ create or replace function procure.update_vendor_contact(
   p_npwp text default null)
 returns jsonb
 language plpgsql security definer set search_path = procure, core, pg_temp as $$
-declare v procure.vendors; before jsonb; after jsonb;
+declare v procure.vendors; v_before jsonb; v_after jsonb;
 begin
   if not core.has_permission('procurement.update') then
     return core.refused('procurement','vendor', p_code,'update_contact',
@@ -877,7 +877,7 @@ begin
     return core.not_found('procurement','vendor', p_code,'update_contact','No such vendor.');
   end if;
 
-  before := jsonb_build_object('pic_name', v.pic_name, 'pic_phone', v.pic_phone,
+  v_before := jsonb_build_object('pic_name', v.pic_name, 'pic_phone', v.pic_phone,
     'phone', v.phone, 'address', v.address, 'bank_account', v.bank_account,
     'bank_account_secondary', v.bank_account_secondary, 'npwp', v.npwp);
 
@@ -896,10 +896,10 @@ begin
   select jsonb_build_object('pic_name', pic_name, 'pic_phone', pic_phone,
     'phone', phone, 'address', address, 'bank_account', bank_account,
     'bank_account_secondary', bank_account_secondary, 'npwp', npwp)
-    into after from procure.vendors where id = v.id;
+    into v_after from procure.vendors where id = v.id;
 
   return core.ok('procurement','vendor', p_code,'update_contact',
-    jsonb_build_object('code', p_code), before, after);
+    jsonb_build_object('code', p_code), v_before, v_after);
 end $$;
 
 grant execute on function

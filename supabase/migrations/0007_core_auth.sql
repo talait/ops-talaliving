@@ -95,8 +95,8 @@ create or replace function core.set_modules(
 language plpgsql security definer set search_path = core, pg_temp as $$
 declare
   target core.users;
-  before jsonb;
-  after  jsonb;
+  v_before jsonb;
+  v_after  jsonb;
 begin
   if not core.has_permission('it.manage_roles') then
     return core.refused('identity','user', p_user_id::text, 'modules.set',
@@ -118,7 +118,7 @@ begin
   end if;
 
   select coalesce(jsonb_agg(jsonb_build_object('module', module, 'level', level) order by module), '[]'::jsonb)
-    into before from core.user_modules where user_id = p_user_id;
+    into v_before from core.user_modules where user_id = p_user_id;
 
   -- The only DELETE in this system, and it is on a grant rather than on a fact.
   -- Nothing is deleted (A2) applies to what happened; what somebody may open
@@ -135,13 +135,13 @@ begin
     from jsonb_array_elements(coalesce(p_modules, '[]'::jsonb)) m;
 
   select coalesce(jsonb_agg(jsonb_build_object('module', module, 'level', level) order by module), '[]'::jsonb)
-    into after from core.user_modules where user_id = p_user_id;
+    into v_after from core.user_modules where user_id = p_user_id;
 
   perform core.emit('identity','access.changed', target.email,
-    jsonb_build_object('user_id', p_user_id, 'modules', after));
+    jsonb_build_object('user_id', p_user_id, 'modules', v_after));
 
   return core.ok('identity','user', target.email, 'modules.set',
-    jsonb_build_object('user_id', p_user_id, 'modules', after), before, after);
+    jsonb_build_object('user_id', p_user_id, 'modules', v_after), v_before, v_after);
 end $$;
 
 create or replace function core.set_authorities(
@@ -151,8 +151,8 @@ create or replace function core.set_authorities(
 language plpgsql security definer set search_path = core, pg_temp as $$
 declare
   target core.users;
-  before jsonb;
-  after  jsonb;
+  v_before jsonb;
+  v_after  jsonb;
 begin
   if not core.has_permission('it.manage_roles') then
     return core.refused('identity','user', p_user_id::text, 'authorities.set',
@@ -177,7 +177,7 @@ begin
   end if;
 
   select coalesce(jsonb_agg(authority order by authority), '[]'::jsonb)
-    into before from core.user_authorities where user_id = p_user_id;
+    into v_before from core.user_authorities where user_id = p_user_id;
 
   delete from core.user_authorities where user_id = p_user_id;
 
@@ -186,13 +186,13 @@ begin
     from unnest(coalesce(p_authorities, '{}')) a;
 
   select coalesce(jsonb_agg(authority order by authority), '[]'::jsonb)
-    into after from core.user_authorities where user_id = p_user_id;
+    into v_after from core.user_authorities where user_id = p_user_id;
 
   perform core.emit('identity','access.changed', target.email,
-    jsonb_build_object('user_id', p_user_id, 'authorities', after));
+    jsonb_build_object('user_id', p_user_id, 'authorities', v_after));
 
   return core.ok('identity','user', target.email, 'authorities.set',
-    jsonb_build_object('user_id', p_user_id, 'authorities', after), before, after);
+    jsonb_build_object('user_id', p_user_id, 'authorities', v_after), v_before, v_after);
 end $$;
 
 -- ── the directory ─────────────────────────────────────────────────────────

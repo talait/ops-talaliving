@@ -27,6 +27,7 @@
  */
 export * as identity from "./identity";
 export * as procurement from "./procurement";
+export * as accounting from "./accounting";
 
 export { isOk } from "@/services/_shared/envelope";
 export type { Result, ApiError, Outcome } from "@/services/_shared/envelope";

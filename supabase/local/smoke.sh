@@ -29,6 +29,24 @@ ONLY="${1:-}"
 failed=0
 ran=0
 
+# Before any assertion: the static check.
+#
+# A PL/pgSQL local sharing a name with a column makes every query below it
+# ambiguous, and Postgres refuses **at run time** — so the migration applies,
+# the function is created, and the failure waits for whichever branch reaches
+# that line. Five of those in one session is not five mistakes, it is a missing
+# check, so it runs here where nobody has to remember it.
+if [ -z "$ONLY" ]; then
+  printf '%-44s' "check_shadowing"
+  if out=$("$HERE/check_shadowing.sh" 2>&1); then
+    echo "ok"
+  else
+    echo "FAILED"
+    echo "$out" | sed 's/^/    /'
+    failed=$((failed + 1))
+  fi
+fi
+
 for f in "$HERE"/smoke/*.sql; do
   name="$(basename "$f" .sql)"
   [ -n "$ONLY" ] && [[ "$name" != *"$ONLY"* ]] && continue
@@ -48,7 +66,7 @@ for f in "$HERE"/smoke/*.sql; do
   fi
 done
 
-if [ "$ran" -eq 0 ]; then
+if [ "$ran" -eq 0 ] && [ -n "$ONLY" ]; then
   echo "no smoke files matched '${ONLY}'"
   exit 1
 fi

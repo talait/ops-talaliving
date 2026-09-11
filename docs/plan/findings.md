@@ -1942,3 +1942,62 @@ furthest possible place for a made-up number to end up (Q38). Versioning is the
 other gap: a BOM is current-state, every change audited, and pinning a revision
 to the work order that used it is a table nobody needs until the first dispute
 about what a chair was supposed to contain (Q36).
+
+---
+
+## F44 — "harus ada" is a statement about what the system must notice
+
+The owner's instruction was one line: every item must have a working drawing,
+a finished picture and a size. The naive reading is three fields. The useful
+reading is different, and it changed the shape of the screen more than the
+shape of the table.
+
+**If something must be there, the system has to be able to say it is not.**
+That is the whole value: nobody is going to forget the drawing for the table
+they are building this week — they will forget it for the product somebody
+quotes in March. So the catalogue now carries a completeness column that names
+what each product lacks, in words: *belum ada gambar kerja, gambar jadi*.
+Six of the seven demo products are incomplete, which is what a real catalogue
+looks like in month one.
+
+**Which is why the size is three numbers.** It was free text —
+`"2200 × 1000 × 750 mm"` — and free text cannot be checked. A product with
+`dimension: "menunggu dari vendor"` reads as filled in. With
+`length_mm`/`width_mm`/`height_mm` the question *does this product have a size*
+has an answer, and anything that is not an axis (a diameter, a thickness) went
+to `dimension_note` rather than being lost. The demo keeps one product — the
+steel-framed rack — with no numbers and a note saying the vendor has not sent
+them, because that is the honest state and the screen should show it as a gap
+rather than as a size.
+
+**Two drawings, not one.** *Gambar kerja* is what the workshop builds from;
+*gambar jadi* is what the client was shown and what QC checks against. A single
+"drawing" field would have silently lost whichever was filed second, and the
+two are asked for by different people at different moments. Both travel the
+same road as every other document here (ADR-010): uploaded once, linked to the
+product by code, carrying who filed it and when — which is what makes *is this
+the current drawing* answerable. A revision is a **new file against the same
+product**; the older one stays, because a piece built last month was built from
+it (A5).
+
+### The order lines were the quiet half
+
+*Di orders harus ada item dan jumlahnya* looks like a smaller request. It is
+the one that made the project a real record. Before it, a project was something
+spending got tagged with; now it says what was sold, and the production board
+already knew what was being made — so the two can be read side by side, matched
+on the product code.
+
+The three demo projects show why that column is worth having:
+
+| | Ordered | In production | Finished |
+|---|---|---|---|
+| BABY ISLAND — meja | 4 set | 4 | 3 |
+| VILLA SEMINYAK — pintu | 10 daun | **12** | 0 |
+| HOTEL UBUD — everything | 102 items | **0** | 0 |
+
+The middle row is a real thing that happens — two spares were added to the work
+order and nobody wrote it down against the order. The last row is a job signed
+three weeks ago that nobody has started. Neither was visible anywhere in this
+system, or in the spreadsheets it replaces, until these two tables sat next to
+each other.

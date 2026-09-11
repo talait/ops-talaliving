@@ -1,5 +1,5 @@
 import type {
-  Vendor, Uom, UomConversion, ItemCategory, Item, Project,
+  Vendor, Uom, UomConversion, ItemCategory, Item, Project, ProjectLine,
 } from "@/services/procurement/contracts";
 import type { Account, TransactionType } from "@/services/accounting/contracts";
 import type { DemoUser } from "../state";
@@ -195,26 +195,29 @@ export const PROJECTS: Project[] = [
   {
     id: "prj_25007", code: "25007", name: "BABY ISLAND", is_active: true,
     client_name: "PT Baby Island Resort", location: "Nusa Dua", pic: "Evin Jonathan",
-    started_on: "2026-07-14", target_date: "2026-09-20", contract_value: 486_000_000,
+    started_on: "2026-07-14", target_date: "2026-09-20", contract_value: 298_400_000,
     note: null,
   },
   {
     id: "prj_25009", code: "25009", name: "VILLA SEMINYAK", is_active: true,
     client_name: "Ibu Laksmi", location: "Seminyak", pic: "Evin Jonathan",
-    started_on: "2026-08-01", target_date: "2026-10-15", contract_value: 275_000_000,
+    started_on: "2026-08-01", target_date: "2026-10-15", contract_value: 214_200_000,
     note: null,
   },
   {
     id: "prj_25011", code: "25011", name: "HOTEL UBUD", is_active: true,
     client_name: "Ubud Green Hospitality", location: "Ubud", pic: "Andi Prasetyo",
-    started_on: "2026-09-01", target_date: "2026-12-05", contract_value: 1_240_000_000,
+    started_on: "2026-09-01", target_date: "2026-12-05", contract_value: 1_006_800_000,
     note: "Termin 3 kali, DP sudah masuk.",
   },
   {
     id: "prj_25012", code: "25012", name: "OFFICE FITOUT", is_active: false,
     client_name: "PT Sinar Kreasi", location: "Denpasar", pic: null,
     started_on: "2026-03-10", target_date: "2026-06-30", contract_value: 98_000_000,
-    note: "Selesai dan diserahterimakan Juni 2026.",
+    /* Contract value deliberately above the sum of its lines: the second
+     * phase was agreed by telephone and never written down as a line. That
+     * gap is what the drawer's "beda dari nilai kontrak" is for (D150). */
+    note: "Selesai dan diserahterimakan Juni 2026. Tahap kedua belum pernah dicatat sebagai baris.",
   },
 ];
 
@@ -360,3 +363,28 @@ export function itemIdByCode(code: string): string {
   if (!found) throw new Error(`fixture item ${code} not found`);
   return found.id;
 }
+
+/** What each customer actually ordered (D150).
+ *
+ *  The point of having these next to the work orders is the gap between them:
+ *  BABY ISLAND ordered four tables and twenty-four chairs and both are on the
+ *  floor; VILLA SEMINYAK ordered ten doors and twelve are being made, which is
+ *  a real thing that happens and a real thing to notice; HOTEL UBUD signed
+ *  three weeks ago and **nothing has been started**, which nobody could see
+ *  before this table existed.
+ */
+export const PROJECT_LINES: ProjectLine[] = [
+  { id: "prl_01", project_id: "prj_25007", line_no: 1, product_code: "PRD-MJ-220", description: "Meja makan jati 220×100, finishing natural matt", qty: 4, uom: "set", unit_price: 42_500_000, note: null },
+  { id: "prl_02", project_id: "prj_25007", line_no: 2, product_code: "PRD-KR-STD", description: "Kursi makan jati, kain dari klien", qty: 24, uom: "pcs", unit_price: 4_850_000, note: null },
+  { id: "prl_03", project_id: "prj_25007", line_no: 3, product_code: null, description: "Pemasangan di lokasi, dua hari", qty: 1, uom: "paket", unit_price: 12_000_000, note: "Jasa, bukan barang produksi." },
+
+  { id: "prl_04", project_id: "prj_25009", line_no: 1, product_code: "PRD-LM-3P", description: "Lemari pakaian 3 pintu, HPL putih", qty: 6, uom: "unit", unit_price: 18_500_000, note: null },
+  { id: "prl_05", project_id: "prj_25009", line_no: 2, product_code: "PRD-PT-90", description: "Pintu panel jati 90×210", qty: 10, uom: "daun", unit_price: 7_200_000, note: "SPK dibuat 12 daun — dua untuk cadangan, perlu dicek." },
+  { id: "prl_06", project_id: "prj_25009", line_no: 3, product_code: "PRD-NK-KCL", description: "Nakas jati kecil", qty: 8, uom: "unit", unit_price: 3_900_000, note: null },
+
+  { id: "prl_07", project_id: "prj_25011", line_no: 1, product_code: "PRD-MJ-220", description: "Meja makan untuk restoran, 220×100", qty: 14, uom: "set", unit_price: 41_000_000, note: null },
+  { id: "prl_08", project_id: "prj_25011", line_no: 2, product_code: "PRD-KR-STD", description: "Kursi makan jati", qty: 84, uom: "pcs", unit_price: 4_700_000, note: null },
+  { id: "prl_09", project_id: "prj_25011", line_no: 3, product_code: "PRD-RK-DSP", description: "Rak display lobby", qty: 4, uom: "unit", unit_price: 9_500_000, note: null },
+
+  { id: "prl_10", project_id: "prj_25012", line_no: 1, product_code: "PRD-LM-3P", description: "Lemari arsip 3 pintu", qty: 4, uom: "unit", unit_price: 17_000_000, note: null },
+];

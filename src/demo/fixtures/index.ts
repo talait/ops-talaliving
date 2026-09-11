@@ -1,7 +1,7 @@
 import type { DemoState } from "../state";
 import {
   USERS, ACCOUNTS, TRANSACTION_TYPES, UOM, UOM_CONVERSIONS,
-  ITEM_CATEGORIES, ITEMS, PROJECTS, VENDORS,
+  ITEM_CATEGORIES, ITEMS, PROJECTS, PROJECT_LINES, VENDORS,
 } from "./reference";
 import {
   PR_DOCUMENTS, PR_LINES, PR_APPROVALS, PAYMENT_ROUNDS, PAYMENT_ROUND_LINES,
@@ -35,7 +35,7 @@ export * from "./reference";
  *  changes every count, and their own work is exactly what the snapshot is
  *  for. A version somebody types when they edit the fixtures separates "the
  *  demo data moved" from "somebody used the demo". */
-export const FIXTURE_VERSION = "2026-09-11.10";
+export const FIXTURE_VERSION = "2026-09-11.12";
 
 export function stateSignature(state: DemoState): string {
   return [
@@ -58,6 +58,7 @@ export function initialState(): DemoState {
     item_categories: ITEM_CATEGORIES,
     items: ITEMS,
     projects: PROJECTS,
+    project_lines: PROJECT_LINES,
 
     pr_documents: PR_DOCUMENTS,
     pr_lines: PR_LINES,

@@ -43,6 +43,9 @@ export async function getWorkOrder(woNo: string): Promise<Result<WorkOrderView>>
  */
 export async function createWorkOrder(
   input: {
+    /** The catalogue product, where there is one. It is what lets the
+     *  customer's order line and the floor be compared (D150). */
+    product_code?: string | null;
     item_name: string;
     description?: string | null;
     qty: number;
@@ -80,6 +83,7 @@ export async function createWorkOrder(
     woNo = nextDocNumber(draft, "spk");
     draft.work_orders.push({
       id: newId("wo"), wo_no: woNo,
+      product_code: input.product_code?.trim().toUpperCase() || null,
       item_name: input.item_name.trim(),
       description: input.description?.trim() || null,
       qty: input.qty,
@@ -301,7 +305,10 @@ export async function saveProduct(
     category: string;
     uom: string;
     description?: string | null;
-    dimension?: string | null;
+    length_mm?: number | null;
+    width_mm?: number | null;
+    height_mm?: number | null;
+    dimension_note?: string | null;
     lead_time_days?: number | null;
     active?: boolean;
     note?: string | null;
@@ -334,7 +341,10 @@ export async function saveProduct(
         category: input.category.trim() || row.category,
         uom: input.uom.trim() || row.uom,
         description: input.description?.trim() ?? row.description,
-        dimension: input.dimension?.trim() ?? row.dimension,
+        length_mm: input.length_mm ?? row.length_mm,
+        width_mm: input.width_mm ?? row.width_mm,
+        height_mm: input.height_mm ?? row.height_mm,
+        dimension_note: input.dimension_note?.trim() ?? row.dimension_note,
         lead_time_days: input.lead_time_days ?? row.lead_time_days,
         active: input.active ?? row.active,
         note: input.note?.trim() ?? row.note,
@@ -351,7 +361,10 @@ export async function saveProduct(
         category: input.category.trim() || "Lain-lain",
         uom: input.uom.trim() || "unit",
         description: input.description?.trim() || null,
-        dimension: input.dimension?.trim() || null,
+        length_mm: input.length_mm ?? null,
+        width_mm: input.width_mm ?? null,
+        height_mm: input.height_mm ?? null,
+        dimension_note: input.dimension_note?.trim() || null,
         lead_time_days: input.lead_time_days ?? null,
         active: input.active ?? true,
         note: input.note?.trim() || null,
@@ -520,4 +533,46 @@ export async function materialsFor(
     total: priced.length > 0 ? priced.reduce((a, l) => a + (l.subtotal ?? 0), 0) : null,
     unpriced: lines.length - priced.length,
   });
+}
+
+
+/** Filing a drawing against a product.
+ *
+ *  **Gambar kerja** is what the workshop builds from; **gambar jadi** is what
+ *  the client was shown and what QC checks against. They answer different
+ *  questions, so they are two kinds rather than one "drawing" field, and a
+ *  product missing either says so on the catalogue screen (D150).
+ *
+ *  A revision is a **new file filed against the same product**, not an edit:
+ *  the newest is what the screen shows, and the older one stays, because a
+ *  piece built last month was built from it (A5).
+ */
+export async function attachProductDrawing(
+  input: { product_code: string; attachment_id: string; kind: "Gambar Kerja" | "Gambar Jadi" },
+): Promise<Result<ProductView>> {
+  await latency();
+  const denied = requireModule(SERVICE, "production");
+  if (denied) return denied;
+
+  const state = getState();
+  const product = state.products.find((p) => p.product_code === input.product_code);
+  if (!product) return notFound(SERVICE, "product_not_found", `No product ${input.product_code}.`);
+  if (!state.attachments.some((a) => a.id === input.attachment_id)) {
+    return notFound(SERVICE, "attachment_not_found", "That file is not on the system.");
+  }
+
+  const user = actingUser();
+  apply((draft) => {
+    draft.attachment_links.push({
+      id: newId("lnk"), attachment_id: input.attachment_id,
+      entity: "product", entity_no: product.product_code, kind: input.kind,
+      linked_by: user.id, linked_at: new Date().toISOString(),
+    });
+    writeAudit(draft, {
+      service: SERVICE, entity: "product", entity_no: product.product_code,
+      action: "attach_drawing", outcome: "ok", reason: null,
+      detail: { kind: input.kind, attachment_id: input.attachment_id, by: user.email },
+    });
+  });
+  return getProduct(product.product_code);
 }

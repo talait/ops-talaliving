@@ -1,14 +1,14 @@
 "use client";
 
-import { useState } from "react";
-import { Calculator, Plus, Save, Trash2 } from "lucide-react";
+import { useRef, useState } from "react";
+import { Calculator, FileText, ImageIcon, Paperclip, Plus, Ruler, Save, Trash2 } from "lucide-react";
 import { Drawer } from "@/components/ui/drawer";
 import { Badge, Button } from "@/components/ui/primitives";
 import { Loaded, useLoad } from "@/components/ui/loaded";
 import { NumberInput } from "@/components/ui/number-input";
 import { formatIDR, formatNumber } from "@/lib/format";
 import { cn } from "@/lib/cn";
-import { procurement, production } from "@/demo/api";
+import { documents, procurement, production } from "@/demo/api";
 import type { ProductView } from "@/services/production/contracts";
 import { useSession } from "@/store/session";
 import { useToast } from "@/store/toast";
@@ -46,7 +46,7 @@ export function ProductDrawer({
   const [name, setName] = useState("");
   const [category, setCategory] = useState("Meja");
   const [uom, setUom] = useState("unit");
-  const [dimension, setDimension] = useState("");
+  const [dims, setDims] = useState({ l: 0, w: 0, h: 0 });
   const [lead, setLead] = useState(14);
   const [busy, setBusy] = useState(false);
 
@@ -60,11 +60,58 @@ export function ProductDrawer({
   /* How many are we making? */
   const [runQty, setRunQty] = useState(1);
 
+  /* Editing the size in place, and previewing a drawing filed just now. */
+  const [editDims, setEditDims] = useState({ l: 0, w: 0, h: 0 });
+  const [dimsReady, setDimsReady] = useState(false);
+  const [preview, setPreview] = useState<Record<string, string>>({});
+  const kerjaRef = useRef<HTMLInputElement>(null);
+  const jadiRef = useRef<HTMLInputElement>(null);
+
+  if (product.status === "ready" && !dimsReady) {
+    setEditDims({
+      l: product.data.length_mm ?? 0,
+      w: product.data.width_mm ?? 0,
+      h: product.data.height_mm ?? 0,
+    });
+    setDimsReady(true);
+  }
+
+  async function saveDims(p: ProductView) {
+    setBusy(true);
+    const res = await production.saveProduct({
+      product_code: p.product_code, name: p.name, category: p.category, uom: p.uom,
+      length_mm: editDims.l || null, width_mm: editDims.w || null, height_mm: editDims.h || null,
+    });
+    setBusy(false);
+    if (res.error) { toast("warning", "Ukuran tidak tersimpan", res.error.message); return; }
+    toast("success", "Ukuran tersimpan", res.data.dimension ?? "—");
+    reload(); onChanged();
+  }
+
+  async function attachDrawing(p: ProductView, f: File, kind: "Gambar Kerja" | "Gambar Jadi") {
+    setBusy(true);
+    const up = await documents.upload({ filename: f.name, mime: f.type || "application/pdf", bytes: f.size });
+    if (up.error) { setBusy(false); toast("critical", "Upload gagal", up.error.message); return; }
+    const res = await production.attachProductDrawing({
+      product_code: p.product_code, attachment_id: up.data.id, kind,
+    });
+    setBusy(false);
+    if (res.error) { toast("warning", "Tidak terlampir", res.error.message); return; }
+    /* Shown immediately for whoever just filed it; the stored copy is a
+       filename until Phase 2 serves it through a signed URL. */
+    if (f.type.startsWith("image/")) {
+      setPreview((prev) => ({ ...prev, [kind]: URL.createObjectURL(f) }));
+    }
+    toast("success", `${kind} terlampir`, f.name);
+    reload(); onChanged();
+  }
+
   async function createProduct() {
     setBusy(true);
     const res = await production.saveProduct({
       product_code: code, name, category, uom,
-      dimension: dimension || null, lead_time_days: lead,
+      length_mm: dims.l || null, width_mm: dims.w || null, height_mm: dims.h || null,
+      lead_time_days: lead,
     });
     setBusy(false);
     if (res.error) { toast(res.error.status === 403 ? "critical" : "warning", "Tidak tersimpan", res.error.message); return; }
@@ -143,13 +190,15 @@ export function ProductDrawer({
                 className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-2 text-sm focus:border-brand-400 focus:outline-none"
               />
             </div>
-            <div>
-              <label htmlFor="p-dim" className="block text-xs text-slate-500">Ukuran</label>
-              <input
-                id="p-dim" value={dimension} onChange={(e) => setDimension(e.target.value)}
-                placeholder="1800 × 900 × 750 mm"
-                className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-2 text-sm focus:border-brand-400 focus:outline-none"
-              />
+            <div className="sm:col-span-2">
+              <span className="block text-xs text-slate-500">Ukuran (mm) — panjang × lebar × tinggi</span>
+              <div className="mt-1 flex items-center gap-1">
+                <NumberInput value={dims.l} min={0} max={100_000} onChange={(v) => setDims({ ...dims, l: v })} />
+                <span className="text-slate-400">×</span>
+                <NumberInput value={dims.w} min={0} max={100_000} onChange={(v) => setDims({ ...dims, w: v })} />
+                <span className="text-slate-400">×</span>
+                <NumberInput value={dims.h} min={0} max={100_000} onChange={(v) => setDims({ ...dims, h: v })} />
+              </div>
             </div>
             <div>
               <label htmlFor="p-lead" className="block text-xs text-slate-500">Lead time (hari)</label>
@@ -186,6 +235,92 @@ export function ProductDrawer({
               </span>
             </div>
             {p.description && <p className="text-[13px] text-slate-600">{p.description}</p>}
+
+            {/* Ukuran, gambar kerja, gambar jadi — the three things the owner
+                said every item must have, and the three the screen therefore
+                has to be able to say are missing (D150). */}
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className={cn(
+                "rounded-xl border px-3 py-3",
+                p.missing.includes("ukuran") ? "border-amber-200 bg-amber-50" : "border-slate-200",
+              )}>
+                <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-slate-500">
+                  <Ruler className="h-3.5 w-3.5" /> Ukuran
+                </p>
+                {p.missing.includes("ukuran") ? (
+                  <p className="mt-1 text-[12px] text-amber-800">
+                    Belum ada angkanya.
+                    {p.dimension_note && <span className="block text-slate-600">{p.dimension_note}</span>}
+                  </p>
+                ) : (
+                  <p className="mt-1 text-[13px] font-medium text-slate-800">{p.dimension}</p>
+                )}
+                {mayEdit && (
+                  <div className="mt-2 flex items-center gap-1">
+                    <NumberInput value={editDims.l} min={0} max={100_000} onChange={(v) => setEditDims({ ...editDims, l: v })} />
+                    <span className="text-slate-400">×</span>
+                    <NumberInput value={editDims.w} min={0} max={100_000} onChange={(v) => setEditDims({ ...editDims, w: v })} />
+                    <span className="text-slate-400">×</span>
+                    <NumberInput value={editDims.h} min={0} max={100_000} onChange={(v) => setEditDims({ ...editDims, h: v })} />
+                    <Button size="sm" variant="outline" disabled={busy} onClick={() => saveDims(p)}>Simpan</Button>
+                  </div>
+                )}
+              </div>
+
+              {([
+                ["Gambar Kerja", p.gambar_kerja, "Dipakai bengkel untuk membuat."],
+                ["Gambar Jadi", p.gambar_jadi, "Dilihat klien, dipakai QC."],
+              ] as const).map(([kind, drawing, hint]) => (
+                <div key={kind} className={cn(
+                  "rounded-xl border px-3 py-3",
+                  drawing ? "border-slate-200" : "border-amber-200 bg-amber-50",
+                )}>
+                  <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-slate-500">
+                    {kind === "Gambar Kerja" ? <FileText className="h-3.5 w-3.5" /> : <ImageIcon className="h-3.5 w-3.5" />}
+                    {kind}
+                  </p>
+                  {drawing ? (
+                    <>
+                      {/* A drawing filed in this session can be shown straight
+                          away; one that came from the store is a filename until
+                          Phase 2 serves it through a signed URL. */}
+                      {(preview[kind] ?? drawing.url) ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={preview[kind] ?? drawing.url!}
+                          alt={`${kind} ${p.name}`}
+                          className="mt-1 h-24 w-full rounded-lg border border-slate-200 object-cover"
+                        />
+                      ) : (
+                        <p className="mt-1 flex h-24 items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50 px-2 text-center text-[11px] text-slate-500">
+                          {drawing.filename}
+                        </p>
+                      )}
+                      <p className="mt-1 text-[10px] text-slate-400">
+                        {drawing.filename} · {drawing.linked_at.slice(0, 10)}
+                      </p>
+                    </>
+                  ) : (
+                    <p className="mt-1 text-[12px] text-amber-800">Belum ada. {hint}</p>
+                  )}
+                  {mayEdit && (
+                    <>
+                      <input
+                        ref={kind === "Gambar Kerja" ? kerjaRef : jadiRef}
+                        type="file" className="hidden" accept="image/*,application/pdf"
+                        onChange={(e) => { const f = e.target.files?.[0]; if (f) void attachDrawing(p, f, kind); }}
+                      />
+                      <Button
+                        size="sm" variant="outline" icon={Paperclip} className="mt-2" disabled={busy}
+                        onClick={() => (kind === "Gambar Kerja" ? kerjaRef : jadiRef).current?.click()}
+                      >
+                        {drawing ? "Ganti" : "Unggah"}
+                      </Button>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
 
             {p.warnings.length > 0 && (
               <ul className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[12px] text-amber-900">

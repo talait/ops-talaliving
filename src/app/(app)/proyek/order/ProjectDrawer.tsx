@@ -1,13 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { Hammer, Save } from "lucide-react";
+import { Hammer, Package, Plus, Save, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { Drawer } from "@/components/ui/drawer";
 import { Badge, Button } from "@/components/ui/primitives";
 import { Loaded, useLoad } from "@/components/ui/loaded";
 import { MoneyInput } from "@/components/ui/money-input";
+import { NumberInput } from "@/components/ui/number-input";
 import { formatIDR, formatNumber } from "@/lib/format";
+import { cn } from "@/lib/cn";
 import { procurement, production } from "@/demo/api";
 import { useSession } from "@/store/session";
 import { useToast } from "@/store/toast";
@@ -34,6 +36,13 @@ export function ProjectDrawer({
     [code],
   );
   const [orders] = useLoad(() => production.listWorkOrders({ include_done: true }), []);
+  const [lines, reloadLines] = useLoad(
+    () => (code ? procurement.listProjectLines(code) : Promise.resolve({ data: [], meta: null } as never)),
+    [code],
+  );
+  const [products] = useLoad(() => production.listProducts(), []);
+  const [draft, setDraft] = useState({ product_code: "", description: "", qty: 1, uom: "unit", unit_price: 0 });
+  const [lineBusy, setLineBusy] = useState(false);
   const mayEdit = can("procurement.update");
 
   const p = existing.status === "ready" ? existing.data : null;
@@ -59,6 +68,34 @@ export function ProjectDrawer({
   }
 
   const set = (patch: Partial<typeof form>) => setForm((f) => ({ ...f, ...patch }));
+
+  async function addLine() {
+    if (!code) return;
+    setLineBusy(true);
+    const res = await procurement.saveProjectLine({
+      project_code: code,
+      product_code: draft.product_code || null,
+      description: draft.description,
+      qty: draft.qty,
+      uom: draft.uom,
+      unit_price: draft.unit_price > 0 ? draft.unit_price : null,
+    });
+    setLineBusy(false);
+    if (res.error) { toast(res.error.status === 403 ? "critical" : "warning", "Tidak ditambahkan", res.error.message); return; }
+    toast("success", "Baris pesanan ditambahkan", `${draft.description} · ${draft.qty} ${draft.uom}`);
+    setDraft({ product_code: "", description: "", qty: 1, uom: "unit", unit_price: 0 });
+    reloadLines();
+  }
+
+  async function removeLine(lineId: string, label: string) {
+    if (!code) return;
+    setLineBusy(true);
+    const res = await procurement.removeProjectLine({ project_code: code, line_id: lineId });
+    setLineBusy(false);
+    if (res.error) { toast("warning", "Tidak dihapus", res.error.message); return; }
+    toast("success", "Baris dihapus", label);
+    reloadLines();
+  }
 
   async function save() {
     setBusy(true);
@@ -154,12 +191,172 @@ export function ProjectDrawer({
           </label>
         )}
 
-        {/* What is being made for it. Composed from production, matched on the
-            public code — the reason the code is fixed. */}
+        {/* What the client actually ordered, and how much of it exists.
+            Ordered comes from this service; made and finished are read from
+            production and matched on the **product code**, which is the reason
+            a product has one (D150). */}
+        {code && (
+          <Loaded state={lines} onRetry={reloadLines} skeletonRows={3}>
+            {(rows) => (
+              <Loaded state={orders} skeletonRows={2}>
+                {(wos) => {
+                  const mine = wos.filter((w) => w.project_code === code);
+                  const total = rows.reduce((a, l) => a + (l.unit_price ?? 0) * l.qty, 0);
+                  return (
+                    <div className="rounded-xl border border-slate-200 px-4 py-3">
+                      <p className="flex items-center gap-2 text-[13px] font-medium text-slate-800">
+                        <Package className="h-4 w-4 text-slate-400" />
+                        Item dipesan ({rows.length})
+                      </p>
+                      <div className="mt-2 overflow-x-auto">
+                        <table className="w-full border-collapse text-[12px]">
+                          <thead>
+                            <tr className="border-b border-slate-200 text-[10px] uppercase tracking-wide text-slate-500">
+                              <th className="py-1.5 text-left">Item</th>
+                              <th className="py-1.5 text-right">Dipesan</th>
+                              <th className="py-1.5 text-right">Dibuat</th>
+                              <th className="py-1.5 text-right">Selesai</th>
+                              <th className="py-1.5 text-right">Nilai</th>
+                              {mayEdit && <th />}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {rows.map((l) => {
+                              const forLine = l.product_code
+                                ? mine.filter((w) => w.product_code === l.product_code)
+                                : [];
+                              const made = forLine.reduce((a, w) => a + w.qty, 0);
+                              const done = forLine.reduce((a, w) => a + w.completed, 0);
+                              return (
+                                <tr key={l.id} className="border-b border-slate-100 last:border-0">
+                                  <td className="py-1.5">
+                                    <span className="block text-slate-800">{l.description}</span>
+                                    <span className="block font-mono text-[10px] text-slate-400">
+                                      {l.product_code ?? "tanpa kode produk"}
+                                      {l.note && ` · ${l.note}`}
+                                    </span>
+                                  </td>
+                                  <td className="py-1.5 text-right tabular-nums text-slate-800">
+                                    {formatNumber(l.qty)} {l.uom}
+                                  </td>
+                                  <td className={cn(
+                                    "py-1.5 text-right tabular-nums",
+                                    !l.product_code ? "text-slate-300"
+                                      : made === 0 ? "text-amber-700"
+                                        : made !== l.qty ? "text-amber-700" : "text-slate-700",
+                                  )}>
+                                    {l.product_code ? formatNumber(made) : "—"}
+                                  </td>
+                                  <td className="py-1.5 text-right tabular-nums text-slate-700">
+                                    {l.product_code ? formatNumber(done) : "—"}
+                                  </td>
+                                  <td className="py-1.5 text-right tabular-nums text-slate-600">
+                                    {l.unit_price == null ? "—" : formatIDR(l.unit_price * l.qty)}
+                                  </td>
+                                  {mayEdit && (
+                                    <td className="py-1.5 text-right">
+                                      <Button size="sm" variant="ghost" icon={Trash2} disabled={lineBusy}
+                                        onClick={() => removeLine(l.id, l.description)}>
+                                        <span className="sr-only">Hapus</span>
+                                      </Button>
+                                    </td>
+                                  )}
+                                </tr>
+                              );
+                            })}
+                            {rows.length === 0 && (
+                              <tr><td colSpan={mayEdit ? 6 : 5} className="py-4 text-center text-slate-500">
+                                Belum ada item yang dicatat untuk pesanan ini.
+                              </td></tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* Ordered but not started is the number this table
+                          exists to make visible. */}
+                      {rows.some((l) => l.product_code && mine.filter((w) => w.product_code === l.product_code).length === 0) && (
+                        <p className="mt-2 text-[11px] text-amber-800">
+                          Ada item yang belum punya pesanan kerja sama sekali.
+                        </p>
+                      )}
+                      {total > 0 && (
+                        <p className="mt-2 text-right text-[12px] text-slate-600">
+                          Jumlah baris: <strong className="tabular-nums text-slate-800">{formatIDR(total)}</strong>
+                          {p?.contract_value != null && total !== p.contract_value && (
+                            <span className="ml-2 text-amber-700">
+                              {" "}
+                              beda {formatIDR(Math.abs(total - p.contract_value))} dari nilai kontrak
+                            </span>
+                          )}
+                        </p>
+                      )}
+
+                      {mayEdit && (
+                        <Loaded state={products} skeletonRows={1}>
+                          {(prods) => (
+                            <div className="mt-3 border-t border-slate-100 pt-3">
+                              <div className="grid gap-2 sm:grid-cols-[1fr_70px_70px]">
+                                <select
+                                  value={draft.product_code}
+                                  onChange={(e) => {
+                                    const found = prods.find((x) => x.product_code === e.target.value);
+                                    setDraft({
+                                      ...draft,
+                                      product_code: e.target.value,
+                                      description: found?.name ?? draft.description,
+                                      uom: found?.uom ?? draft.uom,
+                                    });
+                                  }}
+                                  aria-label="Produk"
+                                  className="h-9 rounded-lg border border-slate-200 px-2 text-sm focus:border-brand-400 focus:outline-none"
+                                >
+                                  <option value="">Item di luar katalog…</option>
+                                  {prods.map((x) => (
+                                    <option key={x.product_code} value={x.product_code}>
+                                      {x.name} · {x.product_code}
+                                    </option>
+                                  ))}
+                                </select>
+                                <NumberInput value={draft.qty} min={0} max={9999} onChange={(v) => setDraft({ ...draft, qty: v })} />
+                                <input
+                                  value={draft.uom} onChange={(e) => setDraft({ ...draft, uom: e.target.value })}
+                                  aria-label="Satuan"
+                                  className="h-9 rounded-lg border border-slate-200 px-2 text-sm focus:border-brand-400 focus:outline-none"
+                                />
+                              </div>
+                              <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_150px_auto]">
+                                <input
+                                  value={draft.description}
+                                  onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+                                  placeholder="Keterangan seperti tertulis di pesanan klien"
+                                  className="h-9 rounded-lg border border-slate-200 px-2 text-sm focus:border-brand-400 focus:outline-none"
+                                />
+                                <MoneyInput value={draft.unit_price} onChange={(v) => setDraft({ ...draft, unit_price: v })} />
+                                <Button size="sm" icon={Plus} disabled={lineBusy || !draft.description.trim() || draft.qty <= 0}
+                                  onClick={addLine}>
+                                  Tambah
+                                </Button>
+                              </div>
+                              <p className="mt-1 text-[11px] text-slate-500">
+                                Harga satuan boleh kosong kalau pesanannya dihargai borongan.
+                              </p>
+                            </div>
+                          )}
+                        </Loaded>
+                      )}
+                    </div>
+                  );
+                }}
+              </Loaded>
+            )}
+          </Loaded>
+        )}
+
         {code && (
           <Loaded state={orders} skeletonRows={2}>
             {(all) => {
-              const mine = all.filter((w) => w.project_code === (p?.name ?? "") || w.project_code === code);
+              const mine = all.filter((w) => w.project_code === code);
               return (
                 <div className="rounded-xl border border-slate-200 px-4 py-3">
                   <p className="flex items-center gap-2 text-[13px] font-medium text-slate-800">

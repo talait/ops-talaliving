@@ -567,6 +567,18 @@ erDiagram
         numeric yield_ratio "null unless it is a conversion with loss"
         text note
     }
+    projects ||--o{ project_lines : "ordered"
+    project_lines {
+        uuid id PK
+        uuid project_id FK
+        int line_no
+        text product_code "prod.products.product_code, at the seam - null for a service"
+        text description "as the client's order words it"
+        numeric qty
+        text uom
+        bigint unit_price "null when the order is priced as a lump sum (Q37)"
+        text note
+    }
     projects {
         uuid id PK
         text code UK "PRN, 5 digits: 25004"
@@ -1334,6 +1346,7 @@ erDiagram
     work_orders {
         uuid id PK
         text wo_no UK "spk-26-08-24_01"
+        text product_code "the catalogue product, at the seam (D150)"
         text item_name
         text description
         numeric qty
@@ -1386,7 +1399,10 @@ erDiagram
         text category "Meja, Kursi, Lemari - a word, not a hierarchy"
         text uom
         text description
-        text dimension "free text: a chair has three numbers, a door two"
+        int length_mm "checkable, unlike a sentence (D150)"
+        int width_mm
+        int height_mm
+        text dimension_note "diameter, thickness, anything not an axis"
         int lead_time_days "a hint; the work order carries the promise"
         boolean active
         text note
@@ -1421,6 +1437,7 @@ numbers and a workshop that conflates them runs out on a Saturday.
 | `bom_components` CHECK `NOT (kind = 'product' AND ref_code = parent code)` | a product cannot be a component of itself |
 | `ref_code` **not** a foreign key | the workshop knows it needs a steel frame before procurement has a code for one. Unresolved codes are shown, not refused (A6) |
 | `products.product_code` set once | it is on the drawing, the work order and every BOM that references it |
+| drawings live in `core.attachment_links` | `Gambar Kerja` and `Gambar Jadi` linked to `entity = 'product'`. A revision is a **new file** against the same product — newest is shown, the old one stays, because a piece built last month was built from it (A5, D150) |
 
 ### Views
 

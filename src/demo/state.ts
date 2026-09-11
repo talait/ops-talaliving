@@ -1,6 +1,6 @@
 import type { Session, User, ModuleGrant, Authority } from "@/services/identity/contracts";
 import type {
-  Vendor, Uom, UomConversion, ItemCategory, Item, Project,
+  Vendor, Uom, UomConversion, ItemCategory, Item, Project, ProjectLine,
   PrDocument, PrLine, PrApproval, PaymentRound, PaymentRoundLine,
   Receipt, LineSettlement, PurchaseOrder, PoLine, PoScheduleTerm, LineVariance,
   LineNote, ApprovalRequest, ApprovalBatch, RoundTransfer,
@@ -67,6 +67,8 @@ export interface DemoState {
   item_categories: ItemCategory[];
   items: Item[];
   projects: Project[];
+  /** What the customer actually ordered, line by line (D150). */
+  project_lines: ProjectLine[];
 
   pr_documents: PrDocument[];
   pr_lines: PrLine[];

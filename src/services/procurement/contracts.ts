@@ -194,6 +194,35 @@ export interface Project {
   note: string | null;
 }
 
+/** One line of the customer's order: what they bought, and how many.
+ *
+ *  This is what makes a project an **order** rather than a label to tag
+ *  spending with (D150). Everything downstream reads it: the workshop knows
+ *  what to make, the board knows how much of it is done, and the difference
+ *  between the two is the thing nobody could see before.
+ *
+ *  The product is carried as its **code**, at the seam — `production` owns the
+ *  catalogue and this service never joins to it (ADR-004). A line whose code
+ *  names nothing is shown as such rather than refused: an order can be typed
+ *  the day it is signed, before anybody has drawn the thing (A6).
+ */
+export interface ProjectLine {
+  id: string;
+  project_id: string;
+  line_no: number;
+  /** `prod.products.product_code`. Null for something not in the catalogue —
+   *  the description then carries it. */
+  product_code: string | null;
+  /** What the client's order says, in their words. */
+  description: string;
+  qty: number;
+  uom: string;
+  /** What it was sold for, per unit. Null where the order is priced as a lump
+   *  sum and only `Project.contract_value` is known (Q37). */
+  unit_price: number | null;
+  note: string | null;
+}
+
 /* ------------------------------------------------------------------ */
 /* PR chain                                                            */
 /* ------------------------------------------------------------------ */

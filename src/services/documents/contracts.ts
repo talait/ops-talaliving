@@ -24,6 +24,13 @@ export const DOC_KINDS = [
   "Surat Lembur",
   /** A staff session's own report — usually a screenshot of the work (D146). */
   "Laporan Lembur",
+  /** Production master data. **Gambar kerja** is what the workshop builds from
+   *  — dimensions, joints, the section through the leg. **Gambar jadi** is what
+   *  the client was shown and what QC checks against. They are different
+   *  documents answering different questions, and a product missing either is
+   *  a product somebody will have to ask about (D150). */
+  "Gambar Kerja",
+  "Gambar Jadi",
   "Others",
 ] as const;
 export type DocKind = (typeof DOC_KINDS)[number];
@@ -50,6 +57,13 @@ export const SUPPORTING_DOC_KINDS: DocKind[] = [
   "Surat Lembur",
   /** A staff session's own report — usually a screenshot of the work (D146). */
   "Laporan Lembur",
+  /** Production master data. **Gambar kerja** is what the workshop builds from
+   *  — dimensions, joints, the section through the leg. **Gambar jadi** is what
+   *  the client was shown and what QC checks against. They are different
+   *  documents answering different questions, and a product missing either is
+   *  a product somebody will have to ask about (D150). */
+  "Gambar Kerja",
+  "Gambar Jadi",
   "Others",
 ];
 
@@ -76,7 +90,11 @@ export const LEDGER_DOC_KINDS: DocKind[] = [
   "Receiving Item",
 ];
 
-export type LinkEntity = "transaction" | "pr_line" | "po" | "receipt" | "day_mark" | "overtime";
+export type LinkEntity =
+  | "transaction" | "pr_line" | "po" | "receipt"
+  | "day_mark" | "overtime"
+  /** A product's drawings — master data, not evidence of an event (D150). */
+  | "product";
 
 /** A piece of evidence — a **file or a link**, never both.
  *

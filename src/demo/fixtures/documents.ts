@@ -49,6 +49,9 @@ export const ATTACHMENTS: Attachment[] = [
   /* HR. A doctor's letter and an overtime letter — evidence like any other. */
   { id: "att_40", storage_path: "demo/2026-09/surat-dokter-siti.jpg", url: null, filename: "surat-dokter-siti.jpg", sha256: "d41a77bc0091", mime: "image/jpeg", bytes: 612_884, uploaded_by: "usr_wulan", uploaded_at: "2026-09-02T09:08:00+08:00", source: "web", duplicate_suspect: false },
   { id: "att_41", storage_path: "demo/2026-09/surat-lembur-produksi-310826.pdf", url: null, filename: "surat-lembur-produksi-310826.pdf", sha256: "6b20aa41cc03", mime: "application/pdf", bytes: 96_441, uploaded_by: "usr_wulan", uploaded_at: "2026-09-01T08:18:00+08:00", source: "web", duplicate_suspect: false },
+  { id: "att_44", storage_path: "demo/master/gambar-kerja-mj-220.pdf", url: null, filename: "gambar-kerja-mj-220.pdf", sha256: "aa71bb0044cc", mime: "application/pdf", bytes: 1_884_220, uploaded_by: "usr_made", uploaded_at: "2026-07-18T10:00:00+08:00", source: "web", duplicate_suspect: false },
+  { id: "att_45", storage_path: "demo/master/foto-jadi-mj-220.jpg", url: null, filename: "foto-jadi-mj-220.jpg", sha256: "77cc1290bb31", mime: "image/jpeg", bytes: 2_104_338, uploaded_by: "usr_made", uploaded_at: "2026-07-30T15:20:00+08:00", source: "web", duplicate_suspect: false },
+  { id: "att_46", storage_path: "demo/master/gambar-kerja-lm-3p.pdf", url: null, filename: "gambar-kerja-lm-3p.pdf", sha256: "3390aa7712bc", mime: "application/pdf", bytes: 1_442_009, uploaded_by: "usr_made", uploaded_at: "2026-08-20T09:40:00+08:00", source: "web", duplicate_suspect: false },
   { id: "att_42", storage_path: "demo/2026-09/lembur-andi-010926.png", url: null, filename: "lembur-andi-010926.png", sha256: "ff8123aa5501", mime: "image/png", bytes: 388_112, uploaded_by: "usr_andi", uploaded_at: "2026-09-01T21:41:00+08:00", source: "web", duplicate_suspect: false },
   { id: "att_43", storage_path: "demo/2026-09/lembur-andi-020926.png", url: null, filename: "lembur-andi-020926.png", sha256: "cd90aa112288", mime: "image/png", bytes: 201_553, uploaded_by: "usr_andi", uploaded_at: "2026-09-02T22:11:00+08:00", source: "web", duplicate_suspect: false },
 ];
@@ -61,6 +64,12 @@ export const ATTACHMENT_LINKS: AttachmentLink[] = [
   { id: "lnk_41", attachment_id: "att_41", entity: "overtime", entity_no: "lbr_01", kind: "Surat Lembur", linked_by: "usr_wulan", linked_at: "2026-09-01T08:20:00+08:00" },
   /* A staff session's evidence is the screenshot of what they were doing —
    * the report itself, not a signed form (D146). */
+  /* Master data: what the workshop builds from, and what the client was shown
+   * (D150). The wardrobe has the working drawing and no photograph yet — which
+   * is the normal state of a product that has not been delivered. */
+  { id: "lnk_44", attachment_id: "att_44", entity: "product", entity_no: "PRD-MJ-220", kind: "Gambar Kerja", linked_by: "usr_made", linked_at: "2026-07-18T10:02:00+08:00" },
+  { id: "lnk_45", attachment_id: "att_45", entity: "product", entity_no: "PRD-MJ-220", kind: "Gambar Jadi", linked_by: "usr_made", linked_at: "2026-07-30T15:22:00+08:00" },
+  { id: "lnk_46", attachment_id: "att_46", entity: "product", entity_no: "PRD-LM-3P", kind: "Gambar Kerja", linked_by: "usr_made", linked_at: "2026-08-20T09:42:00+08:00" },
   { id: "lnk_42", attachment_id: "att_42", entity: "overtime", entity_no: "lbr_02", kind: "Laporan Lembur", linked_by: "usr_andi", linked_at: "2026-09-01T21:42:00+08:00" },
   { id: "lnk_43", attachment_id: "att_43", entity: "overtime", entity_no: "lbr_03", kind: "Laporan Lembur", linked_by: "usr_andi", linked_at: "2026-09-02T22:12:00+08:00" },
 

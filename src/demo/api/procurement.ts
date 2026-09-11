@@ -1,7 +1,7 @@
 /** Implements `/api/v1/procurement` from `03-api.md`. */
 import { ok, noop, invalid, notFound, refused, type Result } from "@/services/_shared/envelope";
 import type {
-  Vendor, Item, Uom, Project, ItemCategory,
+  Vendor, Item, Uom, Project, ProjectLine, ItemCategory,
   PrDocument, PrLine, PrLineView, PaymentRound, RoundSummary,
   PurchaseOrder, PoLine, PoStatusView, Receipt, ReceiptCondition, PrCategory, UomCode,
   VendorView, ItemView, VarianceReason, PrApproval, VendorJourney,
@@ -199,6 +199,112 @@ export async function saveProject(
   if (!view) return invalid(SERVICE, "not_saved", "Proyek tidak tersimpan.", { field: "code" });
   remember(SERVICE, "saveProject", idempotencyKey, view);
   return ok(SERVICE, view);
+}
+
+/** The customer's order, line by line (D150). */
+export async function listProjectLines(code: string): Promise<Result<ProjectLine[]>> {
+  await latency();
+  const state = getState();
+  const project = state.projects.find((p) => p.code === code);
+  if (!project) return notFound(SERVICE, "project_not_found", `No project ${code}.`);
+  return ok(
+    SERVICE,
+    state.project_lines
+      .filter((l) => l.project_id === project.id)
+      .sort((a, b) => a.line_no - b.line_no),
+  );
+}
+
+/** Adding a line to an order, or correcting one.
+ *
+ *  The product is carried as a **code**, and it is not validated against the
+ *  catalogue: an order gets typed the day it is signed, which is often before
+ *  anybody has drawn the thing. A line with no product code is legitimate too —
+ *  installation, delivery, a one-off nobody will make twice (A6).
+ */
+export async function saveProjectLine(
+  input: {
+    project_code: string;
+    line_id?: string | null;
+    product_code?: string | null;
+    description: string;
+    qty: number;
+    uom: string;
+    unit_price?: number | null;
+    note?: string | null;
+  },
+): Promise<Result<ProjectLine[]>> {
+  await latency();
+  const denied = requireModule(SERVICE, "procurement");
+  if (denied) return denied;
+
+  const state = getState();
+  const project = state.projects.find((p) => p.code === input.project_code);
+  if (!project) return notFound(SERVICE, "project_not_found", `No project ${input.project_code}.`);
+  if (!input.description.trim()) {
+    return invalid(SERVICE, "description_required", "Barangnya apa? Klien membaca baris ini.", { field: "description" });
+  }
+  if (!input.qty || input.qty <= 0) {
+    return invalid(SERVICE, "qty_required", "Pesanan nol bukan pesanan.", { field: "qty" });
+  }
+
+  const user = actingUser();
+  apply((draft) => {
+    const row = input.line_id ? draft.project_lines.find((l) => l.id === input.line_id) : null;
+    if (row) {
+      Object.assign(row, {
+        product_code: input.product_code?.trim().toUpperCase() || null,
+        description: input.description.trim(),
+        qty: input.qty,
+        uom: input.uom.trim() || row.uom,
+        unit_price: input.unit_price ?? row.unit_price,
+        note: input.note?.trim() ?? row.note,
+      });
+    } else {
+      const used = draft.project_lines.filter((l) => l.project_id === project.id);
+      draft.project_lines.push({
+        id: newId("prl"), project_id: project.id,
+        line_no: used.length + 1,
+        product_code: input.product_code?.trim().toUpperCase() || null,
+        description: input.description.trim(),
+        qty: input.qty,
+        uom: input.uom.trim() || "unit",
+        unit_price: input.unit_price ?? null,
+        note: input.note?.trim() || null,
+      });
+    }
+    writeAudit(draft, {
+      service: SERVICE, entity: "project", entity_no: project.code,
+      action: row ? "update_line" : "add_line", outcome: "ok", reason: null,
+      detail: { product: input.product_code ?? null, qty: input.qty, by: user.email },
+    });
+  });
+  return listProjectLines(project.code);
+}
+
+export async function removeProjectLine(
+  input: { project_code: string; line_id: string },
+): Promise<Result<ProjectLine[]>> {
+  await latency();
+  const denied = requireModule(SERVICE, "procurement");
+  if (denied) return denied;
+
+  const state = getState();
+  const project = state.projects.find((p) => p.code === input.project_code);
+  if (!project) return notFound(SERVICE, "project_not_found", `No project ${input.project_code}.`);
+  const row = state.project_lines.find((l) => l.id === input.line_id);
+  if (!row) return notFound(SERVICE, "line_not_found", "Baris itu tidak ada.");
+
+  const user = actingUser();
+  apply((draft) => {
+    draft.project_lines = draft.project_lines.filter((l) => l.id !== input.line_id);
+    writeAudit(draft, {
+      service: SERVICE, entity: "project", entity_no: project.code,
+      action: "remove_line", outcome: "ok", reason: null,
+      detail: { description: row.description, qty: row.qty, by: user.email },
+    });
+  });
+  return listProjectLines(project.code);
 }
 
 export async function listCategories(): Promise<Result<ItemCategory[]>> {

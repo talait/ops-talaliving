@@ -175,6 +175,9 @@ PO and receiving:
 |---|---|---|
 | GET | `/projects` | newest code first |
 | GET | `/projects/{code}` | |
+| GET | `/projects/{code}/lines` | what the client ordered, line by line |
+| POST | `/projects/{code}/lines` | add or change a line: `{product_code?, description, qty, uom, unit_price?}`. The product code is **not** validated against the catalogue — an order is typed the day it is signed, often before anybody has drawn the thing (A6, D150) |
+| DELETE | `/projects/{code}/lines/{id}` | |
 | POST | `/projects` | create or update: `{code, name, client_name?, location?, pic?, started_on?, target_date?, contract_value?, is_active?}`. The **code is never edited** — request lines, work orders and ledger rows all reference it as text at the seam (D149). 422 when the target date is before the start |
 
 `contract_value` is the agreed order value. It is **not** an invoice and not a
@@ -308,7 +311,8 @@ anybody opening the app).
 | GET | `/stages` | the seven, seeded and ordered (Q35) |
 | GET | `/products` | `?include_inactive=1`. Each with its components priced and a material cost per unit — computed on read (D149) |
 | GET | `/products/{product_code}` | one product with its bill of material |
-| POST | `/products` | create or update by code. The **code is set once**: it is on the drawing, the work order and every BOM that references it |
+| POST | `/products/{product_code}/drawings` | link a `Gambar Kerja` or `Gambar Jadi`. A revision is a new file against the same product, never an edit (D150) |
+| POST | `/products` | create or update by code, including `length_mm`/`width_mm`/`height_mm`. The **code is set once**: it is on the drawing, the work order and every BOM that references it |
 | POST | `/products/{product_code}/components` | add or change a component: `{kind: "material" \| "product", ref_code, qty, uom, waste_percent}`. 409 on a duplicate ref — change the quantity rather than adding a second row. The ref is **not** validated against the catalogue: a workshop knows it needs a steel frame before procurement has a code for one, and the screen shows unresolved codes plainly (A6) |
 | DELETE | `/products/{product_code}/components/{id}` | audited like any other act — the BOM is what a purchase request gets built from |
 | GET | `/products/{product_code}/materials?qty=12` | what a run of that size needs, **waste included**, with a total and a count of what could not be priced |

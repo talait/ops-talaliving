@@ -53,7 +53,12 @@ export type WorkOrderStatus = "OPEN" | "DONE" | "CANCELLED";
 export interface WorkOrder {
   id: string;
   wo_no: string;
-  /** What is being made, in the workshop's own words. */
+  /** The catalogue product this order is for, where there is one — which is
+   *  what lets a customer's order line and the floor be compared (D150). Null
+   *  for a one-off nobody has catalogued. */
+  product_code: string | null;
+  /** What is being made, in the workshop's own words. Kept even when a product
+   *  is named: a work order says what it said on the day it was written. */
   item_name: string;
   description: string | null;
   qty: number;
@@ -148,9 +153,18 @@ export interface Product {
   category: string;
   uom: string;
   description: string | null;
-  /** Length × width × height in mm, as the workshop writes it. Free text
-   *  because a chair has three numbers and a door has two. */
-  dimension: string | null;
+  /** Size in **millimetres**, one number per axis (D150).
+   *
+   *  Structured rather than free text, because "ukuran" is a thing the system
+   *  has to be able to check for — a product without it cannot be quoted,
+   *  cut or checked — and a sentence cannot be checked. Anything that does not
+   *  fit three axes (a diameter, a thickness, a radius) goes in
+   *  `dimension_note`, which is where the free text went rather than being
+   *  lost. */
+  length_mm: number | null;
+  width_mm: number | null;
+  height_mm: number | null;
+  dimension_note: string | null;
   /** Working days from start to finished, for promising a date. A hint, never
    *  a schedule: the work order carries the date that was actually promised. */
   lead_time_days: number | null;
@@ -195,8 +209,29 @@ export interface BomLineView extends BomComponent {
   subtotal: number | null;
 }
 
+/** A drawing, as the product screen needs it. */
+export interface ProductDrawing {
+  attachment_id: string;
+  filename: string;
+  /** Set for a link; null for an uploaded file, which Phase 2 serves through a
+   *  signed URL. */
+  url: string | null;
+  linked_by: string;
+  linked_at: string;
+}
+
 export interface ProductView extends Product {
   components: BomLineView[];
+  /** `2200 × 1000 × 750 mm`, built from the three numbers so every screen
+   *  spells it the same way. Null when nothing has been recorded. */
+  dimension: string | null;
+  /** What the workshop builds from, and what the client was shown (D150). */
+  gambar_kerja: ProductDrawing | null;
+  gambar_jadi: ProductDrawing | null;
+  /** Master data is only useful when it is complete, so the gaps are counted
+   *  rather than left to be discovered: ukuran, gambar kerja, gambar jadi,
+   *  BOM. */
+  missing: string[];
   /** Material cost for one unit, from the components that have a price. */
   material_cost: number | null;
   /** How many components could not be priced — the figure above is only worth

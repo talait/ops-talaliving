@@ -5,7 +5,8 @@ import { Save } from "lucide-react";
 import { Modal } from "@/components/ui/drawer";
 import { Button } from "@/components/ui/primitives";
 import { NumberInput } from "@/components/ui/number-input";
-import { production } from "@/demo/api";
+import { procurement, production } from "@/demo/api";
+import { Loaded, useLoad } from "@/components/ui/loaded";
 import { useToast } from "@/store/toast";
 
 /** Putting something on the floor.
@@ -22,6 +23,9 @@ export function NewWorkOrder({
   onDone: (woNo: string) => void;
 }) {
   const { toast } = useToast();
+  const [products] = useLoad(() => production.listProducts(), []);
+  const [projects] = useLoad(() => procurement.listProjects(), []);
+  const [productCode, setProductCode] = useState("");
   const [item, setItem] = useState("");
   const [description, setDescription] = useState("");
   const [qty, setQty] = useState(1);
@@ -33,6 +37,7 @@ export function NewWorkOrder({
   async function save() {
     setBusy(true);
     const res = await production.createWorkOrder({
+      product_code: productCode || null,
       item_name: item, description, qty, uom,
       project_code: project || null, due_date: due,
     });
@@ -59,14 +64,37 @@ export function NewWorkOrder({
       }
     >
       <div className="space-y-3">
-        <div>
-          <label htmlFor="w-item" className="block text-xs text-slate-500">Item yang dibuat</label>
-          <input
-            id="w-item" value={item} onChange={(e) => setItem(e.target.value)}
-            placeholder="Meja makan jati 220×100"
-            className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-2 text-sm focus:border-brand-400 focus:outline-none"
-          />
-        </div>
+        {/* Pick from the catalogue where possible: the product code is what
+            lets a customer's order line and this order be compared (D150). */}
+        <Loaded state={products} skeletonRows={1}>
+          {(prods) => (
+            <div>
+              <label htmlFor="w-prod" className="block text-xs text-slate-500">Item yang dibuat</label>
+              <select
+                id="w-prod" value={productCode}
+                onChange={(e) => {
+                  const found = prods.find((x) => x.product_code === e.target.value);
+                  setProductCode(e.target.value);
+                  if (found) { setItem(found.name); setUom(found.uom); }
+                }}
+                className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-2 text-sm focus:border-brand-400 focus:outline-none"
+              >
+                <option value="">Di luar katalog — ketik sendiri…</option>
+                {prods.map((x) => (
+                  <option key={x.product_code} value={x.product_code}>
+                    {x.name} · {x.product_code}
+                  </option>
+                ))}
+              </select>
+              <input
+                value={item} onChange={(e) => setItem(e.target.value)}
+                placeholder="Meja makan jati 220×100"
+                aria-label="Nama item"
+                className="mt-2 h-9 w-full rounded-lg border border-slate-200 px-2 text-sm focus:border-brand-400 focus:outline-none"
+              />
+            </div>
+          )}
+        </Loaded>
         <div>
           <label htmlFor="w-desc" className="block text-xs text-slate-500">Keterangan</label>
           <input
@@ -95,14 +123,24 @@ export function NewWorkOrder({
             />
           </div>
         </div>
-        <div>
-          <label htmlFor="w-proj" className="block text-xs text-slate-500">Proyek / pelanggan</label>
-          <input
-            id="w-proj" value={project} onChange={(e) => setProject(e.target.value)}
-            placeholder="BABY ISLAND"
-            className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-2 text-sm focus:border-brand-400 focus:outline-none"
-          />
-        </div>
+        <Loaded state={projects} skeletonRows={1}>
+          {(prjs) => (
+            <div>
+              <label htmlFor="w-proj" className="block text-xs text-slate-500">Proyek / pelanggan</label>
+              <select
+                id="w-proj" value={project} onChange={(e) => setProject(e.target.value)}
+                className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-2 text-sm focus:border-brand-400 focus:outline-none"
+              >
+                <option value="">Tanpa proyek</option>
+                {prjs.map((x) => (
+                  <option key={x.code} value={x.code}>{x.name} · {x.code}</option>
+                ))}
+              </select>
+              {/* The project's CODE, not its name: every cross-service
+                  reference is by code (D149). */}
+            </div>
+          )}
+        </Loaded>
         <p className="text-[11px] text-slate-500">
           Tanggal jatuh tempo wajib. Pesanan tanpa tanggal tidak bisa terlambat, artinya tidak ada
           yang tahu kapan ia terlambat.

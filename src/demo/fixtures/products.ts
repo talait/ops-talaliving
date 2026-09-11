@@ -18,44 +18,49 @@ export const PRODUCTS: Product[] = [
     id: "prd_01", product_code: "PRD-MJ-220", name: "Meja makan jati 220×100",
     category: "Meja", uom: "set",
     description: "Meja makan solid jati, kaki tapered, finishing natural matt.",
-    dimension: "2200 × 1000 × 750 mm", lead_time_days: 14, active: true, note: null,
+    length_mm: 2200, width_mm: 1000, height_mm: 750, dimension_note: null, lead_time_days: 14, active: true, note: null,
   },
   {
     id: "prd_02", product_code: "PRD-KR-STD", name: "Kursi makan jati",
     category: "Kursi", uom: "pcs",
     description: "Kursi makan solid jati, dudukan busa, kain pelanggan.",
-    dimension: "450 × 520 × 900 mm", lead_time_days: 10, active: true, note: null,
+    length_mm: 450, width_mm: 520, height_mm: 900, dimension_note: null, lead_time_days: 10, active: true, note: null,
   },
   {
     id: "prd_03", product_code: "PRD-LM-3P", name: "Lemari pakaian 3 pintu",
     category: "Lemari", uom: "unit",
     description: "Rangka plywood 18 mm, HPL putih, dua laci dalam.",
-    dimension: "1800 × 600 × 2100 mm", lead_time_days: 21, active: true, note: null,
+    length_mm: 1800, width_mm: 600, height_mm: 2100, dimension_note: null, lead_time_days: 21, active: true, note: null,
   },
   {
     id: "prd_04", product_code: "PRD-PT-90", name: "Pintu panel jati 90×210",
     category: "Pintu", uom: "daun",
     description: "Daun pintu panel solid jati, empat panel.",
-    dimension: "900 × 2100 × 40 mm", lead_time_days: 12, active: true, note: null,
+    length_mm: 900, width_mm: 2100, height_mm: 40, dimension_note: null, lead_time_days: 12, active: true, note: null,
   },
   {
     id: "prd_05", product_code: "PRD-RK-DSP", name: "Rak display besi–kayu",
     category: "Rak", uom: "unit",
     description: "Rangka besi hollow dari vendor, papan jati 3 cm.",
-    dimension: "1200 × 400 × 1800 mm", lead_time_days: 18, active: true, note: null,
+    /* Deliberately without measurements: the frame is fabricated by a vendor
+       and nobody has drawn it yet. A product the system cannot state the size
+       of is exactly what the completeness column exists to surface (D150). */
+    length_mm: null, width_mm: null, height_mm: null,
+    dimension_note: "Menunggu ukuran rangka dari Makmur Sentosa.",
+    lead_time_days: 18, active: true, note: null,
   },
   {
     id: "prd_06", product_code: "PRD-NK-KCL", name: "Nakas jati kecil",
     category: "Meja", uom: "unit",
     description: "Nakas satu laci, finishing walnut.",
-    dimension: "450 × 400 × 550 mm", lead_time_days: 7, active: true,
+    length_mm: 450, width_mm: 400, height_mm: 550, dimension_note: null, lead_time_days: 7, active: true,
     note: "Belum ada BOM — selalu dibuat dari sisa potongan.",
   },
   {
     id: "prd_07", product_code: "PRD-SUB-LACI", name: "Box laci 45 cm (sub-rakitan)",
     category: "Sub-rakitan", uom: "pcs",
     description: "Box laci plywood 12 mm dengan rel full extension. Dipakai di lemari dan nakas.",
-    dimension: "450 × 400 × 150 mm", lead_time_days: 3, active: true, note: null,
+    length_mm: 450, width_mm: 400, height_mm: 150, dimension_note: null, lead_time_days: 3, active: true, note: null,
   },
 ];
 

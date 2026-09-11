@@ -2,6 +2,10 @@ import type { WorkOrder, ProgressEntry } from "@/services/production/contracts";
 
 /** The workshop floor, as it would look on a Friday.
  *
+ *  Note the `project_code`: it is the project's **code**, not its name. Every
+ *  reference across a service boundary is by code, and a screen that matched
+ *  on the name would work until somebody renamed a project (D149, D150).
+ *
  *  Six orders, deliberately not all healthy: one finished, one comfortable,
  *  one that is going to be late and can be seen to be late, one that has not
  *  started with four days to go, and one where finishing has been reported on
@@ -11,55 +15,55 @@ import type { WorkOrder, ProgressEntry } from "@/services/production/contracts";
  */
 export const WORK_ORDERS: WorkOrder[] = [
   {
-    id: "wo_01", wo_no: "spk-26-08-24_01",
+    id: "wo_01", product_code: "PRD-MJ-220", wo_no: "spk-26-08-24_01",
     item_name: "Meja makan jati 220×100",
     description: "BABY ISLAND — 4 set, finishing natural matt.",
-    qty: 4, uom: "set", project_code: "BABY ISLAND",
+    qty: 4, uom: "set", project_code: "25007",
     due_date: "2026-09-05", status: "OPEN",
     created_at: "2026-08-24T08:00:00+08:00", created_by: "usr_made",
     cancelled_reason: null, note: null,
   },
   {
-    id: "wo_02", wo_no: "spk-26-08-24_02",
+    id: "wo_02", product_code: "PRD-KR-STD", wo_no: "spk-26-08-24_02",
     item_name: "Kursi makan jati",
     description: "BABY ISLAND — 24 pcs, mengikuti meja wo_01.",
-    qty: 24, uom: "pcs", project_code: "BABY ISLAND",
+    qty: 24, uom: "pcs", project_code: "25007",
     due_date: "2026-09-12", status: "OPEN",
     created_at: "2026-08-24T08:05:00+08:00", created_by: "usr_made",
     cancelled_reason: null, note: null,
   },
   {
-    id: "wo_03", wo_no: "spk-26-08-28_01",
+    id: "wo_03", product_code: "PRD-LM-3P", wo_no: "spk-26-08-28_01",
     item_name: "Lemari pakaian 3 pintu",
-    description: "VILLA SANUR — HPL putih, handle hitam.",
-    qty: 6, uom: "unit", project_code: "VILLA SANUR",
+    description: "VILLA SEMINYAK — HPL putih, handle hitam.",
+    qty: 6, uom: "unit", project_code: "25009",
     due_date: "2026-09-09", status: "OPEN",
     created_at: "2026-08-28T09:10:00+08:00", created_by: "usr_made",
     cancelled_reason: null, note: null,
   },
   {
-    id: "wo_04", wo_no: "spk-26-09-01_01",
+    id: "wo_04", product_code: "PRD-RK-DSP", wo_no: "spk-26-09-01_01",
     item_name: "Rak display besi–kayu",
-    description: "SHOWROOM — belum mulai, menunggu besi dari vendor.",
-    qty: 10, uom: "unit", project_code: "SHOWROOM",
+    description: "STANDARD (showroom) — belum mulai, menunggu besi dari vendor.",
+    qty: 10, uom: "unit", project_code: "25004",
     due_date: "2026-09-15", status: "OPEN",
     created_at: "2026-09-01T08:30:00+08:00", created_by: "usr_made",
     cancelled_reason: null, note: "Menunggu rangka besi dari Makmur Sentosa.",
   },
   {
-    id: "wo_05", wo_no: "spk-26-08-10_01",
+    id: "wo_05", product_code: "PRD-NK-KCL", wo_no: "spk-26-08-10_01",
     item_name: "Nakas jati kecil",
-    description: "VILLA SANUR — selesai dan sudah dikirim.",
-    qty: 8, uom: "unit", project_code: "VILLA SANUR",
+    description: "VILLA SEMINYAK — selesai dan sudah dikirim.",
+    qty: 8, uom: "unit", project_code: "25009",
     due_date: "2026-08-29", status: "DONE",
     created_at: "2026-08-10T08:00:00+08:00", created_by: "usr_made",
     cancelled_reason: null, note: null,
   },
   {
-    id: "wo_06", wo_no: "spk-26-08-30_01",
+    id: "wo_06", product_code: "PRD-PT-90", wo_no: "spk-26-08-30_01",
     item_name: "Pintu panel jati 90×210",
-    description: "VILLA SANUR — 12 daun pintu.",
-    qty: 12, uom: "daun", project_code: "VILLA SANUR",
+    description: "VILLA SEMINYAK — 12 daun pintu.",
+    qty: 12, uom: "daun", project_code: "25009",
     due_date: "2026-09-08", status: "OPEN",
     created_at: "2026-08-30T08:00:00+08:00", created_by: "usr_made",
     cancelled_reason: null, note: null,

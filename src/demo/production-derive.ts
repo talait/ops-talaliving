@@ -9,7 +9,7 @@
 import type { DemoState } from "./state";
 import {
   PROCESS_STAGES, type WorkOrder, type WorkOrderView, type StageProgress,
-  type Product, type ProductView, type BomLineView,
+  type Product, type ProductView, type BomLineView, type ProductDrawing,
 } from "@/services/production/contracts";
 
 /** Today, as an office day. The board is about deadlines, so "what day is it"
@@ -124,6 +124,35 @@ export function workOrderViews(state: DemoState, today = officeToday()): WorkOrd
  *  missing ones as zero is worse than no cost at all: it reads as complete
  *  (D149).
  */
+/** A product's drawing of a given kind, if somebody has filed one.
+ *
+ *  On the same road as every other document (ADR-010): uploaded once, linked
+ *  to the product by code, carrying the name of whoever filed it and when —
+ *  which is what makes "is this the current drawing" answerable at all. */
+function drawingOf(state: DemoState, productCode: string, kind: string): ProductDrawing | null {
+  /* Newest wins. A revised drawing is a new file filed against the same
+     product; the older one is not deleted, because a piece built last month
+     was built from it (A5). */
+  const link = [...state.attachment_links]
+    .filter((l) => l.entity === "product" && l.entity_no === productCode && l.kind === kind)
+    .sort((a, b) => b.linked_at.localeCompare(a.linked_at))[0];
+  if (!link) return null;
+  const att = state.attachments.find((a) => a.id === link.attachment_id);
+  if (!att) return null;
+  return {
+    attachment_id: att.id, filename: att.filename, url: att.url,
+    linked_by: link.linked_by, linked_at: link.linked_at,
+  };
+}
+
+/** `2200 × 1000 × 750 mm`, spelled the same way everywhere. */
+function dimensionText(p: Product): string | null {
+  const axes = [p.length_mm, p.width_mm, p.height_mm].filter((n) => n != null);
+  if (axes.length === 0) return p.dimension_note;
+  const size = `${axes.join(" × ")} mm`;
+  return p.dimension_note ? `${size} · ${p.dimension_note}` : size;
+}
+
 export function productView(state: DemoState, product: Product): ProductView {
   const rows = state.bom_components.filter((b) => b.product_id === product.id);
 
@@ -186,9 +215,36 @@ export function productView(state: DemoState, product: Product): ProductView {
     warnings.push("Sebagian harga memakai harga pembelian terakhir, bukan harga standar.");
   }
 
+  const gambar_kerja = drawingOf(state, product.product_code, "Gambar Kerja");
+  const gambar_jadi = drawingOf(state, product.product_code, "Gambar Jadi");
+  const hasSize = product.length_mm != null || product.width_mm != null || product.height_mm != null;
+
+  /* What master data is missing, named rather than implied. Every one of these
+     is something somebody will otherwise have to ask about — and asking is the
+     expensive part, not the filling in (D150). */
+  const missing: string[] = [];
+  if (!hasSize) missing.push("ukuran");
+  if (!gambar_kerja) missing.push("gambar kerja");
+  if (!gambar_jadi) missing.push("gambar jadi");
+  if (components.length === 0) missing.push("BOM");
+
+  if (!hasSize) {
+    warnings.push("Belum ada ukuran — produk ini tidak bisa dipotong atau dicek tanpa bertanya.");
+  }
+  if (!gambar_kerja) {
+    warnings.push("Belum ada gambar kerja — yang dipakai bengkel untuk membuat.");
+  }
+  if (!gambar_jadi) {
+    warnings.push("Belum ada gambar jadi — yang dilihat klien dan dipakai QC.");
+  }
+
   return {
     ...product,
     components,
+    dimension: dimensionText(product),
+    gambar_kerja,
+    gambar_jadi,
+    missing,
     material_cost: priced.length > 0 ? priced.reduce((a, c) => a + (c.subtotal ?? 0), 0) : null,
     unpriced,
     broken_refs,

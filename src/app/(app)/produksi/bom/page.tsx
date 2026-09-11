@@ -36,7 +36,7 @@ export default function BomPage() {
       <PageHeader
         breadcrumb="Production"
         title="Produk &amp; Bill of Materials"
-        description="Barang yang dijual ke klien dan kita produksi, beserta komponen tiap unitnya. Biaya bahan dihitung dari katalog setiap kali dibuka — tidak pernah disimpan."
+        description="Barang yang dijual ke klien dan kita produksi: ukuran, gambar kerja, gambar jadi, dan komponen tiap unitnya. Biaya bahan dihitung dari katalog setiap kali dibuka — tidak pernah disimpan."
         actions={mayEdit ? (
           <Button icon={Plus} onClick={() => { setCreating(true); setOpen(null); }}>Produk baru</Button>
         ) : undefined}
@@ -48,7 +48,7 @@ export default function BomPage() {
             `${p.product_code} ${p.name} ${p.category}`.toLowerCase().includes(q.toLowerCase()));
           const withBom = all.filter((p) => p.components.length > 0);
           const noBom = all.filter((p) => p.components.length === 0);
-          const holes = all.filter((p) => p.components.length > 0 && p.unpriced > 0);
+          const incomplete = all.filter((p) => p.missing.length > 0);
 
           return (
             <>
@@ -58,13 +58,15 @@ export default function BomPage() {
                     ["Produk", String(all.length), "yang dijual dan dibuat sendiri"],
                     ["Punya BOM", String(withBom.length), "komponennya sudah tercatat"],
                     ["Belum ada BOM", String(noBom.length), noBom.length > 0 ? "kebutuhan bahannya belum bisa dihitung" : "semua sudah punya"],
-                    ["BOM tidak lengkap", String(holes.length), "ada komponen tanpa harga"],
+                    ["Data belum lengkap", String(incomplete.length), "ukuran, gambar kerja atau gambar jadi"],
                   ] as [string, string, string][]).map(([k, v, note]) => (
                     <div key={k} className="px-4 py-3.5">
                       <dt className="text-[11px] uppercase tracking-wide text-slate-400">{k}</dt>
                       <dd className={cn(
                         "mt-0.5 text-xl font-bold tabular-nums tracking-tight",
-                        k === "Belum ada BOM" && noBom.length > 0 ? "text-amber-700" : "text-slate-800",
+                        (k === "Belum ada BOM" && noBom.length > 0)
+                          || (k === "Data belum lengkap" && incomplete.length > 0)
+                          ? "text-amber-700" : "text-slate-800",
                       )}>
                         {v}
                       </dd>
@@ -99,7 +101,7 @@ export default function BomPage() {
                         <th className="px-4 py-2 text-left">Kategori</th>
                         <th className="px-4 py-2 text-right">Komponen</th>
                         <th className="px-4 py-2 text-right">Bahan / unit</th>
-                        <th className="px-4 py-2 text-left">Catatan</th>
+                        <th className="px-4 py-2 text-left">Kelengkapan</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -137,8 +139,15 @@ export default function BomPage() {
                               </>
                             )}
                           </td>
-                          <td className="px-4 py-2 text-[12px] text-slate-500">
-                            {p.warnings[0] ?? p.note ?? "—"}
+                          {/* Ukuran, gambar kerja, gambar jadi, BOM — named when
+                              missing, because asking is the expensive part
+                              (D150). */}
+                          <td className="px-4 py-2 text-[12px]">
+                            {p.missing.length === 0 ? (
+                              <span className="text-emerald-700">lengkap</span>
+                            ) : (
+                              <span className="text-amber-700">belum ada {p.missing.join(", ")}</span>
+                            )}
                           </td>
                         </tr>
                       ))}

@@ -31,9 +31,12 @@ afterwards and never learns where the rows came from.
 | | |
 |---|---|
 | `supabase/migrations/0001…0006` | applied, from nothing, against a real Postgres 16 — schemas, every enum, identity + `has_permission()`, audit + outbox + settings, document numbering, evidence, and procurement's reference data as the worked pattern for a domain schema |
+| `supabase/migrations/0007` | **B5 — Supabase Auth.** Provisioning on sign-up, the sign-in trail, `set_modules()` / `set_authorities()` with their two refusals, the access directory, and a bootstrap that closes behind itself |
 | `supabase/local/00_shim.sql` | the `auth` schema, `auth.uid()` and the three Supabase roles, so the real migrations run unchanged on a bare Postgres. **Never applied to Supabase** |
 | `supabase/local/rebuild.sh` | drops everything and re-applies the ladder. A migration that only works against yesterday's database is one that will fail on a fresh one |
-| `supabase/local/smoke.sql` | proves the access model **refuses**: HRD cannot approve funds, `write` is not `admin`, an authority is never implied by a module level, and the Direktur sees only their own grant through RLS |
+| `supabase/local/smoke/` | one file per schema, each proving a **refusal** and a **derivation**, run by `smoke.sh` |
+| `src/lib/supabase/` | the browser client, the per-request server client, and the guard that stops a `service_role` key ever carrying a `NEXT_PUBLIC_` prefix |
+| `src/lib/api/_kit.ts`, `identity.ts` | the envelope, carried across from the database; `identity` with the same signatures as the demo's, minus `actAs` |
 
 Run it:
 
@@ -41,7 +44,7 @@ Run it:
 # one throwaway cluster, any port
 initdb -D /tmp/pg && pg_ctl -D /tmp/pg -o "-p 5433 -k /tmp" start
 PGHOST=/tmp PGPORT=5433 supabase/local/rebuild.sh
-psql -h /tmp -p 5433 -U postgres -f supabase/local/smoke.sql
+PGHOST=/tmp PGPORT=5433 supabase/local/smoke.sh
 ```
 
 `01-schema.md` carries the rest of the ladder — every remaining table, in
@@ -50,6 +53,53 @@ functions onto endpoints. `03-estimate.md` is the work, measured against what
 Phase 1 actually took.
 
 ---
+
+## Where this ladder is supposed to land — **open, and it blocks a deployment**
+
+Nothing in `supabase/migrations/` has been applied to Supabase, and as things
+stand **none of it can be.** This was found by looking rather than by assuming,
+and it is the largest open question in Phase 2 after the data migration.
+
+There is one project on the account: **`john-lau-v01`**. It is not an empty
+project waiting for this schema — it is the running legacy system, with 3.126
+transactions, 285 vendors, 957 items, 1.301 audit rows and 116 migrations of
+its own. And it already uses two of our six schema names:
+
+| | `john-lau-v01` today | what our ladder would create |
+|---|---|---|
+| `core` | 11 tables — `users`, `roles`, `user_roles`, `audit_log`, `companies`, `policy_registry`, … | `users`, `user_modules`, `user_authorities`, `audit_log`, … |
+| `hr` | 43 tables — `employees`, `punch_events`, `payslips`, `payroll_periods`, … | `employees`, `attendance_scans`, `day_marks`, … |
+| `procure` `acct` `prod` `inv` | absent | ours |
+
+`0002` creates `core.users`; the live project has a `core.users` with six rows
+and a different shape. `0003` creates `core.audit_log`; the live one has 1.301
+rows in it. **The ladder fails on its second file**, and the failure is the good
+outcome — the bad one is a migration written defensively enough to half succeed
+and leave two identity models in one schema.
+
+Three ways out. None is a decision to make while deploying:
+
+1. **A second Supabase project.** The new system gets its own database, the old
+   one keeps running, and cutover (B9) is a parallel run between two projects
+   rather than two schemas. Cleanest, and it makes B8's import an
+   import — across a network, which it would be anyway from Sheets.
+2. **New schema names in the same project** — `core2`, or a prefix. Cheap to
+   type and expensive to live with: every policy, every function signature and
+   every generated type carries the name, and "which `core` is this" becomes a
+   question asked for years.
+3. **Migrate the legacy `core` and `hr` into the new shape first.** The most
+   honest end state and the most dangerous path: it is destructive DDL against
+   live payroll and ledger data, and it puts the riskiest work first rather
+   than last.
+
+The recommendation is **(1)**, and the reason is in this folder's own rules:
+Supabase is production. Option 3 asks the owner to accept destructive DDL on
+the running business before a single screen has been proved against the new
+schema. Option 1 asks them to accept a second project's monthly cost.
+
+Until it is answered, the ladder is developed and proved against the throwaway
+Postgres in `supabase/local/`, which is where every figure in this folder comes
+from. **Nothing has been applied to `john-lau-v01`, and nothing should be.**
 
 ## Is the design ready? — the honest answer
 

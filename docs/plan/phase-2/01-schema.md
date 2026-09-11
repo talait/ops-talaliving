@@ -35,33 +35,104 @@ saying why.
 
 | # | File | Tables | Notes that decide the shape |
 |---|---|---|---|
-| 0001 | `core_types` | — | every enum, all six schemas. **Done** |
+| 0001 | `core_types` | — | every enum, all six schemas. **Done**, and **corrected at B1** — see *Enums the contracts corrected* below |
 | 0002 | `core_identity` | `users`, `user_modules`, `user_authorities`, `permission_catalog`, `v_my_access` | `has_permission()` / `has_authority()` — the only two functions a policy calls. **Done** |
 | 0003 | `core_audit` | `audit_log`, `outbox`, `settings` | `write_audit()`, `emit()`. **Done** |
 | 0004 | `core_numbers` | `doc_numbers`, `doc_prefixes` | `next_doc_number()`, ten prefixes. **Done** |
 | 0005 | `core_files` | `attachments`, `attachment_links`, `doc_kind_labels` | file **or** link (D125); unlink is an update. **Done** |
-| 0006 | `procure_reference` | `vendors`, `uom`, `uom_conversions`, `item_categories`, `items`, `projects`, `project_lines` | merge is a pointer; uncurated rows are allowed in (D30–D33). **Done** |
-| 0007 | `procure_pr` | `pr_documents`, `pr_lines`, `pr_approvals`, `line_notes`, `line_variances` | an approval carries **who answered and through which door** (F16, D19); a revision supersedes, never edits (A2); a variance is a row (F13, D98) |
-| 0008 | `procure_requests` | `approval_requests`, `approval_batches`, `round_transfers` | one question, one answer, one channel — chat answers land here (D75–D79) |
-| 0009 | `procure_rounds` | `payment_rounds`, `payment_round_lines`, `line_settlements` | TRANSFERRED ≠ PAID (D6); a round funds in instalments (D107) |
-| 0010 | `procure_po` | `purchase_orders`, `po_lines`, `po_schedule`, `po_documents` | terms with a guard, amendment by supersession (D132–D135); deposit earned on issue (F27, D99) |
-| 0011 | `procure_receipts` | `receipts` | two documents, a receiver **and** a checker (D101); report and confirmation are separate acts (D131) |
-| 0012 | `acct_accounts` | `accounts`, `transaction_types` | the five real accounts seeded; the leadership account is *locked*, not hidden (D87) |
-| 0013 | `acct_ledger` | `transactions`, `transaction_lines` | **no document, no row** (D85); a purchase row carries qty, unit price and vendor (D86); VOID never DELETE |
-| 0014 | `acct_allocations` | `payment_allocations` | one seam, `allocate_payment()`; a payment may settle an order, not only a request (D106, D107) |
-| 0015 | `acct_review` | `evidence_inbox` | five roads, none of them delete (F26, D94) |
-| 0016 | `acct_calendar` | `cash_components`, `cash_overrides`, `cash_settlements` | three tables, **no projection stored** — the twelve months are a view (D109–D115) |
-| 0017 | `hr_people` | `employees` | `paid_leave_days` per person (D144); nobody is deleted, `left_on` retires |
-| 0018 | `hr_attendance` | `attendance_imports`, `attendance_scans`, `day_marks` | one row per **tap** (D141); a mark never overrides a scan (D142); re-upload is a no-op (D143) |
-| 0019 | `hr_overtime` | `overtime_sheets`, `overtime_lines` | two kinds of sheet (D146); leadership signs **after** HRD (D145); `form_amount` is the GAJI column of the paper (D154) |
-| 0020 | `hr_payroll` | `payroll_runs`, `payroll_adjustments` | payroll lines are **not a table** — they are a view over days and approved overtime (A3); adjustments are typed, signed, reasoned, and frozen once the run leaves DRAFT (D155) |
-| 0021 | `prod_master` | `products`, `bom_components` | products are *made*, items are *bought* — different tables (D149); size is three numbers (D150); an unpriced component marks the total incomplete, never zero |
-| 0022 | `prod_orders` | `process_stages` (seed), `work_orders` | seven stages as **data** (Q35); late-first ordering is a view, not a column |
-| 0023 | `prod_progress` | `progress_entries` | append-only; a correction is a negative entry (A5); signing an overtime sheet posts progress (D147) |
-| 0024 | `inv_timber` | `log_purchases`, `log_pieces`, `sawn_boards` | two volumes with a saw between them (D153); the seller's claimed m³ is kept **beside** ours, never replacing it; yield only over logs actually sawn (F46) |
-| 0025 | `views` | every `v_*` | see the next section — this is the biggest single migration and the one to write last |
-| 0026 | `seams` | the write functions | `post_transaction()`, `allocate_payment()`, `approve_line()`, `decide_overtime_sheet()`, `open_payroll()`, `record_progress()`, `confirm_receipt()`, `issue_po()`, `import_scans()`, `import_overtime_form()`, `resolve_inbox()` |
-| 0027 | `idempotency` | `core.idempotency_keys` | `(service, endpoint, key) → response`. Held on 409, released on 422/5xx |
+| 0006 | `procure_reference` | `vendors`, `uom`, `uom_conversions`, `item_categories`, `items`, `projects`, `project_lines` | merge is a pointer; uncurated rows are allowed in (D30–D33). **Done**, and the units, conversions and categories are now **seeded** — they are foreign keys, so without them nothing could be inserted into the schema at all |
+| 0007 | `core_auth` | — | **B5. Done.** Provisioning on sign-up, the sign-in trail, `set_modules()` / `set_authorities()`, `v_user_access`, `bootstrap_admin()`. `actAs` has nowhere to land |
+| 0008 | `procure_pr` | `pr_documents`, `pr_lines`, `pr_approvals`, `line_notes`, `line_variances` | an approval carries **who answered and through which door** (F16, D19); a revision supersedes, never edits (A2); a variance is a row (F13, D98) |
+| 0009 | `procure_requests` | `approval_batches`, `approval_requests` | one question, one answer, one channel — chat answers land here (D75–D79) |
+| 0010 | `procure_rounds` | `payment_rounds`, `payment_round_lines`, `round_transfers`, `line_settlements` | TRANSFERRED ≠ PAID (D6); a round funds in instalments (D107) |
+| 0011 | `procure_po` | `purchase_orders`, `po_lines`, `po_schedule` | terms with a guard, amendment by supersession (D132–D135); deposit earned on issue (F27, D99) |
+| 0012 | `procure_receipts` | `receipts` | two documents, a receiver **and** a checker (D101); report and confirmation are separate acts (D131) |
+| 0013 | `acct_ledger` | `accounts`, `transaction_types`, `transactions`, `transaction_lines`, `payment_allocations` | the five real accounts seeded; the leadership account is *locked*, not hidden (D87). **No document, no row** (D85); VOID never DELETE. Pulled forward from 0012–0014 because procurement's money views read it — see *Per schema, not per layer* |
+| 0014 | `procure_views` | every procurement `v_*` | the ladder, coverage, the meeting quadrant, the variance, the round, the PO's two axes, the vendor journey |
+| 0015 | `procure_seams` | procurement's write functions | `submit_pr()`, `approve_line()`, `answer_request()`, `revise_line()`, `issue_po()`, `confirm_receipt()`, … — each with its audit row, its outbox row and its refusal |
+| 0016 | `core_idempotency` | `core.idempotency_keys` | `(service, endpoint, key) → response`. Held on 409, released on 422/5xx. Pulled forward from 0027: a seam without it is a seam that has to be retrofitted through |
+| 0017 | `acct_review` | `evidence_inbox` | five roads, none of them delete (F26, D94) |
+| 0018 | `acct_calendar` | `cash_components`, `cash_overrides`, `cash_settlements` | three tables, **no projection stored** — the twelve months are a view (D109–D115) |
+| 0019 | `acct_views` + `acct_seams` | `v_transaction`, `v_cash_plan`, `v_inbox_health`; `post_transaction()`, `allocate_payment()`, `resolve_inbox()` | the two money seams (ADR-006) |
+| 00xx | `hr_people` | `employees` | `paid_leave_days` per person (D144); nobody is deleted, `left_on` retires |
+| 00xx | `hr_attendance` | `attendance_imports`, `attendance_scans`, `day_marks` | one row per **tap** (D141); a mark never overrides a scan (D142); re-upload is a no-op (D143) |
+| 00xx | `hr_overtime` | `overtime_sheets`, `overtime_lines` | two kinds of sheet (D146); leadership signs **after** HRD (D145); `form_amount` is the GAJI column of the paper (D154) |
+| 00xx | `hr_payroll` | `payroll_runs`, `payroll_adjustments` | payroll lines are **not a table** — they are a view over days and approved overtime (A3); adjustments are typed, signed, reasoned, and frozen once the run leaves DRAFT (D155) |
+| 00xx | `prod_master` | `products`, `bom_components` | products are *made*, items are *bought* — different tables (D149); size is three numbers (D150); an unpriced component marks the total incomplete, never zero |
+| 00xx | `prod_orders` | `process_stages` (seed), `work_orders` | seven stages as **data** (Q35); late-first ordering is a view, not a column |
+| 00xx | `prod_progress` | `progress_entries` | append-only; a correction is a negative entry (A5); signing an overtime sheet posts progress (D147) |
+| 00xx | `inv_timber` | `log_purchases`, `log_pieces`, `sawn_boards` | two volumes with a saw between them (D153); the seller's claimed m³ is kept **beside** ours, never replacing it; yield only over logs actually sawn (F46) |
+
+The numbers past `0019` are left open on purpose. Each remaining schema takes
+its tables, its views and its seams together, and how many files that is depends
+on the schema — HR's payroll view is a migration on its own; inventory's whole
+surface is smaller than that.
+
+### Per schema, not per layer
+
+The first cut of this table ended with `0025 views` and `0026 seams`: every view
+in the system in one migration, every write function in the next. That is the
+horizontal order, and `03-estimate.md` had already argued against it in its own
+*Suggested order* — *finish `procure` end to end before starting `acct`; a
+vertical slice proves the pattern, four horizontal layers prove nothing until
+the last one lands.*
+
+Building it settled the argument. Three things only show up vertically:
+
+- **A view needs tables from the next schema down.** `v_pr_line_status` cannot
+  compute coverage without `acct.payment_allocations` and the VOID status of the
+  transaction behind it. Written in layer order, procurement's central view
+  would have been unrunnable until accounting's tables landed nine migrations
+  later — which means unreviewed, and un-smoke-tested, for most of the build.
+- **The definition of done is per schema.** "Its schema has a `smoke.sql` that
+  proves a refusal and a derivation" cannot be satisfied by a schema whose
+  derivations live in a migration that does not exist yet.
+- **Idempotency is not a late layer.** `0027` in the first cut; a seam written
+  without it has to be opened again and threaded through, and a seam opened
+  twice is a seam whose audit and outbox rows get rearranged by somebody who has
+  forgotten why they were in that order.
+
+So `0013` (`acct_ledger`) is pulled forward ahead of procurement's views, and
+`0016` (idempotency) ahead of its seams. Both are dependencies, not preferences.
+
+---
+
+## Enums the contracts corrected
+
+`0001` was written against `02-database.md`; the running shape is
+`src/services/*/contracts.ts`. Eleven enums had drifted, and every one of them
+would have surfaced as a failed insert on the day the matching screen was
+swapped — the most expensive moment to find it, because by then the screen, the
+view and the seam are all suspects.
+
+| Enum | `0001` said | The contracts say | Why the contracts win |
+|---|---|---|---|
+| `procure.line_status_t` | 10 values incl. `REQUESTED`, `HOLD`, `REJECTED`, `APPROVED_UNPAID` | 7: `DRAFT`, `WAITING FOR APPROVAL`, `APPROVED`, `PAID`, `PARTIAL`, `COMPLETED`, `REMOVED` | `HELD`/`REJECTED` went in D28, `WAITING FOR PAYMENT` in D126. `APPROVED_UNPAID` and `PAID_UNAPPROVED` were never statuses — they are the meeting quadrant, now its own `meeting_state_t` |
+| `procure.channel_t` | `app`, `chat`, `meeting` | `web`, `chat`, `sheet`, `script`, `api` | a meeting is a room, not a channel. What the record must carry is which system authenticated the person who said yes (D69, F16) |
+| `procure.receipt_condition_t` | 4 | 7, spaces and all | `PARTIALLY DAMAGED` and `RETURN TO SENDER` are conditions the running system records, and only two of the seven count toward completion (A18) |
+| `procure.receipt_status_t` | + `DISPUTED` | `REPORTED`, `CONFIRMED` | a dispute is a *condition* on the receipt. A status as well would give one fact two homes |
+| `procure.po_status_t` | + `PARTIAL` | `DRAFT`, `ISSUED`, `CLOSED`, `CANCELLED` | how much has arrived is the other axis, computed and never stored (A1) |
+| `procure.item_kind_t` | `material`, `consumable`, `service`, `asset` | `goods`, `service` | the only distinction that changes behaviour is whether anything was ever going to be delivered (D25). The rest is what `item_categories` is for |
+| `procure.due_rule_t` | + `days_after_delivery`, `fixed_date` | `on_issue`, `on_delivery`, `date` | two rules nobody wrote a screen for |
+| `acct.direction_t` | `in`, `out` | `IN`, `OUT` | it is what the rows say. Lower case fails on the first real insert and on every imported row |
+| `acct.trx_status_t` | `DRAFT`, `POSTED`, `VOID`, `INCOMPLETE` | `POSTED`, `COMPLETED`, `UNTRACKED`, `VOID` | no document, no row (D85), so there is no DRAFT. `UNTRACKED` is money that legitimately names no request (D83) |
+| `acct.alloc_method_t` | `line`, `order`, `round`, `manual` | `transfer`, `cash`, `other` | those were the allocation's *target*, which `pr_line_no`/`po_no` already carry. Storing it twice is storing a disagreement |
+| `acct.inbox_origin_t` / `_status_t` | `upload/chat/email/bank`; no `CANCELLED` | `chat/web`; `CANCELLED` | two doors exist, not four. And withdrawing a document is not the same act as accounting rejecting it — the difference is who to ask about it |
+| `prod.work_order_status_t` | + `IN_PROGRESS` | `OPEN`, `DONE`, `CANCELLED` | how far along it is comes from the progress entries (A3) |
+| `core.doc_kind_t` | 13 | 14 | `laporan_lembur` was missing; a staff session's own report is a kind the screens already file (D146), and a kind the database cannot store is evidence that lands under `other` |
+
+Two more corrections went with them, both found by running the ladder rather
+than by reading it:
+
+- **`0006` seeded nothing.** `items.base_uom` and `items.category_code` are
+  foreign keys, so a schema with no `uom` and no `item_categories` rows is one
+  that accepts no items at all. The eighteen units, four conversions and ten
+  categories are now in the migration.
+- **`00_shim.sql` used `create if not exists` and `rebuild.sh` never dropped
+  `auth`.** So an edit to the shim did nothing on a cluster that had already run
+  once, which made the shim the single part of the ladder that only worked
+  against yesterday's database — the exact failure `rebuild.sh` exists to
+  prevent. It drops and recreates its own schema now.
 
 ---
 

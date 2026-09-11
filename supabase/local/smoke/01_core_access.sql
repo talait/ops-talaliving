@@ -1,18 +1,35 @@
--- Local only. Proves the access model actually refuses, rather than assuming
--- it does — the failure mode this whole design exists to avoid is a screen
--- that shows a button the database then refuses, or worse, allows (§3.3).
+-- core — the access model, and that it actually refuses.
 --
---   psql -h /tmp -p 5433 -U postgres -f supabase/local/smoke.sql
+-- The failure mode this whole design exists to avoid is a screen that shows a
+-- button the database then refuses, or worse, allows (§3.3). So the assertions
+-- below are mostly negative: `has_permission` saying **no** is the load-bearing
+-- half, and it is the half that can rot without anybody noticing.
+--
+--   psql -h /tmp -p 5433 -U postgres -f supabase/local/smoke/01_core_access.sql
 
 begin;
 
-insert into auth.users (id, email) values
-  ('11111111-1111-1111-1111-111111111111','wulan@talaliving.com'),
-  ('22222222-2222-2222-2222-222222222222','evin@talaliving.com');
+-- Two people arrive the way people actually arrive: through Supabase Auth. The
+-- row in `core.users` is provisioned by the trigger in `0007`, never typed —
+-- which is itself the first thing worth proving.
+insert into auth.users (id, email, raw_user_meta_data) values
+  ('11111111-1111-1111-1111-111111111111','wulan@talaliving.com', '{"full_name":"Wulan Sari"}'),
+  ('22222222-2222-2222-2222-222222222222','evin@talaliving.com',  '{"full_name":"Evin Jonathan"}');
 
-insert into core.users (id, email, full_name) values
-  ('11111111-1111-1111-1111-111111111111','wulan@talaliving.com','Wulan Sari'),
-  ('22222222-2222-2222-2222-222222222222','evin@talaliving.com','Evin Jonathan');
+do $$
+declare n int; nm text;
+begin
+  select count(*) into n from core.users;
+  assert n = 2, format('signing up should provision a profile row, saw %s', n);
+
+  select full_name into nm from core.users where email = 'wulan@talaliving.com';
+  assert nm = 'Wulan Sari', format('the provider''s name should survive provisioning, got %s', nm);
+
+  -- Nobody arrives with access. This is the opposite of the old system, where a
+  -- new account inherited whatever its role string implied.
+  select count(*) into n from core.user_modules;
+  assert n = 0, format('a new account should hold nothing, held %s grants', n);
+end $$;
 
 -- HRD: may open HR and run payroll, holds no authority.
 insert into core.user_modules (user_id, module, level) values

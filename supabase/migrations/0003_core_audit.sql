@@ -103,4 +103,107 @@ language sql security definer set search_path = core, pg_temp as $$
   returning id
 $$;
 
+-- ── the envelope, in SQL ──────────────────────────────────────────────────
+-- `03-api.md` rule 4: **refusals are values, not exceptions.** Every seam in
+-- this database returns one of the shapes below, and `src/lib/api/_kit.ts`
+-- turns it into the same `Result<T>` the screens already handle.
+--
+-- It is not only a style choice, and the reason is worth writing down because
+-- it was found the hard way. A seam that refuses by `raise exception` **rolls
+-- back its own audit row**: the write_audit call and the raise are in one
+-- transaction, so the trail of the refusal disappears with the refusal. A7 says
+-- a refusal is recorded, not silent — and implemented as an exception it is
+-- silent by construction, whatever the code appears to say.
+--
+-- So every wrapper here writes the trail *and* returns the answer, which makes
+-- "record the refusal" impossible to forget rather than merely required. The
+-- statuses match `src/services/_shared/envelope.ts` exactly:
+--
+--   ok        200  outcome ok
+--   noop      200  outcome noop       nothing needed doing
+--   refused   403  outcome refused    signed in, but this decision is not yours
+--   invalid   422  outcome refused    the values are wrong
+--   conflict  409  outcome duplicate  already decided; the client KEEPS its claim
+--   not_found 404  outcome refused
+create or replace function core.say(
+  p_service text, p_entity text, p_entity_no text, p_action text,
+  p_outcome text, p_status int, p_code text, p_message text,
+  p_data jsonb default null, p_detail jsonb default null,
+  p_before jsonb default null, p_after jsonb default null
+) returns jsonb
+language plpgsql security definer set search_path = core, pg_temp as $$
+begin
+  perform core.write_audit(p_service, p_entity, p_entity_no, p_action,
+    p_outcome, p_message, p_before, p_after, p_detail);
+  return jsonb_strip_nulls(jsonb_build_object(
+    'outcome', p_outcome,
+    'status',  p_status,
+    'data',    p_data,
+    'error',   case when p_code is null then null else jsonb_build_object(
+                 'code', p_code, 'message', p_message,
+                 'outcome', p_outcome, 'status', p_status,
+                 'detail', p_detail) end));
+end $$;
+
+create or replace function core.ok(
+  p_service text, p_entity text, p_entity_no text, p_action text,
+  p_data jsonb default null, p_before jsonb default null, p_after jsonb default null
+) returns jsonb language sql security definer set search_path = core, pg_temp as $$
+  select core.say(p_service, p_entity, p_entity_no, p_action, 'ok', 200,
+                  null, null, p_data, null, p_before, p_after)
+$$;
+
+-- Not an error: `/rounds/sync` with nothing to roll up is a successful no-op,
+-- and saying so is better than a silent 200 that looks like work happened.
+create or replace function core.noop(
+  p_service text, p_entity text, p_entity_no text, p_action text,
+  p_reason text, p_data jsonb default null
+) returns jsonb language sql security definer set search_path = core, pg_temp as $$
+  select core.say(p_service, p_entity, p_entity_no, p_action, 'noop', 200,
+                  null, p_reason, p_data)
+$$;
+
+-- 403. The message names who the decision *does* belong to, because "Forbidden"
+-- tells a person nothing and leaves them with nobody to ask (A7).
+create or replace function core.refused(
+  p_service text, p_entity text, p_entity_no text, p_action text,
+  p_code text, p_message text, p_detail jsonb default null
+) returns jsonb language sql security definer set search_path = core, pg_temp as $$
+  select core.say(p_service, p_entity, p_entity_no, p_action, 'refused', 403,
+                  p_code, p_message, null, p_detail)
+$$;
+
+create or replace function core.invalid(
+  p_service text, p_entity text, p_entity_no text, p_action text,
+  p_code text, p_message text, p_detail jsonb default null
+) returns jsonb language sql security definer set search_path = core, pg_temp as $$
+  select core.say(p_service, p_entity, p_entity_no, p_action, 'refused', 422,
+                  p_code, p_message, null, p_detail)
+$$;
+
+-- 409, and the client must NOT release its idempotency claim on this one: the
+-- thing it asked for has already happened, so retrying would do it twice.
+create or replace function core.conflict(
+  p_service text, p_entity text, p_entity_no text, p_action text,
+  p_code text, p_message text, p_detail jsonb default null
+) returns jsonb language sql security definer set search_path = core, pg_temp as $$
+  select core.say(p_service, p_entity, p_entity_no, p_action, 'duplicate', 409,
+                  p_code, p_message, null, p_detail)
+$$;
+
+create or replace function core.not_found(
+  p_service text, p_entity text, p_entity_no text, p_action text,
+  p_message text
+) returns jsonb language sql security definer set search_path = core, pg_temp as $$
+  select core.say(p_service, p_entity, p_entity_no, p_action, 'refused', 404,
+                  'not_found', p_message)
+$$;
+
+-- Did a seam say yes? Written once so the smoke files and the seams that call
+-- other seams ask the question the same way.
+create or replace function core.said_ok(p_answer jsonb)
+returns boolean language sql immutable as $$
+  select coalesce(p_answer ->> 'outcome', '') = 'ok'
+$$;
+
 grant select on core.audit_log, core.outbox, core.settings to authenticated;

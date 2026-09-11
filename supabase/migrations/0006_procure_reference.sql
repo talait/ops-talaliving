@@ -37,7 +37,7 @@ create table procure.vendors (
 create table procure.uom (
   code       text primary key,
   name       text not null,
-  dimension  text not null
+  dimension  procure.uom_dimension_t not null
 );
 
 -- Two units are related by a factor, and sometimes by a **yield** as well —
@@ -67,7 +67,10 @@ create table procure.items (
   merged_into       uuid references procure.items(id),
   category_code     text not null references procure.item_categories(code),
   base_uom          text not null references procure.uom(code),
-  kind              procure.item_kind_t not null default 'material',
+  -- `goods` or `service`, and the distinction earns its place: a service line
+  -- completes on payment proof alone, because mowing the grass never gets
+  -- delivered (D25).
+  kind              procure.item_kind_t not null default 'goods',
   is_curated        boolean not null default false,
   -- The catalogue price, and what was actually paid last. Both nullable: a
   -- price nobody has set is missing, not zero (D149).
@@ -126,6 +129,50 @@ create table procure.project_lines (
   created_at   timestamptz not null default now(),
   unique (project_id, line_no)
 );
+
+-- ── seeds ─────────────────────────────────────────────────────────────────
+-- The units, the conversions and the categories are seeds rather than forms,
+-- for the reason in `01-schema.md`: `items.base_uom` and `items.category_code`
+-- are foreign keys, so until these rows exist **nothing can be inserted into
+-- this schema at all**. The first cut of this migration shipped the constraints
+-- without the rows they point at, which made a correct-looking schema an empty
+-- one. Eighteen units, spelled as the running system spells them.
+insert into procure.uom (code, name, dimension) values
+  ('pcs','Pieces','count'),      ('buah','Buah (each)','count'),
+  ('kg','Kilogram','mass'),      ('gr','Gram','mass'),
+  ('meter','Meter','length'),    ('m2','Square metre','area'),
+  ('m3','Cubic metre','volume'), ('cm','Centimetre','length'),
+  ('sak','Sak (bag)','count'),   ('box','Box','count'),
+  ('roll','Roll','count'),       ('set','Set','count'),
+  ('pack','Pack','count'),       ('ltr','Liter','volume'),
+  ('lembar','Lembar (sheet)','count'), ('batang','Batang (bar)','count'),
+  ('unit','Unit','count'),       ('lusin','Lusin (dozen)','count');
+
+-- Three packaging factors and one that is not a factor at all. A cubic metre of
+-- log does not become a cubic metre of board: 55 sheets come out of it and
+-- roughly half the wood goes to the floor as sawdust and offcut. `factor` and
+-- `yield_ratio` are kept apart precisely so a conversion cannot quietly price
+-- the waste as product (D153, F46).
+insert into procure.uom_conversions (from_uom, to_uom, factor, yield_ratio, note) values
+  ('lusin','pcs',12,   null, null),
+  ('kg','gr',1000,     null, null),
+  ('box','pcs',100,    null, 'screws, per factory box'),
+  ('m3','lembar',55,   0.52, 'teak log -> 3cm board, 45-60% yield');
+
+-- `uncurated` is a category like any other, and that is the point: a row nobody
+-- has classified still has somewhere to go, so refusing it is never the reason
+-- a workshop buys off-system (D30).
+insert into procure.item_categories (code, parent_code, name) values
+  ('production', null,         'Production'),
+  ('sanding',    null,         'Sanding'),
+  ('finishing',  null,         'Finishing'),
+  ('packing',    null,         'Packing'),
+  ('machining',  null,         'Machining'),
+  ('office',     null,         'Office'),
+  ('service',    null,         'Services'),
+  ('uncurated',  null,         'Not yet curated'),
+  ('raw-wood',   'production', 'Timber & panels'),
+  ('hardware',   'production', 'Hardware');
 
 alter table procure.vendors          enable row level security;
 alter table procure.uom              enable row level security;

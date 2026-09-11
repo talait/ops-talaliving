@@ -248,6 +248,7 @@ export const PAYMENT_ROUND_LINES: PaymentRoundLine[] = [
 /* Cumulative and append-only. 180 of 300 hinges arrived, so the line stays
  * open at PARTIAL — nothing quietly closes it (A18). */
 export const RECEIPTS: Receipt[] = [
+  { id: "rcp_18", receipt_no: "rcv-26-09-09_02", line_id: null, po_line_id: "pol_0601", qty_received: 1, condition: "GOOD", received_by: "usr_made", received_at: "2026-09-09T14:20:00+08:00", qc_by: "usr_andi", note: "Compressor arrived; the deposit still has not gone out." },
   { id: "rcp_01", receipt_no: "rcv-26-08-25_01", line_id: "prl_0101", po_line_id: null, qty_received: 500, condition: "GOOD", received_by: "usr_made", received_at: "2026-08-25T13:30:00+08:00", qc_by: "usr_made", note: null },
   { id: "rcp_02", receipt_no: "rcv-26-08-26_01", line_id: "prl_0102", po_line_id: null, qty_received: 180, condition: "GOOD", received_by: "usr_made", received_at: "2026-08-26T10:05:00+08:00", qc_by: "usr_made", note: "Remaining 120 pcs to follow; vendor out of stock." },
   /* 47 of 45 arrived: two sheets more than ordered. Counted as what arrived,
@@ -269,6 +270,7 @@ export const RECEIPTS: Receipt[] = [
  * one ISSUED whose two axes disagree on purpose — money and goods are never
  * collapsed into one bar (A1). */
 export const PURCHASE_ORDERS: PurchaseOrder[] = [
+  { id: "po_06", po_no: "po-26-09-02_01", vendor_id: "vnd_05", status: "ISSUED", created_at: "2026-09-02T08:00:00+08:00", issued_at: "2026-09-02T09:00:00+08:00", issued_by: "usr_evin", note: "Workshop compressor overhaul — 50% up front, the rest on delivery. The deposit was never sent." },
   { id: "po_02", po_no: "po-26-09-09_01", vendor_id: "vnd_01", status: "DRAFT", created_at: "2026-09-09T15:00:00+08:00", issued_at: null, issued_by: null, note: "Q4 teak contract — waiting on the deposit PR." },
   { id: "po_05", po_no: "po-26-08-19_01", vendor_id: "vnd_13", status: "ISSUED", created_at: "2026-08-19T09:00:00+08:00", issued_at: "2026-08-19T10:20:00+08:00", issued_by: "usr_evin", note: "Paid off the vendor's 19 August payment before the goods themselves showed up." },
   { id: "po_04", po_no: "po-26-07-25_01", vendor_id: "vnd_13", status: "ISSUED", created_at: "2026-07-25T09:00:00+08:00", issued_at: "2026-07-25T11:00:00+08:00", issued_by: "usr_evin", note: "No separate deposit — billed as two progress payments." },
@@ -280,6 +282,7 @@ export const PURCHASE_ORDERS: PurchaseOrder[] = [
  * exists to show (D97). po_03 carries a 50% deposit and an over-delivery of
  * two sheets; po_05's shipment has not arrived at all. */
 export const PO_LINES: PoLine[] = [
+  { id: "pol_0601", po_id: "po_06", line_no: 1, item_id: null, description: "OVERHAUL KOMPRESOR 10HP + SPAREPART", qty: 1, uom: "unit", unit_price: 14_500_000, line_total: 14_500_000, superseded_by: null },
   { id: "pol_0101", po_id: "po_01", line_no: 1, item_id: itemIdByCode("ITM-0010"), description: "HPL TACO TH 133 GLOSSY", qty: 120, uom: "lembar", unit_price: 248_000, line_total: 29_760_000, superseded_by: null },
   { id: "pol_0102", po_id: "po_01", line_no: 2, item_id: itemIdByCode("ITM-0011"), description: "VENEER JATI 0.6MM", qty: 400, uom: "lembar", unit_price: 89_500, line_total: 35_800_000, superseded_by: null },
   { id: "pol_0301", po_id: "po_03", line_no: 1, item_id: null, description: "AA-04B — 1780×860×5mm sandblast, persegi panjang", qty: 45, uom: "lembar", unit_price: 425_000, line_total: 19_125_000, superseded_by: null },
@@ -297,6 +300,11 @@ export const PO_SCHEDULE: PoScheduleTerm[] = [
   { id: "pos_06", po_id: "po_03", term_no: "po-26-06-30_01-M02", kind: "FINAL", basis: "percent", basis_value: 50, due_rule: "on_delivery", due_date: null },
   { id: "pos_07", po_id: "po_04", term_no: "po-26-07-25_01-M01", kind: "PROGRESS", basis: "percent", basis_value: 100, due_rule: "on_delivery", due_date: null },
   { id: "pos_08", po_id: "po_05", term_no: "po-26-08-19_01-M01", kind: "FINAL", basis: "percent", basis_value: 100, due_rule: "on_delivery", due_date: null },
+  /* The state the guard exists for: goods have arrived, the progress payment's
+     trigger has fired — and the deposit was never paid, so it is BLOCKED and
+     names the term holding it up (D128). */
+  { id: "pos_09", po_id: "po_06", term_no: "po-26-09-02_01-M01", kind: "DP", basis: "percent", basis_value: 50, due_rule: "on_issue", due_date: null },
+  { id: "pos_10", po_id: "po_06", term_no: "po-26-09-02_01-M02", kind: "PROGRESS", basis: "percent", basis_value: 50, due_rule: "on_delivery", due_date: null },
   { id: "pos_03", po_id: "po_02", term_no: "po-26-09-09_01-M01", kind: "DP", basis: "percent", basis_value: 30, due_rule: "on_issue", due_date: null },
   { id: "pos_04", po_id: "po_02", term_no: "po-26-09-09_01-M02", kind: "FINAL", basis: "percent", basis_value: 70, due_rule: "date", due_date: "2026-11-30" },
 ];

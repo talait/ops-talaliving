@@ -16,6 +16,7 @@ import type {
   PoStatusView, RoundSummary, PaymentRound,
   PurchaseFact, CategoryCount, VendorItemSummary, ItemSource, MeetingState,
   VarianceView, LineNote, ApprovalRequest, PoJourney, PoLineJourney, VendorJourney,
+  PoTermView, PoTermState, PoDetail,
 } from "@/services/procurement/contracts";
 import { COUNTING_CONDITIONS, PROBLEM_CONDITIONS } from "@/services/procurement/contracts";
 import type {
@@ -397,6 +398,7 @@ export function poJourney(state: DemoState, poId: string): PoJourney {
       const over = Math.max(received - l.qty, 0);
       return {
         po_line_id: l.id,
+        line_no: l.line_no,
         description: l.description,
         qty: l.qty,
         uom: l.uom,
@@ -1348,4 +1350,187 @@ export function cashDue(state: DemoState, now = new Date(), withinDays = 21): Ca
     .map((e) => ({ ...e, days_away: daysBetween(today, e.date) }))
     .filter((e) => e.days_away <= withinDays && e.days_away >= -90)
     .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/* ------------------------------------------------------------------ */
+/* PO — terms, amendments, and what may be paid next                   */
+/* ------------------------------------------------------------------ */
+
+/** The payment schedule, with the money that reached this order applied to it
+ *  in order (D128).
+ *
+ *  Nothing in a transfer says which term it was for, so coverage is applied
+ *  oldest term first — which is both the only defensible reading and how the
+ *  terms were meant to run. What falls out of it is the guard: a term whose
+ *  trigger has fired while an earlier one is still unpaid is blocked, and the
+ *  view names the term holding it up rather than saying "not allowed".
+ */
+export function poTerms(state: DemoState, poId: string): PoTermView[] {
+  const po = state.purchase_orders.find((p) => p.id === poId);
+  if (!po) return [];
+  const view = poStatus(state, poId);
+  const terms = state.po_schedule.filter((t) => t.po_id === poId);
+  /* Term numbers carry their order: …-M01, …-M02. */
+  const ordered = [...terms].sort((a, b) => a.term_no.localeCompare(b.term_no));
+
+  const lines = state.po_lines.filter((l) => l.po_id === poId && l.superseded_by === null);
+  const delivered = lines.length > 0 && lines.every((l) => {
+    const qty = state.receipts
+      .filter((r) => r.po_line_id === l.id && COUNTING_CONDITIONS.includes(r.condition))
+      .reduce((s, r) => s + r.qty_received, 0);
+    return qty >= l.qty;
+  });
+  const anyDelivered = view.value_received > 0;
+  const today = new Date().toISOString().slice(0, 10);
+
+  let left = view.paid_to_date;
+  let firstUnpaid: string | null = null;
+
+  return ordered.map((t) => {
+    const amount = t.basis === "percent"
+      ? Math.round((view.contract_value * t.basis_value) / 100)
+      : t.basis_value;
+    const covered = Math.min(Math.max(left, 0), amount);
+    left -= covered;
+
+    const fired = t.due_rule === "on_issue"
+      ? po.status === "ISSUED" || po.status === "CLOSED"
+      : t.due_rule === "on_delivery"
+        ? (t.kind === "FINAL" ? delivered : anyDelivered)
+        : t.due_date !== null && t.due_date <= today;
+
+    const trigger = t.due_rule === "on_issue"
+      ? (fired ? "the order has been issued" : "not until the order is issued")
+      : t.due_rule === "on_delivery"
+        ? (fired
+          ? (t.kind === "FINAL" ? "everything ordered has arrived" : "goods have started arriving")
+          : (t.kind === "FINAL" ? "not until everything has arrived" : "not until something arrives"))
+        : (fired ? `due since ${t.due_date}` : `due on ${t.due_date}`);
+
+    let termState: PoTermState;
+    if (covered >= amount - PAYMENT_TOLERANCE_IDR && amount > 0) termState = "PAID";
+    else if (covered > 0) termState = "PARTIAL";
+    else if (!fired) termState = "NOT DUE";
+    else if (firstUnpaid !== null) termState = "BLOCKED";
+    else termState = "PAYABLE";
+
+    if (termState !== "PAID" && firstUnpaid === null) firstUnpaid = t.term_no;
+
+    return {
+      term_no: t.term_no,
+      kind: t.kind,
+      basis: t.basis,
+      basis_value: t.basis_value,
+      due_rule: t.due_rule,
+      due_date: t.due_date,
+      amount,
+      covered,
+      state: termState,
+      blocked_by: termState === "BLOCKED" ? firstUnpaid : null,
+      trigger,
+    };
+  });
+}
+
+export function poDetail(state: DemoState, poId: string): PoDetail | null {
+  const po = state.purchase_orders.find((p) => p.id === poId);
+  if (!po) return null;
+  const journey = poJourney(state, poId);
+  const view = poStatus(state, poId);
+  const terms = poTerms(state, poId);
+
+  const payable_now = terms
+    .filter((t) => t.state === "PAYABLE" || t.state === "PARTIAL")
+    .reduce((s, t) => s + Math.max(t.amount - t.covered, 0), 0);
+
+  /* What this order used to say. An issued obligation only moves by
+     supersession, so the old rows are still there and are worth reading —
+     "who changed the quantity after we agreed it" is a real question (D129). */
+  const superseded = state.po_lines
+    .filter((l) => l.po_id === poId && l.superseded_by !== null)
+    .sort((a, b) => b.line_no - a.line_no);
+  const amendments = superseded.map((old) => {
+    const now = state.po_lines.find((l) => l.id === old.superseded_by);
+    const say = (l: typeof old | undefined) => l
+      ? `${l.qty.toLocaleString(LOCALE)} ${l.uom} × ${formatShort(l.unit_price)}`
+      : "removed";
+    return {
+      line_no: old.line_no,
+      from: say(old),
+      to: say(now),
+      /* The supersession's own timestamp is the amended line's creation, and
+         po_lines do not carry one — the audit row does, and that is where the
+         trail is read from. Left blank rather than guessed. */
+      at: "",
+    };
+  });
+
+  const payments = state.payment_allocations
+    .filter((a) => a.superseded_by === null && a.po_no === po.po_no)
+    .map((a) => state.transactions.find((t) => t.id === a.trx_id && t.status !== "VOID"))
+    .filter((t): t is NonNullable<typeof t> => !!t)
+    .sort((a, b) => a.trx_date.localeCompare(b.trx_date))
+    .map((t) => ({
+      trx_no: t.trx_no, trx_date: t.trx_date,
+      amount: state.payment_allocations
+        .filter((a) => a.trx_id === t.id && a.po_no === po.po_no && a.superseded_by === null)
+        .reduce((s, a) => s + a.amount, 0),
+      description: t.description,
+    }));
+
+  const receiptNos = new Set(
+    state.receipts
+      .filter((r) => state.po_lines.some((l) => l.id === r.po_line_id && l.po_id === poId))
+      .map((r) => r.receipt_no),
+  );
+  const documents = state.attachment_links
+    .filter((l) => (l.entity === "po" && l.entity_no === po.po_no)
+      || (l.entity === "receipt" && receiptNos.has(l.entity_no)))
+    .map((l) => {
+      const att = state.attachments.find((a) => a.id === l.attachment_id);
+      return {
+        attachment_id: l.attachment_id,
+        filename: att?.filename ?? l.attachment_id,
+        url: att?.url ?? null,
+        kind: l.kind as string,
+        linked_at: l.linked_at,
+      };
+    })
+    .sort((a, b) => byTime(a.linked_at, b.linked_at));
+
+  /* Closing is the claim that an obligation is finished. It is refused while
+     either axis disagrees, and the refusal says which (A1). */
+  const close_blockers: string[] = [];
+  if (po.status === "CLOSED") close_blockers.push("It is already closed.");
+  if (po.status === "DRAFT") close_blockers.push("It was never issued — cancel it rather than close it.");
+  if (view.payment_state !== "SETTLED") {
+    close_blockers.push(`${formatShort(view.outstanding)} of the contract has not been paid.`);
+  }
+  if (view.delivery_state !== "COMPLETE") {
+    close_blockers.push("Not everything ordered has arrived.");
+  }
+  if (documents.length === 0) {
+    close_blockers.push("Nothing is filed against it — no photo, no tanda terima, no invoice.");
+  }
+
+  const issuer = state.users.find((u) => u.id === po.issued_by);
+
+  return {
+    po_no: po.po_no,
+    vendor_id: po.vendor_id,
+    vendor_name: state.vendors.find((v) => v.id === po.vendor_id)?.name ?? "—",
+    status: po.status,
+    note: po.note,
+    created_at: po.created_at,
+    issued_at: po.issued_at,
+    issued_by_name: issuer?.full_name ?? null,
+    lines: journey.lines,
+    terms,
+    payable_now,
+    amendments,
+    payments,
+    documents,
+    status_view: view,
+    close_blockers,
+  };
 }

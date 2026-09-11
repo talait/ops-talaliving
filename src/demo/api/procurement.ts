@@ -5,22 +5,23 @@ import type {
   PrDocument, PrLine, PrLineView, PaymentRound, RoundSummary,
   PurchaseOrder, PoLine, PoStatusView, Receipt, ReceiptCondition, PrCategory, UomCode,
   VendorView, ItemView, VarianceReason, PrApproval, VendorJourney,
-  ApprovalRequestView, ApprovalBatchView,
+  ApprovalRequestView, ApprovalBatchView, PoDetail,
 } from "@/services/procurement/contracts";
 import type { PrLine as PrLineRow } from "@/services/procurement/contracts";
-import { PROBLEM_CONDITIONS, VARIANCE_REASON_LABEL } from "@/services/procurement/contracts";
+import { PROBLEM_CONDITIONS, COUNTING_CONDITIONS, VARIANCE_REASON_LABEL } from "@/services/procurement/contracts";
 import type { DocKind } from "@/services/documents/contracts";
 import { REQUEST_SUPPORT_KINDS } from "@/services/documents/contracts";
 import { LOCALE } from "@/lib/format";
 import { getState, apply, newId, nextDocNumber, writeAudit, writeOutbox } from "../store";
 import {
   prLineView, approvalQueue, lineCoverage, roundSummary, poStatus, isApproved,
+  poDetail, poTerms,
   boughtCategories, itemsBoughtFrom, itemSources, purchaseFacts, openLines,
   pendingRequest, byTime, vendorJourney,
   varianceOf, currentApproval, lineEvidenceKinds,
 } from "../derive";
 import {
-  latency, actingUser, requireAuthority, conflict, replayed, remember, paged,
+  latency, actingUser, requireAuthority, requireModule, conflict, replayed, remember, paged,
 } from "./_kit";
 
 const SERVICE = "procurement" as const;
@@ -1845,4 +1846,209 @@ export async function explainVariance(
   const view = prLineView(getState(), getState().pr_lines.find((l) => l.id === line.id)!);
   remember(SERVICE, endpoint, idempotencyKey, view);
   return ok(SERVICE, view);
+}
+
+/* ------------------------------------------------------------------ */
+/* PO — issue, amend, close                                            */
+/* ------------------------------------------------------------------ */
+
+/** Everything about one order, in one call. */
+export async function getPoDetail(poNo: string): Promise<Result<PoDetail>> {
+  await latency();
+  const state = getState();
+  const po = state.purchase_orders.find((p) => p.po_no === poNo);
+  if (!po) return notFound(SERVICE, "po_not_found", `No purchase order ${poNo}.`);
+  const detail = poDetail(state, po.id);
+  if (!detail) return notFound(SERVICE, "po_not_found", `No purchase order ${poNo}.`);
+  return ok(SERVICE, detail);
+}
+
+/** Sending the order.
+ *
+ *  This is the moment a document becomes an obligation: before it, nothing is
+ *  owed however large the contract; after it, the deposit is payable and the
+ *  order counts against what we owe suppliers (D99, D100). So it is its own
+ *  act with its own audit row, not a side effect of editing.
+ */
+export async function issuePo(poNo: string, idempotencyKey?: string): Promise<Result<PoDetail>> {
+  await latency();
+  const cached = replayed<PoDetail>(SERVICE, `issuePo:${poNo}`, idempotencyKey);
+  if (cached) return cached;
+
+  const denied = requireModule(SERVICE, "procurement");
+  if (denied) return denied;
+
+  const state = getState();
+  const po = state.purchase_orders.find((p) => p.po_no === poNo);
+  if (!po) return notFound(SERVICE, "po_not_found", `No purchase order ${poNo}.`);
+  if (po.status !== "DRAFT") {
+    return conflict(SERVICE, "already_issued", `${poNo} is ${po.status} — only a draft can be issued.`);
+  }
+  const lines = state.po_lines.filter((l) => l.po_id === po.id && l.superseded_by === null);
+  if (lines.length === 0) {
+    return invalid(SERVICE, "lines_required", "An order with no lines is not an order.", { field: "lines" });
+  }
+
+  const user = actingUser();
+  apply((draft) => {
+    const row = draft.purchase_orders.find((p) => p.po_no === poNo);
+    if (!row) return;
+    row.status = "ISSUED";
+    row.issued_at = new Date().toISOString();
+    row.issued_by = user.id;
+    writeAudit(draft, {
+      service: SERVICE, entity: "purchase_order", entity_no: poNo,
+      action: "issue", outcome: "ok", reason: null,
+      detail: { lines: lines.length, contract_value: lines.reduce((s, l) => s + l.line_total, 0) },
+    });
+    writeOutbox(draft, {
+      service: SERVICE, event_type: "procurement.po.issued",
+      payload: { po_no: poNo, vendor_id: row.vendor_id },
+    });
+  });
+  const view = await getPoDetail(poNo);
+  if (view.data) remember(SERVICE, `issuePo:${poNo}`, idempotencyKey, view.data);
+  return view;
+}
+
+/** Changing an order that has already been sent.
+ *
+ *  Never an edit. The old line stays and points at the new one, because "what
+ *  did we agree, and when did it change" is a question somebody asks with a
+ *  vendor on the phone (D129). A closed order does not move at all.
+ */
+export async function amendPoLine(
+  input: {
+    po_no: string;
+    line_no: number;
+    qty?: number;
+    unit_price?: number;
+    description?: string;
+    reason: string;
+  },
+): Promise<Result<PoDetail>> {
+  await latency();
+  const denied = requireModule(SERVICE, "procurement");
+  if (denied) return denied;
+
+  const state = getState();
+  const po = state.purchase_orders.find((p) => p.po_no === input.po_no);
+  if (!po) return notFound(SERVICE, "po_not_found", `No purchase order ${input.po_no}.`);
+  if (po.status === "CLOSED" || po.status === "CANCELLED") {
+    return conflict(SERVICE, "po_closed", `${input.po_no} is ${po.status}. A finished obligation does not move.`);
+  }
+  const line = state.po_lines.find(
+    (l) => l.po_id === po.id && l.line_no === input.line_no && l.superseded_by === null,
+  );
+  if (!line) return notFound(SERVICE, "line_not_found", `${input.po_no} has no live line ${input.line_no}.`);
+  if (!input.reason.trim()) {
+    return invalid(
+      SERVICE, "reason_required",
+      "An order that has been sent changes for a reason — the vendor raised the price, the site measured again. Write it.",
+      { field: "reason" },
+    );
+  }
+
+  const qty = input.qty ?? line.qty;
+  const unit_price = input.unit_price ?? line.unit_price;
+  if (qty <= 0 || unit_price <= 0) {
+    return invalid(SERVICE, "amount_invalid", "A line has a quantity and a price, both above zero.", { field: "qty" });
+  }
+
+  /* Delivered more than the amendment leaves ordered? Allowed, and stated:
+     the over-delivery becomes a credit with the vendor (D98) rather than a
+     refusal that leaves the order disagreeing with the warehouse. */
+  const received = state.receipts
+    .filter((r) => r.po_line_id === line.id && COUNTING_CONDITIONS.includes(r.condition))
+    .reduce((s, r) => s + r.qty_received, 0);
+
+  const user = actingUser();
+  apply((draft) => {
+    const old = draft.po_lines.find((l) => l.id === line.id);
+    if (!old) return;
+    const fresh = {
+      ...old,
+      id: newId("pol"),
+      description: input.description?.trim() || old.description,
+      qty,
+      unit_price,
+      line_total: Math.round(qty * unit_price),
+      superseded_by: null as string | null,
+    };
+    draft.po_lines.push(fresh);
+    old.superseded_by = fresh.id;
+    /* Receipts follow the live line, or a delivery already recorded would
+       vanish from the order it arrived against. */
+    draft.receipts.forEach((r) => { if (r.po_line_id === old.id) r.po_line_id = fresh.id; });
+    writeAudit(draft, {
+      service: SERVICE, entity: "purchase_order", entity_no: input.po_no,
+      action: "amend", outcome: "ok", reason: input.reason.trim(),
+      detail: {
+        line_no: input.line_no,
+        before: { qty: old.qty, unit_price: old.unit_price, line_total: old.line_total },
+        after: { qty, unit_price, line_total: fresh.line_total },
+        already_received: received,
+        by: user.email,
+      },
+    });
+  });
+  return getPoDetail(input.po_no);
+}
+
+/** Closing an order.
+ *
+ *  Refused while either axis disagrees — money and goods are never collapsed
+ *  (A1) — or while nothing is filed against it. A settlement with a written
+ *  reason is the way out, because real orders end untidily and pretending
+ *  otherwise is how they stay open forever.
+ */
+export async function closePo(
+  input: { po_no: string; settle_reason?: string | null },
+): Promise<Result<PoDetail>> {
+  await latency();
+  const denied = requireModule(SERVICE, "procurement");
+  if (denied) return denied;
+
+  const state = getState();
+  const po = state.purchase_orders.find((p) => p.po_no === input.po_no);
+  if (!po) return notFound(SERVICE, "po_not_found", `No purchase order ${input.po_no}.`);
+  const detail = poDetail(state, po.id);
+  if (!detail) return notFound(SERVICE, "po_not_found", `No purchase order ${input.po_no}.`);
+
+  const fatal = detail.close_blockers.filter(
+    (b) => b.startsWith("It is already") || b.startsWith("It was never"),
+  );
+  if (fatal.length > 0) {
+    return conflict(SERVICE, "cannot_close", fatal.join(" "));
+  }
+  if (detail.close_blockers.length > 0 && !input.settle_reason?.trim()) {
+    return invalid(
+      SERVICE, "close_refused",
+      `${input.po_no} is not finished: ${detail.close_blockers.join(" ")} Close it anyway by saying why — that reason is what somebody reads in six months.`,
+      { field: "settle_reason", blockers: detail.close_blockers },
+    );
+  }
+
+  const user = actingUser();
+  apply((draft) => {
+    const row = draft.purchase_orders.find((p) => p.po_no === input.po_no);
+    if (!row) return;
+    row.status = "CLOSED";
+    writeAudit(draft, {
+      service: SERVICE, entity: "purchase_order", entity_no: input.po_no,
+      action: "close", outcome: "ok",
+      reason: input.settle_reason?.trim() || null,
+      detail: {
+        settled_early: detail.close_blockers.length > 0,
+        blockers: detail.close_blockers,
+        outstanding: detail.status_view.outstanding,
+        by: user.email,
+      },
+    });
+    writeOutbox(draft, {
+      service: SERVICE, event_type: "procurement.po.closed",
+      payload: { po_no: input.po_no, settled_early: detail.close_blockers.length > 0 },
+    });
+  });
+  return getPoDetail(input.po_no);
 }

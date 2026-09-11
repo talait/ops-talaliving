@@ -1478,3 +1478,52 @@ The small print worth keeping: the instruction used to be rendered inside the
 item column as well. With a column of its own, that copy became a duplicate —
 the same text twice on one row, which reads as two instructions. Removed. A
 new column is not additive; it takes ownership of the thing it shows.
+
+## F36 — the PO module was the last placeholder, and the terms were the reason to build it
+
+`/procurement/po` had been an eleven-line placeholder since D1, through a
+fortnight in which the tracker, the calendar and the liquidation report were
+all built. It survived because the tracker answers most of the same question
+from the other end — *what do we owe HADI GLASS* rather than *what did we
+agree on po-26-08-14_01* — and one of those two is enough to get through a
+week.
+
+What only the order-first view has is the **schedule**, and that is where the
+finding is. A payment term is not a bill. It is a **trigger plus a share**:
+30% on issue, the rest on delivery. Which means a term has two independent
+questions — has the trigger fired, and has the money that reached this order
+already covered the terms before it — and the second one is a guard nobody
+had written down:
+
+> **po-26-09-02_01-M02 · PROGRESS · goods have started arriving ·
+> BLOCKED — po-26-09-02_01-M01 has not been paid**
+
+An overhaul delivered, the progress payment's trigger fired, and the 50%
+deposit never sent. Without the ordering rule, that order reads as *Rp 14,5
+juta payable* and somebody pays the wrong half. With it, Rp 7.250.000 is
+payable and the rest says why it is not.
+
+The ordering itself is forced rather than chosen: **nothing in a bank transfer
+says which term it was for.** Oldest-first is the only defensible reading, and
+writing that down is more useful than the code implementing it.
+
+Two smaller things the build settled:
+
+**Amendment is supersession, and receipts have to follow the live line.** The
+first version left a delivery pointing at the superseded row, so amending a
+line made the goods that had arrived against it disappear from the order. The
+fix is one line; the lesson is that supersession is not finished when the new
+row exists — everything that pointed at the old one has to be told.
+
+**A close that refuses has to say what it is refusing about.** Listing *Rp
+14,5 juta unpaid · nothing filed against it* and then offering to close it
+anyway with a written reason is the shape that works, because real orders end
+untidily and a rule with no exit gets worked around outside the system.
+
+And one regression, caught by the owner within a day of shipping it: the new
+instruction column on the meeting board opened the line drawer on the first
+keystroke, because the row's click handler was still underneath. **A control
+placed inside a clickable row inherits the row's job unless it is told not
+to** — the same fix already existed twenty lines below, on the cell holding
+the quantity and amount inputs, which is exactly the kind of precedent worth
+reading before adding the next cell.

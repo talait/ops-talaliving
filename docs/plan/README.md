@@ -70,6 +70,7 @@ Update the row, the date, and the note **in the same commit** as the work.
 | M12b | Payment calendar: 12 months, projected against actual, with due dates | D12 | DONE | 2026-09-11 | `/accounting/calendar` — one estimate per line with the day it is due (D109), *not in the plan* reconciles it to the ledger (D111), and the verdict names the month the money runs out |
 | M12c | Calendar: weekly / monthly / one-off, and a month opened day by day | D12 | DONE | 2026-09-11 | three shapes per line, `amount` per occurrence (D113); a month expands into its dated movements with the first day it goes under and the lowest point (D115). Counting paydays moved the failure from December to **November** |
 | M13 | Polish: phone, empty states, refusals, demo reset, guided tour | D13 | DONE | 2026-09-11 | every screen checked at 390px (no horizontal scroll anywhere, drawers full-screen with a pinned action bar); every table carries an empty state that says what to do; the guided walk is `?tour=flow-b` (D117); the dashboard now reads the demo store instead of the shell's sample data (D118) |
+| M15 | Purchase orders: the module, with terms, amendment and closing | — | DONE | 2026-09-11 | `/procurement/po` was still a placeholder. Now the order-first half of the tracker's question, with the payment schedule and its guard (D128), amendment by supersession (D129) and a close that refuses politely (D130) |
 | M14 | **Walkthrough + findings → the schema we actually need** | D14 | DONE | 2026-09-11 | `checkpoints/2026-09-23.md` is the walk; `02-database.md` gains **What the walk changed** — fourteen schema changes a working screen forced, none of them visible on D1. Phase 2 proposed below with dates |
 
 **Deployment.** Vercel builds from GitHub directly, not from a developer's
@@ -121,6 +122,7 @@ verification available to this project. Every other order loses that.
 | `05-workplan.md` | Day by day D1–D14, with the exact prompt for each day | 1 |
 | `06-decisions.md` | Decision log + open questions, each with a default so nothing blocks | both |
 | `07-ways-of-working.md` | Phone-driven workflow, session protocol, prompt recipes | both |
+| `backlog.md` | What somebody reported while using it, bugs and asks alike — kept out of the milestone board so neither list lies about the other | 1 |
 | `findings.md` | **Written as we go.** What each screen taught us about the rules — the input to Phase 2 | 1 |
 
 ---

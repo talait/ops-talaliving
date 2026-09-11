@@ -490,6 +490,9 @@ export interface PoStatusView {
  *  arrived, and in what condition. */
 export interface PoLineJourney {
   po_line_id: string;
+  /** Its number on the order — what an amendment addresses, and what a vendor
+   *  says on the phone. */
+  line_no: number;
   description: string;
   qty: number;
   uom: UomCode;
@@ -771,4 +774,84 @@ export interface PrLineView extends PrLine {
   item_name: string | null;
   received_qty: number;
   has_problem_receipt: boolean;
+}
+
+/* ------------------------------------------------------------------ */
+/* PO — the order as an obligation                                     */
+/* ------------------------------------------------------------------ */
+
+/** Where one payment term stands.
+ *
+ *  A term is not a bill. It is a **trigger plus a share**: 30% on issue, the
+ *  rest on delivery. So its state has two halves — has the trigger fired, and
+ *  has the money that reached this order already covered the terms before it.
+ *
+ *  Coverage runs in order, oldest term first, because that is how the money
+ *  was meant to be applied and because nothing in a bank transfer says which
+ *  term it was for. A term whose trigger has fired but whose predecessors are
+ *  unpaid is `BLOCKED` and says which one is holding it — the guard the old
+ *  system never had, and the reason somebody once paid a final instalment on
+ *  an order whose deposit had never gone out (D128).
+ */
+export type PoTermState =
+  | "PAID"        // covered in full
+  | "PARTIAL"     // some of it covered
+  | "PAYABLE"     // the trigger has fired, everything before it is covered
+  | "BLOCKED"     // the trigger has fired, an earlier term has not been paid
+  | "NOT DUE";    // the trigger has not fired
+
+export interface PoTermView {
+  term_no: string;
+  kind: PoPaymentKind;
+  basis: ScheduleBasis;
+  basis_value: number;
+  due_rule: DueRule;
+  due_date: string | null;
+  /** What the term is worth against the current contract value. */
+  amount: number;
+  /** How much of the money that reached this order lands on this term. */
+  covered: number;
+  state: PoTermState;
+  /** The term holding this one up, when `BLOCKED`. */
+  blocked_by: string | null;
+  /** Why the trigger has or has not fired, in words. */
+  trigger: string;
+}
+
+export interface PoDocument {
+  attachment_id: string;
+  filename: string;
+  url: string | null;
+  kind: string;
+  linked_at: string;
+}
+
+/** Everything about one order, in one call — a drawer that needs three is a
+ *  drawer that renders in three stages. */
+export interface PoDetail {
+  po_no: string;
+  vendor_id: string;
+  vendor_name: string;
+  status: PoStatus;
+  note: string | null;
+  created_at: string;
+  issued_at: string | null;
+  issued_by_name: string | null;
+  lines: PoLineJourney[];
+  terms: PoTermView[];
+  /** The share of the contract that may be asked for right now: the terms that
+   *  are `PAYABLE`, less what has already been paid against them. */
+  payable_now: number;
+  /** Superseded lines, newest first — what this order used to say (D129). */
+  amendments: {
+    line_no: number;
+    from: string;
+    to: string;
+    at: string;
+  }[];
+  payments: { trx_no: string; trx_date: string; amount: number; description: string }[];
+  documents: PoDocument[];
+  status_view: PoStatusView;
+  /** Why this order cannot be closed yet, empty when it can. */
+  close_blockers: string[];
 }

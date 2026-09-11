@@ -197,7 +197,15 @@ export default function MeetingBoardPage() {
         const pending = l.pending_request?.meeting_note;
         const editable = mode === "draft" ? (mayDecide || mayAsk) : mayDecide;
         return (
-          <div className="w-[220px] max-w-[220px]">
+          /* The row opens a drawer; a control inside it must not. Without
+             this, the first keystroke in an instruction opened the line
+             behind it and took the focus with it (F36). */
+          <div
+            className="w-[220px] max-w-[220px]"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+            role="presentation"
+          >
             {editable ? (
               <>
                 <textarea

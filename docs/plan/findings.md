@@ -1443,3 +1443,38 @@ So the board now states the thing the status used to hide: Rp 15.771.000 of
 what is already approved has no money behind it, nothing is reserved, and an
 older approval can lose its funding to a newer one and have to be asked for
 again.
+
+## F35 — an instruction is said once, and only a column catches it
+
+The instruction field existed from D64, and it was reachable in two places:
+the line drawer on the requests board, and the approver's chat card. Neither
+is where an instruction is actually produced. It is produced in the room,
+out loud, while the item is on the screen being argued about — *"only if they
+deliver before the 20th"* — and by the time anybody has opened a drawer to
+record it, the meeting has moved to the next item.
+
+So it needed to be a column, which the owner asked for in one line. What
+building it clarified is the attribution question underneath.
+
+An instruction is leadership's word (D64) and only an approver may record one.
+But the laptop in the room is usually a staffer's — the same fact that
+produced F16, where approvals were being attributed to whoever opened the
+session. If a staffer types what the CEO just said, whose instruction is it?
+
+Three answers, and only one of them is honest:
+
+- **record it as leadership's** — the same lie F16 was about, in a smaller font
+- **refuse it** — the instruction is lost, which is the problem we started with
+- **carry it as the meeting's words, and let the approver make it theirs** —
+  it travels with the question, prefills their instruction field, and becomes
+  an instruction the moment they send it back, from a field they can edit
+
+The third one is built (D127). A `meeting_note` on the request is not a
+`LineNote`: one is context attached to a question, the other is an instruction
+attached to a decision, and keeping them separate is what lets a staffer type
+without anybody's name ending up on words they did not choose.
+
+The small print worth keeping: the instruction used to be rendered inside the
+item column as well. With a column of its own, that copy became a duplicate —
+the same text twice on one row, which reads as two instructions. Removed. A
+new column is not additive; it takes ownership of the thing it shows.

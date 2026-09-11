@@ -292,6 +292,15 @@ export interface ApprovalRequest {
   sent_by_email: string;
   sent_at: string;
   channel: Channel;
+  /** What the room said about this item when it was sent.
+   *
+   *  Not leadership's instruction — that is a `LineNote`, and it can only be
+   *  written by whoever holds the authority (D64). This is the meeting's own
+   *  words travelling with the question, so the approver reading it on a phone
+   *  has the context the room had. It prefills their instruction field; if
+   *  they send it back unchanged it becomes theirs, deliberately and visibly
+   *  (D127). */
+  meeting_note: string | null;
   answered_at: string | null;
   outcome: "approved" | "declined" | null;
 }

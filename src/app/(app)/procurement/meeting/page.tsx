@@ -44,6 +44,7 @@ export default function MeetingBoardPage() {
   const [selected, setSelected] = useState<PrLineView | null>(null);
   const [qtyDraft, setQtyDraft] = useState<Record<string, number>>({});
   const [amountDraft, setAmountDraft] = useState<Record<string, number>>({});
+  const [noteDraft, setNoteDraft] = useState<Record<string, string>>({});
   /* Ticking marks an intention, not a decision. Nothing is written until the
      one confirm at the top — so a meeting can go through the list, change its
      mind twice, and see the total before anything is committed (D77). */
@@ -55,6 +56,10 @@ export default function MeetingBoardPage() {
 
   const qtyOf = (l: PrLineView) => qtyDraft[l.id] ?? l.qty ?? 0;
   const amountOf = (l: PrLineView) => amountDraft[l.id] ?? l.item_total;
+  /* What the room says about an item, typed while it is being discussed.
+     Held as a draft, written when the decision is (D64) or carried with the
+     question to the approver (D127) — never silently lost. */
+  const noteOf = (l: PrLineView) => noteDraft[l.id] ?? "";
 
   /** Quantity and money move together: approving 40 of 60 litres approves
    *  two-thirds of the price, and asking a person to do that arithmetic in
@@ -85,6 +90,7 @@ export default function MeetingBoardPage() {
         approved: true,
         approved_qty: l.qty != null ? qtyOf(l) : null,
         approved_amount: amountOf(l),
+        instructions: noteOf(l).trim() || null,
       });
       if (res.error) {
         toast(res.error.status === 403 ? "critical" : "warning", `Not approved · ${l.line_no_full}`, res.error.message);
@@ -100,6 +106,23 @@ export default function MeetingBoardPage() {
     }
   }
 
+  /** Recording an instruction on a line that is already approved. There is no
+   *  decision left for it to ride along with, so it is written on its own. */
+  async function saveNote(l: PrLineView) {
+    setBusy(true);
+    const res = await procurement.noteLine({
+      line_no: l.line_no_full, instructions: noteOf(l).trim() || null,
+    });
+    setBusy(false);
+    if (res.error) {
+      toast(res.error.status === 403 ? "critical" : "warning", "Not recorded", res.error.message);
+      return;
+    }
+    toast("success", `Instruction on ${l.line_no_full}`, noteOf(l).trim());
+    setNoteDraft((d) => ({ ...d, [l.id]: "" }));
+    reload();
+  }
+
   async function sendSelected(rows: PrLineView[]) {
     const askable = rows.filter((l) => !l.pending_request);
     if (askable.length === 0) {
@@ -107,7 +130,10 @@ export default function MeetingBoardPage() {
       return;
     }
     setBusy(true);
-    const res = await procurement.requestApproval({ line_nos: askable.map((l) => l.line_no_full) });
+    const res = await procurement.requestApproval({
+      line_nos: askable.map((l) => l.line_no_full),
+      notes: Object.fromEntries(askable.map((l) => [l.line_no_full, noteOf(l).trim() || null])),
+    });
     setBusy(false);
     if (res.error) { toast("warning", "Not sent", res.error.message); return; }
     toast(
@@ -116,6 +142,7 @@ export default function MeetingBoardPage() {
       `${formatIDR(res.data.requested_total)} for ${res.data.sent_to_email} to decide`,
     );
     setPicked({});
+    setNoteDraft({});
     reload();
   }
 
@@ -143,18 +170,81 @@ export default function MeetingBoardPage() {
               Nothing behind it yet — needs the shop link, the invoice or the bill.
             </p>
           )}
-          {l.note?.instructions && (
-            <p className="mt-1 rounded bg-brand-50 px-2 py-1 text-[12px] leading-snug text-brand-900">
-              {l.note.instructions}
-            </p>
-          )}
         </div>
       );
     },
   };
 
+  /** What the room says about an item, in a column rather than behind a click.
+   *
+   *  It is said out loud while the item is being discussed, and anything that
+   *  takes a click to reach is said and then lost (D127).
+   *
+   *  Two behaviours, because the two lists are at different moments. On a line
+   *  still waiting, the text is a draft that rides along with whatever happens
+   *  next — the approval records it as leadership's instruction (D64), or the
+   *  chat request carries it as the meeting's words. On a line already
+   *  approved there is no next decision to ride on, so it is saved on its own,
+   *  which only an approver may do.
+   */
+  function instructionColumn(mode: "draft" | "save"): Column<PrLineView> {
+    return {
+      key: "instructions",
+      header: "Instructions",
+      className: "whitespace-normal",
+      render: (l) => {
+        const existing = l.note?.instructions;
+        const pending = l.pending_request?.meeting_note;
+        const editable = mode === "draft" ? (mayDecide || mayAsk) : mayDecide;
+        return (
+          <div className="w-[220px] max-w-[220px]">
+            {editable ? (
+              <>
+                <textarea
+                  id={`mi-${l.id}`}
+                  value={noteOf(l)}
+                  onChange={(e) => setNoteDraft((d) => ({ ...d, [l.id]: e.target.value }))}
+                  rows={2}
+                  placeholder={mode === "draft"
+                    ? (mayDecide ? "e.g. only if they deliver before the 20th" : "what the room said — it goes with the question")
+                    : "add an instruction to this one"}
+                  className="w-full resize-y rounded-lg border border-slate-200 px-2 py-1 text-[12px] leading-snug focus:border-brand-400 focus:outline-none"
+                />
+                {noteOf(l).trim() && (
+                  mode === "draft" ? (
+                    <p className="text-[11px] text-amber-700">
+                      {mayDecide ? "recorded when you approve" : "sent with the question"}
+                    </p>
+                  ) : (
+                    <Button size="sm" variant="outline" disabled={busy} onClick={() => saveNote(l)}>
+                      Record it
+                    </Button>
+                  )
+                )}
+              </>
+            ) : (
+              !existing && !pending && <span className="text-[11px] text-slate-400">—</span>
+            )}
+            {pending && !noteOf(l).trim() && (
+              <p className="mt-0.5 text-[11px] text-slate-500">
+                sent with the question: <span className="text-slate-700">{pending}</span>
+              </p>
+            )}
+            {existing && (
+              <p className="mt-0.5 text-[11px] text-slate-600">
+                {existing}{" "}
+                <span className="text-slate-400">— {l.note?.recorded_by_email.split("@")[0]}</span>
+              </p>
+            )}
+          </div>
+        );
+      },
+    };
+  }
+
   const waitingColumns: Column<PrLineView>[] = [
     itemColumn,
+    instructionColumn("draft"),
     {
       key: "qty",
       header: "Qty",
@@ -251,6 +341,7 @@ export default function MeetingBoardPage() {
 
   const payColumns: Column<PrLineView>[] = [
     itemColumn,
+    instructionColumn("save"),
     {
       key: "approved",
       header: "Approved",
@@ -422,7 +513,7 @@ export default function MeetingBoardPage() {
 
               <Card>
                 <CardHeader
-                  title="Approved — waiting for payment"
+                  title="Approved — not paid yet"
                   subtitle={`${toPay.length} item(s) · ${formatIDR(payTotal)} still to pay. This is the money that has to be in BCA 271.`}
                   icon={Clock}
                 />
@@ -442,7 +533,7 @@ export default function MeetingBoardPage() {
                   rows={toPay}
                   rowKey={(l) => l.id}
                   onRowClick={setSelected}
-                  empty="Nothing approved is waiting for payment."
+                  empty="Nothing is approved and unpaid."
                 />
               </Card>
             </>

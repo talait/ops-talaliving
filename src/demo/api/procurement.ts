@@ -477,7 +477,13 @@ export async function lineHistory(lineNo: string): Promise<Result<PrApproval[]>>
  *  decision, and only the addressee can take it.
  */
 export async function requestApproval(
-  input: { line_nos: string[]; to?: string },
+  input: {
+    line_nos: string[];
+    to?: string;
+    /** What the room said about each item, by line number. Travels with the
+     *  question so the approver has the context the meeting had (D127). */
+    notes?: Record<string, string | null>;
+  },
   idempotencyKey?: string,
 ): Promise<Result<ApprovalBatchView>> {
   await latency();
@@ -550,7 +556,9 @@ export async function requestApproval(
         sent_to: approver.id, sent_to_email: approver.email,
         sent_by: user.id, sent_by_email: user.email,
         sent_at: new Date().toISOString(),
-        channel: "chat", answered_at: null, outcome: null,
+        channel: "chat",
+        meeting_note: input.notes?.[lineNo]?.trim() || null,
+        answered_at: null, outcome: null,
       });
       writeAudit(draft, {
         service: SERVICE, entity: "pr_line", entity_no: lineNo,

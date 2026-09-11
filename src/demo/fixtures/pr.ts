@@ -186,14 +186,19 @@ export const APPROVAL_REQUESTS: ApprovalRequest[] = [
     sent_to: "usr_evin", sent_to_email: "evin@talaliving.com",
     sent_by: "usr_putri", sent_by_email: "putri@talaliving.com",
     sent_at: "2026-09-10T09:05:00+08:00",
-    channel: "chat", answered_at: null, outcome: null,
+    channel: "chat", meeting_note: "Only if they can deliver before the 20th — otherwise hold it.",
+    answered_at: null, outcome: null,
   },
   {
     id: "arq_02", batch_id: "abt_01", line_id: "prl_0502", token: "tok_seed01_a7f3d2~2",
     sent_to: "usr_evin", sent_to_email: "evin@talaliving.com",
     sent_by: "usr_putri", sent_by_email: "putri@talaliving.com",
     sent_at: "2026-09-10T09:05:00+08:00",
-    channel: "chat", answered_at: null, outcome: null,
+    /* Nothing was said about this one. Most items in a real meeting are like
+       that, and a column that is full on every row is a column people stop
+       reading. */
+    channel: "chat", meeting_note: null,
+    answered_at: null, outcome: null,
   },
 ];
 

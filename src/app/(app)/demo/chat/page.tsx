@@ -238,7 +238,10 @@ function ChatItem({
 }) {
   const [qty, setQty] = useState<number>(item.qty ?? 0);
   const [amount, setAmount] = useState<number>(item.item_total);
-  const [instructions, setInstructions] = useState("");
+  /* Prefilled with what the room said, so the approver reading this on a phone
+     has the context the meeting had. Sending it back unchanged makes it theirs
+     — visibly, in a field they can edit (D127). */
+  const [instructions, setInstructions] = useState(item.meeting_note ?? "");
 
   if (item.answered_at) {
     return (
@@ -298,7 +301,12 @@ function ChatItem({
           )}
         </div>
         <div className="sm:col-span-2">
-          <label htmlFor={`i-${item.id}`} className="block text-[11px] text-slate-500">Instructions (optional)</label>
+          <label htmlFor={`i-${item.id}`} className="block text-[11px] text-slate-500">
+            Instructions (optional)
+            {item.meeting_note && (
+              <span className="ml-1 text-slate-400">— from the meeting, edit or send as is</span>
+            )}
+          </label>
           <input
             id={`i-${item.id}`}
             value={instructions}

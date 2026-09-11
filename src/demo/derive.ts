@@ -1542,12 +1542,34 @@ export function poDetail(state: DemoState, poId: string): PoDetail | null {
   }
 
   const issuer = state.users.find((u) => u.id === po.issued_by);
+  const vendor = state.vendors.find((v) => v.id === po.vendor_id);
+  const asker = state.users.find((u) => u.id === po.approval_asked_by);
+  const approver = state.users.find((u) => u.id === po.approved_by);
+
+  /* Late is a claim about a promise, so it needs the promise: with no
+     expected date nothing is late, it is merely absent (D134). */
+  const today = new Date().toISOString().slice(0, 10);
+  const days_late = po.expected_delivery && view.delivery_state !== "COMPLETE"
+    && po.expected_delivery < today
+    ? Math.round(
+      (Date.parse(`${today}T00:00:00+08:00`) - Date.parse(`${po.expected_delivery}T00:00:00+08:00`)) / 86_400_000,
+    )
+    : null;
 
   return {
     po_no: po.po_no,
     vendor_id: po.vendor_id,
-    vendor_name: state.vendors.find((v) => v.id === po.vendor_id)?.name ?? "—",
+    vendor_name: vendor?.name ?? "—",
+    vendor_pic: vendor?.pic_name ?? null,
+    vendor_phone: vendor?.pic_phone ?? vendor?.phone ?? null,
     status: po.status,
+    expected_delivery: po.expected_delivery,
+    days_late,
+    approval_asked_at: po.approval_asked_at,
+    approval_asked_by_name: asker?.full_name ?? null,
+    approved_at: po.approved_at,
+    approved_by_name: approver?.full_name ?? null,
+    approval_note: po.approval_note,
     note: po.note,
     created_at: po.created_at,
     issued_at: po.issued_at,

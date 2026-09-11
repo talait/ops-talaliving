@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft, Banknote, CalendarClock, FileText, Link2, Package, PenLine, Send, Lock,
+  Check, MessageCircle, Printer, Truck,
 } from "lucide-react";
 import { Badge, Button, Card, CardHeader, PageHeader } from "@/components/ui/primitives";
 import { DataTable, type Column } from "@/components/ui/data-table";
@@ -37,13 +38,43 @@ const TERM_TONE: Record<PoTermState, string> = {
 
 export default function PoDetailPage({ params }: { params: { po: string } }) {
   const poNo = decodeURIComponent(params.po);
-  const { can } = useSession();
+  const { can, hasAuthority } = useSession();
   const { toast } = useToast();
   const [detail, reload] = useLoad(() => procurement.getPoDetail(poNo), [poNo]);
   const [amending, setAmending] = useState<number | null>(null);
   const [closing, setClosing] = useState(false);
   const [busy, setBusy] = useState(false);
   const mayEdit = can("procurement.update");
+  const mayApprove = hasAuthority("approve_goods");
+
+  async function ask() {
+    setBusy(true);
+    const res = await procurement.requestPoApproval({ po_no: poNo });
+    setBusy(false);
+    if (res.error) { toast("warning", "Not sent", res.error.message); return; }
+    toast("success", `${poNo} sent for confirmation`, "It cannot go to the supplier until leadership says yes.");
+    reload();
+  }
+
+  async function approve() {
+    setBusy(true);
+    const res = await procurement.approvePo({ po_no: poNo, approved: true });
+    setBusy(false);
+    if (res.error) { toast(res.error.status === 403 ? "critical" : "warning", "Not confirmed", res.error.message); return; }
+    toast("success", `${poNo} confirmed`, "It can be issued and sent to the supplier.");
+    reload();
+  }
+
+  /** The order, as a message the vendor actually receives. The PDF is printed
+   *  from the same page it links to, so there is no second renderer to drift
+   *  from the first (D133). */
+  function whatsapp(phone: string | null, text: string) {
+    const digits = (phone ?? "").replace(/[^0-9]/g, "").replace(/^0/, "62");
+    const url = digits
+      ? `https://wa.me/${digits}?text=${encodeURIComponent(text)}`
+      : `https://wa.me/?text=${encodeURIComponent(text)}`;
+    window.open(url, "_blank", "noopener");
+  }
 
   async function issue() {
     setBusy(true);
@@ -127,9 +158,38 @@ export default function PoDetailPage({ params }: { params: { po: string } }) {
               actions={
                 <div className="flex flex-wrap items-center gap-2">
                   <SourceBadge state={detail} />
-                  {mayEdit && d.status === "DRAFT" && (
+                  {d.status !== "DRAFT" && (
+                    <>
+                      <Button
+                        variant="outline" icon={Printer}
+                        onClick={() => window.open(`/procurement/po/${encodeURIComponent(d.po_no)}/print`, "_blank", "noopener")}
+                      >
+                        Print / PDF
+                      </Button>
+                      <Button
+                        variant="outline" icon={MessageCircle}
+                        onClick={() => whatsapp(
+                          d.vendor_phone,
+                          `Halo${d.vendor_pic ? ` ${d.vendor_pic}` : ""}, berikut PO ${d.po_no} dari ${"PT TALAHOME"} senilai ${formatIDR(d.status_view.contract_value)}${d.expected_delivery ? `, diharapkan tiba ${d.expected_delivery}` : ""}. PDF menyusul. Terima kasih.`,
+                        )}
+                      >
+                        Send on WhatsApp
+                      </Button>
+                    </>
+                  )}
+                  {mayEdit && d.status === "DRAFT" && !d.approval_asked_at && !d.approved_at && (
+                    <Button variant="outline" icon={Send} disabled={busy} onClick={ask}>
+                      {busy ? "Sending…" : "Ask leadership to confirm"}
+                    </Button>
+                  )}
+                  {mayApprove && d.status === "DRAFT" && !d.approved_at && (
+                    <Button icon={Check} disabled={busy} onClick={approve}>
+                      {busy ? "Confirming…" : "Confirm it"}
+                    </Button>
+                  )}
+                  {mayEdit && d.status === "DRAFT" && d.approved_at && (
                     <Button icon={Send} disabled={busy} onClick={issue}>
-                      {busy ? "Issuing…" : "Issue the order"}
+                      {busy ? "Issuing…" : "Issue and send it"}
                     </Button>
                   )}
                   {mayEdit && d.status === "ISSUED" && (
@@ -138,6 +198,46 @@ export default function PoDetailPage({ params }: { params: { po: string } }) {
                 </div>
               }
             />
+
+            {d.status === "DRAFT" && (
+              <div className={cn(
+                "mb-4 flex flex-wrap items-center gap-2 rounded-xl border px-4 py-3 text-[13px]",
+                d.approved_at ? "border-emerald-200 bg-emerald-50/70 text-emerald-900"
+                  : d.approval_asked_at ? "border-amber-200 bg-amber-50/70 text-amber-900"
+                    : "border-slate-200 bg-slate-50 text-slate-700",
+              )}>
+                <Check className="h-4 w-4 shrink-0" />
+                {d.approved_at ? (
+                  <span>
+                    Confirmed by {d.approved_by_name ?? "leadership"} on {d.approved_at.slice(0, 10)} —
+                    it can be issued and sent to the supplier.
+                  </span>
+                ) : d.approval_asked_at ? (
+                  <span>
+                    Waiting on leadership since {d.approval_asked_at.slice(0, 16).replace("T", " ")}
+                    {d.approval_asked_by_name ? `, asked by ${d.approval_asked_by_name}` : ""}. Nothing
+                    goes to the supplier until they answer.
+                  </span>
+                ) : (
+                  <span>
+                    A draft. An order is a promise made in the company&apos;s name, so leadership
+                    confirms it before the supplier hears about it.
+                  </span>
+                )}
+              </div>
+            )}
+
+            {d.expected_delivery && (
+              <div className={cn(
+                "mb-4 flex flex-wrap items-center gap-2 rounded-xl border px-4 py-2.5 text-[13px]",
+                d.days_late ? "border-rose-200 bg-rose-50/70 text-rose-900" : "border-slate-200 bg-white text-slate-600",
+              )}>
+                <Truck className="h-4 w-4 shrink-0" />
+                {d.days_late
+                  ? <span>Promised for <strong>{d.expected_delivery}</strong> — <strong>{d.days_late} day(s) late</strong>, and not everything has arrived.</span>
+                  : <span>Expected <strong>{d.expected_delivery}</strong>.</span>}
+              </div>
+            )}
 
             <div className="mb-4 rounded-xl border border-slate-200 bg-white shadow-card">
               <dl className="grid divide-y divide-slate-100 sm:grid-cols-2 sm:divide-y-0 lg:grid-cols-4 lg:divide-x">

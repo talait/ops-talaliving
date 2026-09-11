@@ -26,6 +26,10 @@ import { useToast } from "@/store/toast";
  *  outstanding. The deposit is optional but consequential — enter one and the
  *  order carries a DP term that becomes payable the moment it is issued, and
  *  nothing before that (D99).
+ *
+ *  What it produces is a **draft**. An order is a promise made to a supplier
+ *  in the company's name, so leadership confirms it before it is sent, which
+ *  means creating one cannot also send it (D132).
  */
 type Line = { description: string; qty: number; uom: UomCode; unit_price: number };
 
@@ -38,7 +42,7 @@ export function NewPo({ onClose, onCreated }: { onClose: () => void; onCreated: 
   const [lines, setLines] = useState<Line[]>([{ ...EMPTY }]);
   const [dpPercent, setDpPercent] = useState(0);
   const [note, setNote] = useState("");
-  const [issue, setIssue] = useState(true);
+  const [expected, setExpected] = useState("");
   const [busy, setBusy] = useState(false);
 
   const total = lines.reduce((s, l) => s + Math.round(l.qty * l.unit_price), 0);
@@ -56,7 +60,7 @@ export function NewPo({ onClose, onCreated }: { onClose: () => void; onCreated: 
       lines: lines.filter((l) => l.description.trim()),
       dp_percent: dpPercent || null,
       note: note.trim() || null,
-      issue,
+      expected_delivery: expected || null,
     });
     setBusy(false);
     if (res.error) {
@@ -65,8 +69,8 @@ export function NewPo({ onClose, onCreated }: { onClose: () => void; onCreated: 
     }
     toast(
       "success",
-      `${res.data.po_no} ${issue ? "issued" : "drafted"}`,
-      `${res.data.vendor_name} · ${formatIDR(res.data.lines.reduce((s, l) => s + l.line_total, 0))}${issue ? "" : " — not issued, so nothing is payable yet"}`,
+      `${res.data.po_no} drafted`,
+      `${res.data.vendor_name} · ${formatIDR(res.data.lines.reduce((s, l) => s + l.line_total, 0))} — ask leadership to confirm it before it goes to the supplier`,
     );
     onCreated();
   }
@@ -87,13 +91,13 @@ export function NewPo({ onClose, onCreated }: { onClose: () => void; onCreated: 
           {dpPercent > 0 && (
             <p className="text-[12px] text-slate-500">
               {dpPercent}% deposit — <strong className="text-slate-700">{formatIDR(deposit)}</strong>{" "}
-              {issue ? "payable on issue" : "payable only once this is issued"}
+              payable once the order is issued
             </p>
           )}
           <div className="ml-auto flex items-center gap-2">
             <Button variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
             <Button icon={FileText} onClick={create} disabled={busy || !ready}>
-              {busy ? "Creating…" : issue ? "Issue order" : "Save as draft"}
+              {busy ? "Creating…" : "Create the draft"}
             </Button>
           </div>
         </div>
@@ -197,18 +201,20 @@ export function NewPo({ onClose, onCreated }: { onClose: () => void; onCreated: 
               placeholder="e.g. delivery to HOTEL UBUD, week 3"
               className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-2 text-sm focus:border-brand-400 focus:outline-none"
             />
-            <label className="mt-3 flex items-start gap-2 text-[12px] text-slate-600">
-              <input
-                type="checkbox"
-                checked={issue}
-                onChange={(e) => setIssue(e.target.checked)}
-                className="mt-0.5 h-3.5 w-3.5 rounded border-slate-300"
-              />
-              <span>
-                Issue it now — the supplier is told, and the order starts counting
-                towards what we owe. Unchecked, it stays a draft that owes nothing.
-              </span>
+            <label htmlFor="po-expected" className="mt-3 block text-xs text-slate-500">
+              Expected delivery
             </label>
+            <input
+              id="po-expected"
+              type="date"
+              value={expected}
+              onChange={(e) => setExpected(e.target.value)}
+              className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-2 text-sm focus:border-brand-400 focus:outline-none"
+            />
+            <p className="mt-1 text-[11px] text-slate-500">
+              What the vendor says. It is the only thing that makes a delivery late
+              rather than merely absent.
+            </p>
           </div>
         </div>
       </div>

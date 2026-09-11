@@ -453,6 +453,21 @@ export interface PurchaseOrder {
   issued_at: string | null;
   issued_by: string | null;
   note: string | null;
+  /** When the vendor said it would arrive. The date we agreed, not a rule
+   *  that derives one — and the only thing that makes a delivery *late*
+   *  rather than merely absent (D134). */
+  expected_delivery: string | null;
+  /** Leadership's yes on the order itself.
+   *
+   *  An order is a promise to a supplier in the company's name, so it is
+   *  confirmed before it is sent, not after (D132). `asked_at` is when the
+   *  question went out; the decision is the pair below it. */
+  approval_asked_at: string | null;
+  approval_asked_by: string | null;
+  approved_at: string | null;
+  approved_by: string | null;
+  /** What leadership said when they confirmed it, if anything. */
+  approval_note: string | null;
 }
 
 export interface PoLine {
@@ -853,7 +868,18 @@ export interface PoDetail {
   po_no: string;
   vendor_id: string;
   vendor_name: string;
+  /** Who to send the order to, and on what number. */
+  vendor_pic: string | null;
+  vendor_phone: string | null;
   status: PoStatus;
+  expected_delivery: string | null;
+  /** Days late, once everything was supposed to be here and is not. */
+  days_late: number | null;
+  approval_asked_at: string | null;
+  approval_asked_by_name: string | null;
+  approved_at: string | null;
+  approved_by_name: string | null;
+  approval_note: string | null;
   note: string | null;
   created_at: string;
   issued_at: string | null;

@@ -37,12 +37,18 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-100">
-      <Sidebar mobileOpen={mobileOpen} onClose={() => setMobileOpen(false)} />
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <Topbar onMenuClick={() => setMobileOpen(true)} />
-        <main className="flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-[1400px] px-4 py-6 md:px-6 lg:px-8">{children}</div>
+    /* Printing is for the document on the page, never for the furniture around
+       it: a purchase order going to a supplier must not carry our menu (D133). */
+    <div className="flex h-screen overflow-hidden bg-slate-100 print:block print:h-auto print:overflow-visible print:bg-white">
+      <div className="contents print:hidden">
+        <Sidebar mobileOpen={mobileOpen} onClose={() => setMobileOpen(false)} />
+      </div>
+      <div className="flex flex-1 flex-col overflow-hidden print:block print:overflow-visible">
+        <div className="print:hidden">
+          <Topbar onMenuClick={() => setMobileOpen(true)} />
+        </div>
+        <main className="flex-1 overflow-y-auto print:overflow-visible">
+          <div className="mx-auto max-w-[1400px] px-4 py-6 md:px-6 lg:px-8 print:max-w-none print:p-0">{children}</div>
         </main>
       </div>
       {/* useSearchParams needs a boundary; the bar is absent until it resolves,

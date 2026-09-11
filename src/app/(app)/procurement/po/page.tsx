@@ -46,9 +46,21 @@ export default function PoPage() {
       key: "status",
       header: "Status",
       render: (p) => (
-        <Badge tone={p.status === "ISSUED" ? "brand" : p.status === "DRAFT" ? "slate" : "green"}>
-          {p.status}
-        </Badge>
+        <div className="whitespace-nowrap">
+          <Badge tone={p.status === "ISSUED" ? "brand" : p.status === "DRAFT" ? "slate" : "green"}>
+            {p.status}
+          </Badge>
+          {p.status === "DRAFT" && (
+            <p className="mt-0.5 text-[11px] text-slate-500">
+              {p.approved_at ? "confirmed — ready to send"
+                : p.approval_asked_at ? "waiting on leadership"
+                  : "not asked yet"}
+            </p>
+          )}
+          {p.days_late != null && (
+            <p className="mt-0.5 text-[11px] text-rose-700">{p.days_late} day(s) late</p>
+          )}
+        </div>
       ),
     },
     {

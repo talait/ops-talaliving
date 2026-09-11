@@ -154,12 +154,17 @@ PO and receiving:
 |---|---|---|
 | POST | `/po` | `{vendor_id, lines[{description, qty, uom, unit_price}], dp_percent?, note?, issue?}`. **Issued by default** and born DRAFT only when `issue: false` (D100) — a PO nobody sent is a document, not an obligation. **422** without a vendor, without lines, or with a line carrying no unit price; a `dp_percent` writes the DP and FINAL terms |
 | GET | `/po/{po_no}` | two axes, exposure, schedule with each term's state, what may be paid now, amendments, payments and documents — one call, because a screen that needs three renders in three stages |
+| POST | `/po/{po_no}/approval-requests` | asks leadership to confirm the order. **409** unless it is a draft nobody has confirmed. Emits `procurement.po.approval_requested` — the seam, not a second write path |
+| POST | `/po/{po_no}/approve` | `{approved, note?}`, `approve_goods` only. **422** to decline without a sentence — somebody has to tell the supplier something |
+| PUT | `/po/{po_no}/expected-delivery` | `{expected_delivery, reason?}`. **422** without a reason once the order is issued and a date was already agreed (D134) |
 | POST | `/po/{po_no}/issue` | DRAFT → ISSUED, its own act with its own audit row. **409** if it is not a draft, **422** if it has no lines. Before it nothing is owed; after it the deposit is payable (D99) |
 | POST | `/po/{po_no}/amend` | `{line_no, qty?, unit_price?, description?, reason}` — the only way an issued obligation moves (D129). Supersession, never an edit: the old line stays and points at the new one, receipts follow the live line, and **422 without a reason**. **409** on a closed order |
 | GET | `/vendors/{vendor_id}/journey` | one supplier's whole story: contract value, paid, outstanding, value received (capped at ordered — D98), *billable now* (D99), the vendor credit, and every order with its lines, receipts and evidence |
 | GET | `/vendors/journeys` | every supplier we have issued an order to, most billable first. The tracker's list and its obligations strip (D102) |
 | POST | `/po/{po_no}/close` | **422** listing what is unfinished — unpaid balance, goods not arrived, nothing filed — unless `settle_reason` is given, which goes on the audit row (D130). **409** on an order that is already closed or was never issued |
-| POST | `/receipts` | `{line_no | po_line_no, qty, condition, qc_by?, documents[{attachment_id, kind}], note?}`. **422 without the photo of the goods, and 422 without the signed tanda terima** — both halves, because they answer different questions (D101). A problem condition returns `outcome: ok` plus a `notified` flag and leaves the line open (A18) |
+| POST | `/receipts` | `{line_no | po_line_no, qty, condition, qc_by?, documents[{attachment_id, kind}], note?}`. **422 without the photograph** — it is the one thing whoever is standing there can always produce. With the signed tanda terima it is `CONFIRMED`; without it, `REPORTED` (D131). A problem condition returns `outcome: ok` plus a `notified` flag and leaves the line open (A18) |
+| POST | `/receipts/{receipt_no}/confirm` | `{delivery_note_attachment_id, qc_by?, qty_received?, condition?}` — procurement completing a reported arrival. **Only a confirmed receipt counts as value received.** The audit row carries `hours_after_arrival` |
+| GET | `/receipts/reported` | arrivals waiting for their tanda terima, oldest first — the morning queue |
 
 ## `accounting`
 

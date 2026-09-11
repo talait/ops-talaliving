@@ -1189,6 +1189,9 @@ export interface PoView extends PurchaseOrder {
   status_view: PoStatusView;
   lines: PoLine[];
   vendor_name: string;
+  /** Days past the date the vendor promised, when not everything has arrived.
+   *  Null without a promise: nothing is late, it is merely absent (D134). */
+  days_late: number | null;
 }
 
 /** Issue a purchase order.
@@ -1204,7 +1207,8 @@ export async function createPo(
     lines: { description: string; qty: number; uom: UomCode; unit_price: number }[];
     dp_percent?: number | null;
     note?: string | null;
-    issue?: boolean;
+    /** When the vendor says it will arrive (D134). */
+    expected_delivery?: string | null;
   },
   idempotencyKey?: string,
 ): Promise<Result<PoView>> {
@@ -1238,13 +1242,19 @@ export async function createPo(
     poNo = nextDocNumber(draft, "po");
     const poId = newId("po");
     const now = new Date().toISOString();
+    /* Always a draft. An order is a promise made to a supplier in the
+       company's name, so leadership confirms it before it is sent — which
+       means creating one cannot also send it (D132, narrowing D100). */
     draft.purchase_orders.unshift({
       id: poId, po_no: poNo, vendor_id: input.vendor_id,
-      status: input.issue === false ? "DRAFT" : "ISSUED",
+      status: "DRAFT",
       created_at: now,
-      issued_at: input.issue === false ? null : now,
-      issued_by: input.issue === false ? null : user.id,
+      issued_at: null,
+      issued_by: null,
       note: input.note?.trim() || null,
+      expected_delivery: input.expected_delivery || null,
+      approval_asked_at: null, approval_asked_by: null,
+      approved_at: null, approved_by: null, approval_note: null,
     });
     lines.forEach((l, i) => {
       draft.po_lines.push({
@@ -1266,11 +1276,8 @@ export async function createPo(
     }
     writeAudit(draft, {
       service: SERVICE, entity: "purchase_order", entity_no: poNo,
-      action: input.issue === false ? "create" : "issue", outcome: "ok", reason: null,
-    });
-    writeOutbox(draft, {
-      service: SERVICE, event_type: "procurement.po.issued",
-      payload: { po_no: poNo, vendor_id: input.vendor_id, lines: lines.length },
+      action: "create", outcome: "ok", reason: null,
+      detail: { lines: lines.length, expected_delivery: input.expected_delivery ?? null },
     });
   });
 
@@ -1287,6 +1294,7 @@ export async function listPo(): Promise<Result<PoView[]>> {
     status_view: poStatus(state, po.id),
     lines: state.po_lines.filter((l) => l.po_id === po.id && l.superseded_by === null),
     vendor_name: state.vendors.find((v) => v.id === po.vendor_id)?.name ?? "—",
+    days_late: poDetail(state, po.id)?.days_late ?? null,
   })));
 }
 
@@ -1300,6 +1308,7 @@ export async function getPo(poNo: string): Promise<Result<PoView>> {
     status_view: poStatus(state, po.id),
     lines: state.po_lines.filter((l) => l.po_id === po.id && l.superseded_by === null),
     vendor_name: state.vendors.find((v) => v.id === po.vendor_id)?.name ?? "—",
+    days_late: poDetail(state, po.id)?.days_late ?? null,
   });
 }
 
@@ -1899,6 +1908,16 @@ export async function issuePo(poNo: string, idempotencyKey?: string): Promise<Re
   if (lines.length === 0) {
     return invalid(SERVICE, "lines_required", "An order with no lines is not an order.", { field: "lines" });
   }
+  /* Leadership confirms before the supplier hears about it (D132). */
+  if (!po.approved_at) {
+    return invalid(
+      SERVICE, "approval_required",
+      po.approval_asked_at
+        ? `${poNo} is still waiting for leadership to confirm it.`
+        : `${poNo} has not been confirmed by leadership. Ask for it first — an order is a promise made in the company's name.`,
+      { field: "approved_at" },
+    );
+  }
 
   const user = actingUser();
   apply((draft) => {
@@ -2170,4 +2189,145 @@ export async function listReported(): Promise<Result<(Receipt & {
       };
     });
   return ok(SERVICE, rows);
+}
+
+/** Asking leadership to confirm an order.
+ *
+ *  A purchase request is a request to *spend*; a purchase order is a promise
+ *  made to a supplier in the company's name, and the two are not the same
+ *  decision. So an order is confirmed before it is sent, not after (D132) —
+ *  and the ask is its own act, because "it is sitting with the boss" is a
+ *  state somebody has to be able to see.
+ */
+export async function requestPoApproval(
+  input: { po_no: string; to?: string },
+): Promise<Result<PoDetail>> {
+  await latency();
+  const denied = requireModule(SERVICE, "procurement");
+  if (denied) return denied;
+
+  const state = getState();
+  const po = state.purchase_orders.find((p) => p.po_no === input.po_no);
+  if (!po) return notFound(SERVICE, "po_not_found", `No purchase order ${input.po_no}.`);
+  if (po.status !== "DRAFT") {
+    return conflict(SERVICE, "not_a_draft", `${input.po_no} is ${po.status} — only a draft is confirmed.`);
+  }
+  if (po.approved_at) {
+    return conflict(SERVICE, "already_approved", `${input.po_no} has already been confirmed.`);
+  }
+  const lines = state.po_lines.filter((l) => l.po_id === po.id && l.superseded_by === null);
+  if (lines.length === 0) {
+    return invalid(SERVICE, "lines_required", "An order with no lines is not an order.", { field: "lines" });
+  }
+  const approver = state.users.find((u) =>
+    input.to ? u.id === input.to : u.authorities.includes("approve_goods"));
+  if (!approver) {
+    return conflict(SERVICE, "no_approver", "Nobody currently holds the authority to approve goods, so there is no one to ask.");
+  }
+
+  const user = actingUser();
+  apply((draft) => {
+    const row = draft.purchase_orders.find((p) => p.po_no === input.po_no);
+    if (!row) return;
+    row.approval_asked_at = new Date().toISOString();
+    row.approval_asked_by = user.id;
+    writeAudit(draft, {
+      service: SERVICE, entity: "purchase_order", entity_no: input.po_no,
+      action: "request_approval", outcome: "ok", reason: `→ ${approver.email}`,
+      detail: { contract_value: lines.reduce((s, l) => s + l.line_total, 0), lines: lines.length },
+    });
+    /* The seam, not a second write path: a worker turns this into the chat
+       card, exactly as it does for a request batch (ADR-008). */
+    writeOutbox(draft, {
+      service: SERVICE, event_type: "procurement.po.approval_requested",
+      payload: {
+        po_no: input.po_no,
+        vendor_id: row.vendor_id,
+        to: approver.email,
+        contract_value: lines.reduce((s, l) => s + l.line_total, 0),
+      },
+    });
+  });
+  return getPoDetail(input.po_no);
+}
+
+/** Leadership's answer on the order itself. */
+export async function approvePo(
+  input: { po_no: string; approved: boolean; note?: string | null },
+): Promise<Result<PoDetail>> {
+  await latency();
+  const denied = requireAuthority(SERVICE, "approve_goods");
+  if (denied) {
+    apply((draft) => {
+      writeAudit(draft, {
+        service: SERVICE, entity: "purchase_order", entity_no: input.po_no,
+        action: "approve", outcome: "refused", reason: "tanpa authority approve_goods",
+      });
+    });
+    return denied;
+  }
+
+  const state = getState();
+  const po = state.purchase_orders.find((p) => p.po_no === input.po_no);
+  if (!po) return notFound(SERVICE, "po_not_found", `No purchase order ${input.po_no}.`);
+  if (po.status !== "DRAFT") {
+    return conflict(SERVICE, "not_a_draft", `${input.po_no} is ${po.status} — it has already been sent.`);
+  }
+  if (!input.approved && !input.note?.trim()) {
+    return invalid(
+      SERVICE, "reason_required",
+      "Turning an order down needs a sentence — somebody has to tell the supplier something.",
+      { field: "note" },
+    );
+  }
+
+  const user = actingUser();
+  apply((draft) => {
+    const row = draft.purchase_orders.find((p) => p.po_no === input.po_no);
+    if (!row) return;
+    row.approved_at = input.approved ? new Date().toISOString() : null;
+    row.approved_by = input.approved ? user.id : null;
+    row.approval_note = input.note?.trim() || null;
+    writeAudit(draft, {
+      service: SERVICE, entity: "purchase_order", entity_no: input.po_no,
+      action: input.approved ? "approve" : "decline", outcome: "ok",
+      reason: input.note?.trim() ?? null,
+      detail: { by: user.email },
+    });
+  });
+  return getPoDetail(input.po_no);
+}
+
+/** The date the vendor promised. Changing it is a fact about the vendor, so
+ *  it is kept with a reason once the order has been sent (D134). */
+export async function setExpectedDelivery(
+  input: { po_no: string; expected_delivery: string | null; reason?: string | null },
+): Promise<Result<PoDetail>> {
+  await latency();
+  const denied = requireModule(SERVICE, "procurement");
+  if (denied) return denied;
+
+  const state = getState();
+  const po = state.purchase_orders.find((p) => p.po_no === input.po_no);
+  if (!po) return notFound(SERVICE, "po_not_found", `No purchase order ${input.po_no}.`);
+  if (po.status === "ISSUED" && po.expected_delivery && !input.reason?.trim()) {
+    return invalid(
+      SERVICE, "reason_required",
+      "The date was agreed with the supplier. Moving it is something they said — write what they said.",
+      { field: "reason" },
+    );
+  }
+
+  apply((draft) => {
+    const row = draft.purchase_orders.find((p) => p.po_no === input.po_no);
+    if (!row) return;
+    const before = row.expected_delivery;
+    row.expected_delivery = input.expected_delivery || null;
+    writeAudit(draft, {
+      service: SERVICE, entity: "purchase_order", entity_no: input.po_no,
+      action: "expected_delivery", outcome: "ok", reason: input.reason?.trim() || null,
+      detail: { before, after: row.expected_delivery },
+    });
+  });
+  return getPoDetail(input.po_no);
 }

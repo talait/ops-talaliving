@@ -1570,3 +1570,38 @@ splitting one act into two.
 the confirmation is the only way to tell the difference between this road
 working as intended and this road being used to skip the paperwork
 permanently. A concession without a measure becomes a habit.
+
+## F38 — the order had no way to become a promise
+
+The PO module could create an order, amend it, pay it and close it. What it
+could not do was the thing an order is *for*: tell a supplier.
+
+Three gaps, and the owner named all three in one sentence — confirmation, a
+PDF for WhatsApp, an expected delivery date.
+
+**Confirmation.** A purchase request is a request to spend. A purchase order
+is a promise made to a supplier in the company's name. The demo had treated
+them as the same decision, so `createPo` issued by default (D100) and nobody
+in leadership ever saw the order the vendor would receive. Now: DRAFT → *asked
+leadership* → *confirmed* → issued, with issuing refused until the confirmation
+exists (D132). *Waiting on leadership* is its own visible state, because that
+is where orders actually stall.
+
+**The PDF.** The temptation was a PDF library. What that buys is a second
+description of the same order, free to drift from the first — and the vendor's
+copy is exactly the one you cannot afford to have disagree. So the vendor's
+document is the app's own print view, A4, printed to PDF by the browser, and
+sent through a prefilled `wa.me` link (D133). One renderer.
+
+Building it exposed something wider: printing any page carried the sidebar and
+the topbar. Fixed in the shell rather than on this page, because the next
+thing somebody prints will be a ledger extract for an auditor.
+
+**The date.** Without a promised date, nothing is late — it is merely absent,
+and *absent* does not start a conversation with a supplier. With it, the demo
+immediately said something nobody had asked it: **po-26-08-14_01 is 3 days
+late.** That is a fact that existed all week and had nowhere to appear.
+
+The general lesson in all three: **a module is finished when it can do the
+thing outside the building.** Create, amend, pay and close are all internal.
+An order that never reaches a vendor is a spreadsheet with better manners.

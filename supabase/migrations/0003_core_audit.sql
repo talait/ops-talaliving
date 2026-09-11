@@ -62,7 +62,27 @@ insert into core.settings (key, value, note) values
   ('late_after_minutes', '480'::jsonb,
    'The office day starts at 08:00; a tap past this is late. What a late minute COSTS is not set here — that is a decision, typed by a person with a reason (D155, Q41).'),
   ('duplicate_window_days', '7'::jsonb,
-   'How far back a similar transaction is looked for before the screen warns. Warns, never blocks (A6).');
+   'How far back a similar transaction is looked for before the screen warns. Warns, never blocks (A6).'),
+  ('payment_tolerance_idr', '1000'::jsonb,
+   'Below this, a gap between what was approved and what was paid is arithmetic, not a variance. Reporting rounding as an exception is how people learn to ignore exceptions. One home for it, because john-lau ended up with three different tolerances in three files.');
+
+-- Read by every view that compares two amounts. `stable` so Postgres evaluates
+-- it once per statement rather than once per row, which is the difference
+-- between a lookup and a join nobody wrote.
+create or replace function core.setting_num(p_key text)
+returns numeric
+language sql stable security definer set search_path = core, pg_temp as $$
+  select (value #>> '{}')::numeric from core.settings where key = p_key
+$$;
+
+-- Named, because `core.setting_num('payment_tolerance_idr')` inside six views is
+-- six chances to mistype the key into a silent null — and a null tolerance makes
+-- every comparison false, which reads as "nothing is ever settled".
+create or replace function core.money_tolerance()
+returns numeric
+language sql stable security definer set search_path = core, pg_temp as $$
+  select coalesce(core.setting_num('payment_tolerance_idr'), 1000)
+$$;
 
 alter table core.audit_log enable row level security;
 alter table core.outbox    enable row level security;
@@ -207,3 +227,9 @@ returns boolean language sql immutable as $$
 $$;
 
 grant select on core.audit_log, core.outbox, core.settings to authenticated;
+grant execute on function core.setting_num(text), core.money_tolerance(),
+                          core.said_ok(jsonb) to authenticated;
+-- The envelope wrappers are NOT granted to `authenticated`. They write audit
+-- rows, and a client that could call `core.ok(...)` directly could forge a trail
+-- saying anything it liked. They are reachable only from inside the seams, which
+-- run as definer and are granted one by one.

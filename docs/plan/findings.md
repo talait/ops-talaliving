@@ -2251,3 +2251,34 @@ is how the first preview came back saying *nothing changes*. The fixture now
 has one (Sumiati leaves at 14:47 on the third), and turning the rule on moves
 her week by Rp 23.963. That is the number the decision needs, and it did not
 exist until somebody had to look at it.
+
+## F51 — a finished project made a finished drawing look ten weeks late
+
+The drafting queue is sorted by the date the job actually needs each drawing,
+which means it has to work out what "needed by" is. The first version took the
+soonest of: the open work orders' due dates, the task's own due date, and the
+target dates of every project that ordered the product.
+
+It read, against a drawing released three weeks ago with nothing outstanding:
+
+> **Lemari pakaian 3 pintu — lewat 74 hari**
+
+Seventy-four days before today is 29 June. Nothing live is due then. The date
+came from **OFFICE FITOUT**, a project handed over in June, closed, inactive —
+which happens to have a line for the same wardrobe. A target date on a finished
+job is not a deadline, and treating it as one did the specific damage this
+project keeps finding: it did not just show a wrong number, it **moved a real
+deadline down the queue**, because the rak display genuinely due in three days
+sorted below it.
+
+Two fixes, and the second is the more interesting one:
+
+- Only **active** projects contribute a date. A closed job's target date is
+  history.
+- A released, current, unblocked task shows **selesai**, not a countdown. Its
+  deadline passed because the work was done; painting that red teaches the
+  drafter to ignore red.
+
+The general rule this is the third instance of: a derived date is as capable of
+being quietly wrong as a derived figure, and a wrong date is worse, because
+sorting by it hides the right one.

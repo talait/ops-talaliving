@@ -21,6 +21,7 @@ import type {
 } from "@/services/hr/contracts";
 import type {
   WorkOrder, ProgressEntry, Product, BomComponent,
+  DesignTask, DesignRevision, DesignQuestion,
 } from "@/services/production/contracts";
 
 export interface DemoUser extends User {
@@ -140,6 +141,11 @@ export interface DemoState {
   /** What we sell and make, and what each one is made of (D149). */
   products: Product[];
   bom_components: BomComponent[];
+  /** The drafters' queue: what has to be drawn, which revision the floor may
+   *  cut from, and what is stuck on an answer (D179). */
+  design_tasks: DesignTask[];
+  design_revisions: DesignRevision[];
+  design_questions: DesignQuestion[];
 
   /* --- inventory: stock -------------------------------------------- */
   /** Where stock lives, and how low is too low. Settings, not quantities —

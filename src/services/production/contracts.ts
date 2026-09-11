@@ -241,3 +241,142 @@ export interface ProductView extends Product {
   broken_refs: number;
   warnings: string[];
 }
+
+/* ── Desain: the drafters' queue ───────────────────────────────────────────
+ *
+ *  The drawings themselves already exist as documents on a product (D150). What
+ *  the drafting team has never had is the **queue** (D167): which items are
+ *  ordered or already on the floor with no drawing behind them, whose turn each
+ *  one is, which revision the workshop is actually cutting from, and what is
+ *  stuck waiting for an answer nobody has given.
+ *
+ *  Three things this deliberately is not:
+ *
+ *  - **Not a file browser.** The files are on the product, on the same evidence
+ *    road as everything else. This is the work, not the folder.
+ *  - **Not a CAD integration.** A revision is a file somebody uploads with a
+ *    number on it; what makes it useful is that the system knows which one was
+ *    released and which one came after.
+ *  - **Not an approval chain.** A drawing is released by the drafter who made
+ *    it. What needs somebody else is a *question*, and that is its own row.
+ */
+export type DesignKind = "gambar_kerja" | "gambar_jadi";
+
+export const DESIGN_KIND_LABEL: Record<DesignKind, string> = {
+  gambar_kerja: "Gambar kerja",
+  gambar_jadi: "Gambar jadi",
+};
+
+/** Where a drawing has got to. Deliberately four, because a fifth would be a
+ *  state nobody could tell apart from its neighbour at a glance. */
+export type DesignStatus =
+  /** Nobody has started. */
+  | "BELUM"
+  /** Somebody is drawing it. */
+  | "DIGAMBAR"
+  /** Drawn, and waiting on an answer before it can be released. */
+  | "TANYA"
+  /** Released — the workshop may cut from it. */
+  | "RILIS";
+
+export const DESIGN_STATUS_LABEL: Record<DesignStatus, string> = {
+  BELUM: "Belum digambar",
+  DIGAMBAR: "Sedang digambar",
+  TANYA: "Menunggu jawaban",
+  RILIS: "Sudah rilis",
+};
+
+export interface DesignTask {
+  id: string;
+  task_no: string;
+  /** `prod.products.product_code`. A task belongs to a product, not to an
+   *  order: the same table is drawn once and used by every order after. */
+  product_code: string;
+  kind: DesignKind;
+  status: DesignStatus;
+  /** Who is drawing it. Null is honest — an unassigned task is the queue's
+   *  most useful row. */
+  assignee: string | null;
+  /** When it is needed by. Set by hand, or left null and taken from the job. */
+  due_date: string | null;
+  note: string | null;
+  created_by: string;
+  created_at: string;
+}
+
+/** One upload. Append-only: revision B does not replace revision A, it follows
+ *  it — which is the only way to answer "what was the workshop cutting from in
+ *  August" (A5, D179). */
+export interface DesignRevision {
+  id: string;
+  task_id: string;
+  /** `A`, `B`, `C`. The drafter's own numbering, carried verbatim. */
+  rev: string;
+  attachment_id: string | null;
+  filename: string | null;
+  note: string | null;
+  /** Set when this revision is the one the workshop may build from. A revision
+   *  uploaded and not released is a draft, and the floor must not see it. */
+  released_at: string | null;
+  released_by: string | null;
+  uploaded_by: string;
+  uploaded_at: string;
+}
+
+/** Something the drafter cannot answer alone — a dimension the client has not
+ *  confirmed, a joint the workshop has to agree to. It blocks the task, by
+ *  design: a drawing released over an unanswered question is a drawing the
+ *  workshop will build wrong. */
+export interface DesignQuestion {
+  id: string;
+  task_id: string;
+  /** Who is being asked: `klien`, `pimpinan`, `produksi`. Free text, because
+   *  the real answer is a person and the list would go stale. */
+  asked_of: string;
+  question: string;
+  answer: string | null;
+  asked_by: string;
+  asked_at: string;
+  answered_by: string | null;
+  answered_at: string | null;
+}
+
+export interface DesignRevisionView extends DesignRevision {
+  uploaded_by_name: string;
+  released_by_name: string | null;
+}
+
+export interface DesignQuestionView extends DesignQuestion {
+  asked_by_name: string;
+  answered_by_name: string | null;
+  /** Days it has been waiting. The number that turns a polite question into a
+   *  visible blockage. */
+  waiting_days: number | null;
+}
+
+export interface DesignTaskView extends DesignTask {
+  product_name: string;
+  category: string;
+  /** Millimetres, or null — a drawing for a product with no size is the
+   *  drafter's first question, not their last (D150). */
+  dimension: string | null;
+  revisions: DesignRevisionView[];
+  questions: DesignQuestionView[];
+  /** The revision the workshop may cut from, and the newest one that exists. */
+  released_rev: string | null;
+  latest_rev: string | null;
+  /** **The dangerous case**: a newer revision exists and has not been released,
+   *  so the floor is still building from the older one (D179). */
+  ahead_of_release: boolean;
+  /** Open questions block, whatever the status says. */
+  blocked: boolean;
+  /** Which orders and work orders are waiting on this drawing, by public code
+   *  (ADR-004). */
+  ordered_by: string[];
+  work_orders: { wo_no: string; due_date: string; status: WorkOrderStatus }[];
+  /** The soonest date anything needing this drawing is due. Null when nothing
+   *  is waiting — which is a fine reason not to draw it yet. */
+  needed_by: string | null;
+  /** Days until `needed_by`, negative when it is already late. */
+  days_left: number | null;
+}

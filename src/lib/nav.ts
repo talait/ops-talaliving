@@ -112,7 +112,7 @@ export const NAV: NavSection[] = [
     title: "Production",
     icon: Hammer,
     items: [
-      { label: "Design", href: "/produksi/desain", icon: PencilRuler, permission: "production.read" },
+      { label: "Design", href: "/produksi/desain", icon: PencilRuler, permission: "production.read", badge: "new" },
       { label: "Products & BOM", href: "/produksi/bom", icon: ListTree, permission: "production.read", badge: "core" },
       { label: "Planning & Schedule", href: "/produksi/jadwal", icon: CalendarClock, permission: "production.read", badge: "new" },
     ],

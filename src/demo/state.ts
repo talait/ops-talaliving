@@ -1,4 +1,6 @@
-import type { Session, User, ModuleGrant, Authority } from "@/services/identity/contracts";
+import type {
+  Session, User, ModuleGrant, Authority, ActivityEvent, ActivityDaily,
+} from "@/services/identity/contracts";
 import type {
   Vendor, Uom, UomConversion, ItemCategory, Item, Project, ProjectLine,
   PrDocument, PrLine, PrApproval, PaymentRound, PaymentRoundLine,
@@ -184,6 +186,10 @@ export interface DemoState {
   scrape_rows: ScrapeRow[];
 
   audit_log: AuditRow[];
+  /** What people *did*, as opposed to what changed: kept 30 days in detail,
+   *  rolled up daily, and those recaps kept six months (D188, Q22). */
+  activity_events: ActivityEvent[];
+  activity_daily: ActivityDaily[];
   outbox: OutboxRow[];
 
   /** The `core.doc_numbers` table: prefix + office day -> sequence.

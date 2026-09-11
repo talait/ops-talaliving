@@ -2344,3 +2344,43 @@ translates between them it owns a mapping that nobody maintains.
 The same shape has now appeared three times in this project: a document kind
 stored as a display string (C1), a category rebuilt from a name, and this. Each
 time the honest version is to carry the key and show the label.
+
+---
+
+## F54 — the four screens that were finished because they existed
+
+The question was *"Yang IT sudah lengkap?"* and the honest answer took ten
+minutes to establish: no. The module had five entries on the menu, one of them
+real. `/it/aturan-gaji` had been built two milestones earlier and worked.
+`/it/audit`, `/it/aktivitas`, `/it/pengguna` and `/it/peran` were placeholder
+pages — a heading, a sentence, and no data path at all.
+
+None of them looked broken. They routed, they rendered, they sat in the nav
+beside the real one, and `npx next build` reported all five as static pages of
+roughly the same size. Nothing in the build, the type check or the lint could
+have told the difference, because a page that renders a paragraph is a valid
+page. The only signal was the menu: a module whose screens are all one click
+deep and none of them ask the store a question.
+
+Two things follow from this.
+
+The first is about the audit trail specifically. D45 decided, back in M2, that
+**the audit seam ships before the audit module** — every write records its row
+from the first milestone, and the screens come later. That was the right call
+and it held: when the screens were finally written, twenty-three write paths
+already had rows waiting, including refusals, and nothing had to be
+back-filled. But the cost of the call is exactly this finding — a module that
+reads as done for thirty-one milestones because the expensive half of it was
+finished first and the cheap half was never noticed missing.
+
+The second is about the board. Every milestone row in `README.md` is written as
+prose about what was built, which makes it very good at recording work and
+useless at recording absence. There is no row that says *IT has five screens
+and one of them is real*, because nobody writes a milestone about a screen they
+did not build. The placeholder list at the bottom of `backlog.md` exists for
+this and these four were not on it.
+
+So: **a placeholder is a finding, not a file.** When a route is created to hold
+a place, the same commit adds it to the backlog's placeholder list — otherwise
+the menu is the only record that it is empty, and the menu is the one artefact
+that makes it look full.

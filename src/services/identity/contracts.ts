@@ -105,3 +105,92 @@ export interface Session extends UserAccess {
 /* Permission expansion lives in `src/lib/roles.ts`, which owns the catalogue
  * of what each module actually offers. Keeping it there means the list a human
  * reviews and the list the code expands are the same list. */
+
+
+/* ── What people did: the audit trail, and the activity log ───────────────
+ *
+ *  Two different questions, deliberately two different records (D188).
+ *
+ *  **Audit** answers *what happened to this row* — who approved it, what the
+ *  amount was before and after, which refusal was logged and why. It is
+ *  evidence about **records**, it is written by every mutation in the system,
+ *  and it is never deleted (A5, D84).
+ *
+ *  **Activity** answers *what did this person do today* — which screens they
+ *  opened, what they looked at. It is evidence about **people**, and that is
+ *  why it does not live for ever (owner, answering Q22):
+ *
+ *  - the detail is kept **30 days**;
+ *  - every day is rolled up into a **per-person recap**, kept **6 months**;
+ *  - after that, both are gone.
+ *
+ *  The recap is **stored, not derived** — the one place in this system where
+ *  that is right, because it has to outlive the rows it was computed from.
+ */
+
+/** One thing somebody did. Coarse on purpose: a screen opened, a document
+ *  printed, a file exported. Keystroke-level detail would be surveillance
+ *  nobody asked for. */
+export interface ActivityEvent {
+  id: string;
+  at: string;
+  actor_id: string;
+  actor_email: string;
+  /** `view`, `export`, `print`, `sign_in`, `sign_out`. */
+  kind: string;
+  /** The screen or object: `/hrd/payroll/pyr-26-09-06_01`. */
+  target: string;
+  /** A short human label, so a recap reads as sentences rather than paths. */
+  label: string;
+}
+
+/** One person, one day, in numbers. Written at the end of the day and kept
+ *  six months — long after the events behind it are gone. */
+export interface ActivityDaily {
+  id: string;
+  day: string;
+  actor_id: string;
+  actor_email: string;
+  full_name: string;
+  events: number;
+  /** First and last thing they did, in office time. */
+  first_at: string | null;
+  last_at: string | null;
+  /** The screens they spent the day in, most-used first. */
+  top_screens: { label: string; count: number }[];
+  /** How many of their acts changed something, taken from the audit trail —
+   *  the difference between a day of reading and a day of deciding. */
+  changes: number;
+  /** Refusals they ran into. A person hitting three 403s in a day is either
+   *  missing a grant or doing somebody else's job. */
+  refusals: number;
+}
+
+export interface RetentionStatus {
+  /** The two rules, in days, as the owner set them (Q22). */
+  detail_days: number;
+  recap_months: number;
+  events_total: number;
+  /** Events past the 30-day line: due to be deleted, and still here. */
+  events_expiring: number;
+  oldest_event: string | null;
+  recaps_total: number;
+  recaps_expiring: number;
+  oldest_recap: string | null;
+  /** Days that have events but no recap yet — the gap that would lose the day
+   *  entirely once its events expire. */
+  days_unrolled: number;
+}
+
+export interface AuditRowView {
+  id: string;
+  at: string;
+  actor_email: string;
+  service: string;
+  entity: string;
+  entity_no: string;
+  action: string;
+  outcome: "ok" | "refused" | "duplicate" | "noop";
+  reason: string | null;
+  detail: Record<string, unknown> | null;
+}

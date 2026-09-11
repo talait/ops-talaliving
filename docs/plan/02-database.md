@@ -486,7 +486,7 @@ table because they fail differently.
 |---|---|---|---|
 | **`core.audit_log`** — changes | who changed what, from what, to what, and was it refused | the same transaction as the change itself | **High.** Not the table — the *seam*. Retrofitting means finding every write path and hoping none was missed |
 | **session events** | who was in the system, when, and as whom | the identity service | Low. A handful of call sites, all in one service |
-| **`core.activity_log`** — reads | who *looked at* the ledger, HR records, a salary | the request layer, gated and sampled | Low to add, but it is the one with a real policy question attached: how long is it kept, and who may read the log of who read what |
+| **`core.activity_events` + `core.activity_daily`** — reads | who *looked at* the ledger, HR records, a salary — and what a person did with their whole day | the request layer, gated; the recap by a nightly roll-up | Low to add. The policy question attached to it is now half answered: retention is set (D188), readership is not — it defaults to `it.read` |
 
 **Only the first has to be early**, and it is early for a reason that is not
 about storage: an audit row written *after* the fact is a story, and an audit
@@ -497,12 +497,43 @@ definition of done and is enforced today across every write in the demo layer.
 **Sessions are recorded from M2**, because a trail that cannot say who was
 signed in cannot answer the first question anyone asks it.
 
-**Reads are not logged yet, deliberately.** It is the only trail that grows
-without bound, the only one that costs something on every request, and the only
-one where retention is a policy the owner has to set rather than a default we
-can pick (§10.2 q8 leaves exactly this open). It is a middleware concern, not a
-schema one, so building it later costs a middleware and a table — not a hunt
-through the codebase.
+**Reads are logged from M34, under the retention the owner set** (Q22, D188).
+The third trail is now two tables, because thirty days of detail and six months
+of recap are two different lifetimes:
+
+```
+core.activity_events                       -- the detail. 30 days.
+  id, at timestamptz, user_id, module,
+  action text,                             -- view | export | print | search | open
+  entity text, entity_id text,
+  summary text                             -- what it was, in words, for when the row outlives the thing
+  -- retention: deleted past DETAIL_DAYS, and only for a day already rolled up
+
+core.activity_daily                        -- the recap. 6 months.
+  day date, user_id,                       -- primary key (day, user_id)
+  events int, modules text[],
+  changes int, refusals int,               -- taken from core.audit_log, not from the events
+  first_at timestamptz, last_at timestamptz,
+  headline text,
+  rolled_up_at timestamptz
+  -- retention: deleted past RECAP_MONTHS
+```
+
+`activity_daily` is **the one stored derived figure in this system**, and the
+exception is deliberate (D188): its source rows are gone at day 31, so
+computing it on read would answer *0 aktivitas* for every day older than a
+month — not a missing number, a wrong one. `changes` and `refusals` come from
+`audit_log`, which is never purged, so a recap can always be checked against
+the trail that outlives it.
+
+**Purging is the only deletion in the schema** (D189). Everything else voids
+(D9). It is fenced three ways: it touches `activity_events` only, only past the
+retention edge, and only for days that already have a recap row — a day without
+one is refused **by name**, never skipped quietly.
+
+`core.audit_log` has no retention at all. It is the evidence behind every
+figure the system prints, and a purged audit row is a past number nobody can
+explain.
 
 `core.audit_log` is append-only and has **no** hash chain in v1. §10.2 q8
 records that the audit triggers were written and never run because they touch

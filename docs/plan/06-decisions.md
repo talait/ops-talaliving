@@ -14,6 +14,8 @@ gets had twice.
 
 | # | Date | Decision | Why |
 |---|---|---|---|
+| 188 | 2026-09-12 | **Two trails, two rules. The audit log is never deleted; the activity log keeps 30 days of detail and six months of daily recap** — and the daily recap is the one derived figure this project stores, because it has to outlive the rows it was computed from | owner (Q22): *activity log secara detil bisa dijaga dalam rentang 30 hari sementara tiap hari harus di rekap user ini ngapain aja seharian. Lalu rekapan harian ini di jaga selama 6 bulan*. They answer different questions and so they cannot share a rule: the audit log says what changed and is the evidence behind every figure in the system, so deleting a row of it would make a past number unexplainable; the activity log says what a person did with their day, which is useful for a season and becomes surveillance for a decade. The recap breaks D-derived-on-read (D63) on purpose and it is the only place that does: the detail is gone at day 31, so a recap computed on read would return zero for every day older than a month — a figure that is not missing but wrong, which is the one thing forbidden here |
+| 189 | 2026-09-12 | **Purging is the only deletion in the system, it runs as a rule rather than as a correction, and it refuses any day that has no recap yet** — `purgeActivity` returns the blocked days by name instead of taking the nearest number | every other removal in this system is a VOID that leaves the row (D9). This one genuinely deletes, so it is fenced: it deletes only `activity_events`, only past the retention edge, and only for days already summarised. Rolling up is therefore a precondition and not a convenience — a purge that ran first would destroy the day and answer *0 aktivitas* about it forever. The screen shows the count of days in that state (*5 hari punya detail tapi belum punya rekap*) before either button is pressed |
 | 1 | 2026-09-10 | **Phase 1 is a frontend on demo data, deployed to Vercel.** No database until it is walked and signed off | ADR-009. The rules were never specified; you find them by walking a workflow, not by designing a schema |
 | 2 | 2026-09-10 | Keep this repo's design system unchanged — shell, tokens, components, two keyframes, menu-as-data, details-in-a-drawer | it is finished and it is good; restyling would spend the fortnight on nothing |
 | 3 | 2026-09-10 | Procurement and accounting only. Everything else keeps its honest placeholder | leanest path; those two are where the money is |
@@ -204,6 +206,14 @@ gets had twice.
 
 ---
 
+**Q22 — answered 2026-09-12, half of it.** *How long is the access log kept,
+and who may read it?* The owner answered the retention half exactly: 30 days
+of detail, six months of daily recap (D188). **The readership half was not
+answered**, and the module now defaults to `it.read` plus a person seeing
+their own row — a default taken, not a decision made, and it is the kind of
+default D47 warned about being set by accident. It stays cheap to change:
+one scope check in `listActivity`.
+
 ## Open questions — with the default we take until told otherwise
 
 These are the owner's own unanswered questions from §10.2 of the rekap, plus
@@ -229,7 +239,6 @@ them**: the demo can show two versions of a screen and let the owner point.
 | Q27 | **Rp 21.720.000 of purchases went out with no approved line or order behind them. Is that a normal rate, or a target to drive to zero?** | **Shown, not judged.** The liquidation report names it per transfer and the inbox exists to convert it into a decision after the fact. No threshold, no alert, until somebody says what "too much" is — a number invented here would become a target nobody agreed | low |
 | Q5 | BOM: per product or per order? Layered or flat? Are PRs made *from* a BOM? | **Not modelled at all.** The standing instruction is "do not invent it" | n/a — deliberately absent |
 | Q7 | How is `PAID_UNAPPROVED` handled — recover or write off? | **Neither automatically.** It is terminal, flagged to leadership, never deleted. The policy is the owner's | low |
-| Q22 | **How long is the access log kept, and who may read it?** Logging who looked at a salary or the ledger is requested but not built (D47). | **Not decided, and not defaulted** — this one is policy, not a technical choice, and picking a default quietly is how a surveillance decision gets made by accident. Needed before read logging is switched on, not before Phase 2 starts | low now, high once it is collecting |
 | Q21 | **When multi-language arrives, which languages and who chooses?** | **Not designed now.** `LOCALE` is a single constant that becomes a session value; UI strings are not yet extracted into a message catalogue, and doing that before there is a second language is work with no reader | low now, moderate once screens multiply |
 | Q10 | What is transaction type `EJO` — 77 transactions, Rp529 M, unclassified? | **Carried as-is, unclassified, and shown**. Never quietly folded into `OTHERS` | low |
 | Q13 | What is the app actually called, and what is the brand colour? | **Placeholders stay** (`MANUFAKTUR OS`, `#2f6b52`), isolated in `src/lib/brand.ts` and the `brand` scale. Changing the colour means deriving the whole 50–950 scale, plus `BRAND` in `charts.tsx` and `themeColor` in `layout.tsx` | trivial while it stays in one place |

@@ -27,6 +27,21 @@ that only shows what is left teaches nobody anything.
 | S5 | ~~**Rekening koran upload for the leadership accounts**~~ | **built 2026-09-11 (M31)** — `/accounting/rekening-koran`, D180–D182. Q42 answered: the statement is the only road, and the USD rate is typed per line |
 | S6 | ~~**Package: the agent-commission programme**~~ | **built 2026-09-12 (M32)** — `/marketing/pipeline` and `/marketing/agen`, D183–D186, from the owner's own pipeline dashboard as the reference |
 
+## Placeholder screens — routes that exist and hold nothing
+
+**A placeholder is a finding, not a file** (F54). A route created to hold a
+place goes on this list in the same commit, because the menu is the only other
+record that it is empty and the menu is what makes it look full.
+
+| Route | What it should hold | Status |
+|---|---|---|
+| `/it/audit` · `/it/aktivitas` · `/it/pengguna` · `/it/peran` | ~~the two trails, the grants, the catalogue~~ | **built 2026-09-12 (M34)** — they were placeholders for thirty-one milestones and nothing in the build could say so (F54) |
+| `/proyek/pengiriman` | delivery of finished goods to the site | open |
+| `/proyek/instalasi` | installation on site, and what it found | open |
+| `/proyek/serah-terima` | handover, and what the client signed | open |
+| `/pengaturan` | the settings that are today constants in `src/lib/` | open |
+| `/accounting/payslip` | nothing — it duplicates `/hrd/payroll`. Decide whether accounting reads payslips at all, then build or remove | open |
+
 ## Asked for, not yet scheduled
 
 | # | What | Note |

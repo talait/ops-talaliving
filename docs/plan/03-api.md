@@ -97,6 +97,21 @@ All three or none. Never a business row without its audit row.
 | PUT | `/users/{id}/authorities` | grant or revoke `approve_goods` · `approve_funds` · `post_ledger` · `resolve_inbox`. **Separate from modules, deliberately** (D24) |
 | GET | `/modules`, `/authorities` | the catalogs, read from the database |
 
+### The two trails
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/audit` | the change trail. Filters: actor, entity, action, `outcome` (`ok` · `refused` · `duplicate` · `noop`), date range. **Refusals are listed beside successes**, not hidden — a trail of only what worked is missing the half people argue about. `it.read`. **No delete route exists at any level** |
+| GET | `/activity` | the read trail, detail. Last `DETAIL_DAYS` (30) only; older days answer from `/activity/daily`, and the endpoint says which it is answering from rather than returning an empty list. `it.read`, or your own rows |
+| GET | `/activity/daily` | the recap, last `RECAP_MONTHS` (6). One row per person per day: events, modules touched, changes and refusals taken from the audit trail, first and last activity, a one-line headline |
+| GET | `/activity/retention` | the two edges as dates, the days holding detail, the days holding a recap, and **the days that have detail but no recap yet** — the number both buttons below depend on |
+| POST | `/activity/roll-up` | `{day}` → writes the recap for that day. Idempotent: a second call is `duplicate`, not a second row. This is a nightly job in Phase 2; the button exists so the rule is visible rather than magic |
+| POST | `/activity/purge` | `{before}` → deletes detail rows older than the retention edge. **422 `blocked_days`** naming every day in the range that has no recap yet — it refuses the whole call rather than purging around them (D189). The only deleting endpoint in the API |
+
+`POST /activity/roll-up` is a **precondition** of the purge, not a convenience:
+purging first would destroy the day and leave the system answering *0
+aktivitas* about it forever.
+
 **Note on `src/lib/roles.ts`.** Today the catalog lives in code, which the
 existing README defends well: a fresh database can be bootstrapped without
 anyone guessing what roles should exist. We keep that — the file stays the

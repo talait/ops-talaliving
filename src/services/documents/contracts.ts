@@ -16,6 +16,10 @@ export const DOC_KINDS = [
   /** A shop page, a marketplace listing, a quotation somebody sent a link to.
    *  What a request is usually built from before any nota exists (D125). */
   "Reference Link",
+  /** The bank's own statement. For the two leadership accounts it is not a
+   *  check on rows somebody typed — it is the **only** way their rows exist at
+   *  all, so it stands as evidence in its own right (D180). */
+  "Rekening Koran",
   /** HR evidence. A day off sick is paid **only** with the doctor's letter
    *  behind it, and overtime reaches leadership only with the surat lembur
    *  attached (D144, D145) — so both are document kinds like any other, on the
@@ -31,6 +35,19 @@ export const DOC_KINDS = [
    *  a product somebody will have to ask about (D150). */
   "Gambar Kerja",
   "Gambar Jadi",
+  /** Berkas 201 — the personnel file. Each of these is a document like any
+   *  other, on the same road, so a person's file is a strip of evidence rather
+   *  than a folder on somebody's laptop (D177). */
+  "KTP",
+  "Kartu Keluarga",
+  "Ijazah",
+  "CV",
+  "Kontrak Kerja",
+  "NPWP",
+  "BPJS",
+  "Foto",
+  "Sertifikat",
+  "Surat Peringatan",
   "Others",
 ] as const;
 export type DocKind = (typeof DOC_KINDS)[number];
@@ -47,6 +64,9 @@ export const PRIMARY_DOC_KINDS: DocKind[] = [
   "Receipt / Invoice / Nota",
   "Payment Proof",
   "Receiving Item",
+  /* A bank statement evidences the movement better than a transfer proof does:
+     it is the bank's own record rather than a screenshot of one (D180). */
+  "Rekening Koran",
 ];
 
 export const SUPPORTING_DOC_KINDS: DocKind[] = [
@@ -94,7 +114,9 @@ export type LinkEntity =
   | "transaction" | "pr_line" | "po" | "receipt"
   | "day_mark" | "overtime"
   /** A product's drawings — master data, not evidence of an event (D150). */
-  | "product";
+  | "product"
+  /** Somebody's own file: KTP, ijazah, the contract they signed (D177). */
+  | "employee";
 
 /** A piece of evidence — a **file or a link**, never both.
  *

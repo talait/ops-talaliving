@@ -5,12 +5,18 @@
  *  cubic metre** (D153). Everything here is in service of pricing the second
  *  one honestly.
  */
-import { ok, invalid, notFound, type Result } from "@/services/_shared/envelope";
+import { ok, noop, invalid, notFound, type Result } from "@/services/_shared/envelope";
 import type {
   LogPurchaseView, LogMeasure, TimberVendorSummary,
+  StockItemView, StockItemDetail, StockLocation, StockMove, StockMoveView,
 } from "@/services/inventory/contracts";
-import { getState, apply, newId, nextDocNumber, writeAudit } from "../store";
-import { logPurchaseView, logPurchaseViews, timberVendorSummaries } from "../inventory-derive";
+import type { DemoState } from "../state";
+import { getState, apply, newId, nextDocNumber, writeAudit, writeOutbox } from "../store";
+import {
+  logPurchaseView, logPurchaseViews, timberVendorSummaries,
+  stockItems, stockItemDetail, stockMoveViews,
+} from "../inventory-derive";
+import { STOCKED_CATEGORIES } from "../fixtures/reference";
 import { latency, actingUser, requireModule, conflict, replayed, remember } from "./_kit";
 
 const SERVICE = "inventory" as const;
@@ -244,4 +250,342 @@ export async function markLogSawn(
     });
   });
   return getLogPurchase(p.purchase_no);
+}
+
+/* ── Stock ──────────────────────────────────────────────────────────────── */
+
+/** The rack: what is on it, what it cost, and what is about to run out.
+ *
+ *  Every quantity here is the sum of the moves (D170). Nothing is stored, so
+ *  nothing can disagree with its own history — which is the failure this module
+ *  exists to avoid, because the version of it that runs on a spreadsheet has
+ *  been wrong since the day somebody forgot a row.
+ */
+export async function listStock(
+  opts: { q?: string; group?: string; location?: string; low_only?: boolean } = {},
+): Promise<Result<StockItemView[]>> {
+  await latency();
+  const state = getState();
+  let rows = stockItems(state);
+
+  if (opts.group) rows = rows.filter((r) => r.group_code === opts.group || r.category_code === opts.group);
+  if (opts.location) rows = rows.filter((r) => r.by_location.some((l) => l.location === opts.location));
+  if (opts.low_only) rows = rows.filter((r) => r.below_min);
+  if (opts.q) {
+    const q = opts.q.toLowerCase();
+    rows = rows.filter((r) => `${r.item_code} ${r.item_name} ${r.category_name}`.toLowerCase().includes(q));
+  }
+  return ok(SERVICE, rows);
+}
+
+export async function getStockItem(itemCode: string): Promise<Result<StockItemDetail>> {
+  await latency();
+  const detail = stockItemDetail(getState(), itemCode);
+  if (!detail) {
+    return notFound(
+      SERVICE, "item_not_stocked",
+      `${itemCode} is not an item this system counts — either it does not exist, or its category is one that is bought and used the same day.`,
+    );
+  }
+  return ok(SERVICE, detail);
+}
+
+export async function listStockLocations(): Promise<Result<StockLocation[]>> {
+  await latency();
+  return ok(SERVICE, getState().stock_locations.filter((l) => l.is_active));
+}
+
+export async function listStockMoves(
+  filter: { item_code?: string; ref_no?: string } = {},
+): Promise<Result<StockMoveView[]>> {
+  await latency();
+  return ok(SERVICE, stockMoveViews(getState(), filter));
+}
+
+/** Writing one move. The single road every stock change takes, so the audit
+ *  row and the reason cannot be forgotten by one caller and remembered by
+ *  another (ADR-006). */
+function writeMove(
+  draft: DemoState,
+  input: {
+    item_code: string; location: string; kind: StockMove["kind"]; qty: number;
+    uom: string; unit_cost?: number | null; ref_no?: string | null; reason?: string | null;
+  },
+  userId: string,
+  userEmail: string,
+): StockMove {
+  const move: StockMove = {
+    id: newId("stm"),
+    move_no: nextDocNumber(draft, "stk"),
+    item_code: input.item_code,
+    location: input.location,
+    kind: input.kind,
+    qty: input.qty,
+    uom: input.uom,
+    unit_cost: input.unit_cost ?? null,
+    ref_no: input.ref_no ?? null,
+    reason: input.reason?.trim() || null,
+    moved_by: userId,
+    moved_at: new Date().toISOString(),
+  };
+  draft.stock_moves.push(move);
+  writeAudit(draft, {
+    service: SERVICE, entity: "stock_move", entity_no: move.move_no,
+    action: input.kind, outcome: "ok", reason: move.reason,
+    detail: { item: move.item_code, qty: move.qty, location: move.location, ref: move.ref_no, by: userEmail },
+  });
+  return move;
+}
+
+/** What the item is measured in, and whether it is counted at all. */
+function stockable(state: DemoState, itemCode: string) {
+  const item = state.items.find((i) => i.code === itemCode);
+  if (!item) return { ok: false as const, why: `No catalogue item ${itemCode}.` };
+  if (!STOCKED_CATEGORIES.has(item.category_code)) {
+    return { ok: false as const, why: `${item.name} sits in ${item.category_code}, which is not counted — it is bought and used, not stocked (D169).` };
+  }
+  return { ok: true as const, item };
+}
+
+/** Taking material out to the floor.
+ *
+ *  Issuing more than the record shows is **allowed and flagged**, never
+ *  refused (A6). The wood is either on the rack or it is not, and a screen
+ *  that refuses to record what a storeman just carried out teaches him to stop
+ *  recording. What it must not do is stay quiet: the response says the stock
+ *  went negative, which is a counting problem somebody has to resolve, not a
+ *  reason to stop work.
+ */
+export async function issueStock(
+  input: { item_code: string; location: string; qty: number; wo_no?: string | null; reason?: string | null },
+  idempotencyKey?: string,
+): Promise<Result<{ move_no: string; on_hand_after: number; went_negative: boolean }>> {
+  await latency();
+  const cached = replayed<{ move_no: string; on_hand_after: number; went_negative: boolean }>(SERVICE, "issueStock", idempotencyKey);
+  if (cached) return cached;
+
+  const denied = requireModule(SERVICE, "inventory");
+  if (denied) return denied;
+  if (input.qty <= 0) {
+    return invalid(SERVICE, "qty_invalid", "Jumlah keluar harus lebih dari nol.", { field: "qty" });
+  }
+
+  const state = getState();
+  const check = stockable(state, input.item_code);
+  if (!check.ok) return invalid(SERVICE, "not_stocked", check.why, { field: "item_code" });
+
+  const before = stockItems(state).find((r) => r.item_code === input.item_code)?.on_hand ?? 0;
+  const after = Math.round((before - input.qty) * 1000) / 1000;
+
+  const user = actingUser();
+  let moveNo = "";
+  apply((draft) => {
+    const move = writeMove(draft, {
+      item_code: input.item_code, location: input.location, kind: "issue",
+      qty: -Math.abs(input.qty), uom: check.item.base_uom,
+      ref_no: input.wo_no ?? null, reason: input.reason ?? null,
+    }, user.id, user.email);
+    moveNo = move.move_no;
+    writeOutbox(draft, {
+      service: SERVICE, event_type: "inventory.stock.issued",
+      payload: { item_code: input.item_code, qty: input.qty, wo_no: input.wo_no ?? null, on_hand_after: after },
+    });
+  });
+
+  const result = { move_no: moveNo, on_hand_after: after, went_negative: after < 0 };
+  remember(SERVICE, "issueStock", idempotencyKey, result);
+  return ok(SERVICE, result);
+}
+
+/** Material coming back unused. */
+export async function returnStock(
+  input: { item_code: string; location: string; qty: number; wo_no?: string | null; reason?: string | null },
+): Promise<Result<{ move_no: string; on_hand_after: number }>> {
+  await latency();
+  const denied = requireModule(SERVICE, "inventory");
+  if (denied) return denied;
+  if (input.qty <= 0) return invalid(SERVICE, "qty_invalid", "Jumlah kembali harus lebih dari nol.", { field: "qty" });
+
+  const state = getState();
+  const check = stockable(state, input.item_code);
+  if (!check.ok) return invalid(SERVICE, "not_stocked", check.why, { field: "item_code" });
+
+  const before = stockItems(state).find((r) => r.item_code === input.item_code)?.on_hand ?? 0;
+  const user = actingUser();
+  let moveNo = "";
+  apply((draft) => {
+    moveNo = writeMove(draft, {
+      item_code: input.item_code, location: input.location, kind: "return",
+      qty: Math.abs(input.qty), uom: check.item.base_uom,
+      ref_no: input.wo_no ?? null, reason: input.reason ?? null,
+    }, user.id, user.email).move_no;
+  });
+  return ok(SERVICE, { move_no: moveNo, on_hand_after: Math.round((before + input.qty) * 1000) / 1000 });
+}
+
+/** An opname: what the rack actually held.
+ *
+ *  The form takes the **counted** quantity, not the difference, because that is
+ *  what a person standing at the rack knows. The difference is computed, and it
+ *  is the difference that is stored — with the reason, which is required
+ *  (D171). "Stock was wrong" is not a reason; it is the thing being recorded.
+ */
+export async function adjustStock(
+  input: { item_code: string; location: string; counted_qty: number; reason: string },
+): Promise<Result<{ move_no: string; difference: number } | { noop: true }>> {
+  await latency();
+  const denied = requireModule(SERVICE, "inventory");
+  if (denied) return denied;
+  if (!input.reason?.trim()) {
+    return invalid(
+      SERVICE, "reason_required",
+      "Penyesuaian harus punya alasan — selisihnya akan dibaca orang lain bulan depan.",
+      { field: "reason" },
+    );
+  }
+
+  const state = getState();
+  const check = stockable(state, input.item_code);
+  if (!check.ok) return invalid(SERVICE, "not_stocked", check.why, { field: "item_code" });
+
+  const here = state.stock_moves
+    .filter((m) => m.item_code === input.item_code && m.location === input.location)
+    .reduce((s, m) => s + m.qty, 0);
+  const difference = Math.round((input.counted_qty - here) * 1000) / 1000;
+
+  /* Counting and finding exactly what the system said is the good outcome, and
+     it writes nothing: a zero-quantity move would be a row on a payslip-like
+     history that says nothing happened. The count itself is still worth
+     knowing, so it is said in the response rather than stored. */
+  if (difference === 0) {
+    return noop(SERVICE, { noop: true as const });
+  }
+
+  const user = actingUser();
+  let moveNo = "";
+  apply((draft) => {
+    moveNo = writeMove(draft, {
+      item_code: input.item_code, location: input.location, kind: "adjust",
+      qty: difference, uom: check.item.base_uom, reason: input.reason,
+    }, user.id, user.email).move_no;
+    writeOutbox(draft, {
+      service: SERVICE, event_type: "inventory.stock.adjusted",
+      payload: { item_code: input.item_code, location: input.location, difference, reason: input.reason },
+    });
+  });
+  return ok(SERVICE, { move_no: moveNo, difference });
+}
+
+/** Moving stock between locations — two rows, so each location's own history
+ *  reads correctly on its own. */
+export async function transferStock(
+  input: { item_code: string; from: string; to: string; qty: number; reason?: string | null },
+): Promise<Result<{ move_nos: string[] }>> {
+  await latency();
+  const denied = requireModule(SERVICE, "inventory");
+  if (denied) return denied;
+  if (input.from === input.to) {
+    return invalid(SERVICE, "same_location", "Lokasi asal dan tujuan sama.", { field: "to" });
+  }
+  if (input.qty <= 0) return invalid(SERVICE, "qty_invalid", "Jumlah pindah harus lebih dari nol.", { field: "qty" });
+
+  const state = getState();
+  const check = stockable(state, input.item_code);
+  if (!check.ok) return invalid(SERVICE, "not_stocked", check.why, { field: "item_code" });
+
+  const user = actingUser();
+  const nos: string[] = [];
+  apply((draft) => {
+    nos.push(writeMove(draft, {
+      item_code: input.item_code, location: input.from, kind: "transfer",
+      qty: -Math.abs(input.qty), uom: check.item.base_uom, reason: input.reason ?? null,
+    }, user.id, user.email).move_no);
+    nos.push(writeMove(draft, {
+      item_code: input.item_code, location: input.to, kind: "transfer",
+      qty: Math.abs(input.qty), uom: check.item.base_uom, reason: input.reason ?? null,
+    }, user.id, user.email).move_no);
+  });
+  return ok(SERVICE, { move_nos: nos });
+}
+
+/** How low is too low, per item. A threshold nobody set stays null, and the
+ *  screen says *belum ditetapkan* rather than treating zero as the answer. */
+export async function setStockMinimum(
+  input: { item_code: string; min_qty: number | null; home_location?: string | null },
+): Promise<Result<{ item_code: string; min_qty: number | null }>> {
+  await latency();
+  const denied = requireModule(SERVICE, "inventory");
+  if (denied) return denied;
+
+  const user = actingUser();
+  apply((draft) => {
+    const row = draft.stock_settings.find((s) => s.item_code === input.item_code);
+    const before = row?.min_qty ?? null;
+    if (row) {
+      row.min_qty = input.min_qty;
+      if (input.home_location !== undefined) row.home_location = input.home_location;
+    } else {
+      draft.stock_settings.push({
+        item_code: input.item_code, min_qty: input.min_qty,
+        home_location: input.home_location ?? null,
+      });
+    }
+    writeAudit(draft, {
+      service: SERVICE, entity: "stock_setting", entity_no: input.item_code,
+      action: "set_minimum", outcome: "ok", reason: null,
+      detail: { before, after: input.min_qty, by: user.email },
+    });
+  });
+  return ok(SERVICE, { item_code: input.item_code, min_qty: input.min_qty });
+}
+
+/** Stock from a confirmed receipt — the one move the system makes by itself.
+ *
+ *  Called by procurement the moment a delivery is confirmed (D131), which is
+ *  what finally closes the gap this module was built for: goods used to be
+ *  received, paid for, and then forgotten until somebody walked to the rack.
+ *  In Phase 2 this is the outbox consumer for `procurement.receipt.confirmed`
+ *  rather than a direct call; the shape is written that way on purpose.
+ *
+ *  Two cases it does **not** invent:
+ *  - a receipt whose line has no catalogue item (a free-text purchase) moves
+ *    no stock, and says so, because there is nothing to count it against;
+ *  - a line with no unit price becomes stock with `unit_cost: null` rather
+ *    than nought, which keeps the quantity honest and the valuation partial.
+ */
+export function stockFromReceipt(
+  draft: DemoState,
+  receiptNo: string,
+  userId: string,
+  userEmail: string,
+): { stocked: boolean; why?: string } {
+  const receipt = draft.receipts.find((r) => r.receipt_no === receiptNo);
+  if (!receipt) return { stocked: false, why: "receipt not found" };
+  if (draft.stock_moves.some((m) => m.ref_no === receiptNo && m.kind === "receipt")) {
+    return { stocked: false, why: "already stocked" };
+  }
+
+  const poLine = receipt.po_line_id ? draft.po_lines.find((l) => l.id === receipt.po_line_id) : null;
+  const prLine = receipt.line_id ? draft.pr_lines.find((l) => l.id === receipt.line_id) : null;
+  const itemId = poLine?.item_id ?? prLine?.item_id ?? null;
+  if (!itemId) return { stocked: false, why: "the line names no catalogue item" };
+
+  const item = draft.items.find((i) => i.id === itemId);
+  if (!item) return { stocked: false, why: "catalogue item missing" };
+  if (!STOCKED_CATEGORIES.has(item.category_code)) {
+    return { stocked: false, why: `${item.category_code} is not a counted category` };
+  }
+
+  const setting = draft.stock_settings.find((s) => s.item_code === item.code);
+  writeMove(draft, {
+    item_code: item.code,
+    location: setting?.home_location ?? "GUDANG",
+    kind: "receipt",
+    qty: Math.abs(receipt.qty_received),
+    uom: poLine?.uom ?? prLine?.uom ?? item.base_uom,
+    unit_cost: poLine?.unit_price ?? prLine?.unit_price ?? null,
+    ref_no: receiptNo,
+    reason: null,
+  }, userId, userEmail);
+  return { stocked: true };
 }

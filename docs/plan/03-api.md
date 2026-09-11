@@ -213,7 +213,12 @@ quotation, and nothing in this system produces either yet (Q37).
 | POST | `/review/{ref_id}/attach` | → links to existing transactions, creates no money |
 | POST | `/review/{ref_id}/reject` | recorded, never discarded |
 | POST | `/review/{ref_id}/rows` | add an item the extraction missed |
-| POST | `/statements` | upload a leadership-account statement; line-by-line confirm before booking |
+| GET | `/statements` · `/statements/{no}` | every uploaded rekening koran, with each line's status and the ledger rows that look like it — suggestions, never applied (D180) |
+| POST | `/statements` | upload one. **409** re-uploading the same account and period. The two balances are typed from the statement header and checked against the sum of the lines (D182) |
+| PUT | `/statements/{no}/lines/{id}/rate` | the rate the bank gave that day, for a foreign line. Typed, never looked up (D181) |
+| POST | `/statements/{no}/lines/{id}/match` | tie the line to a ledger row that already exists. **409** if that row is already tied to another line |
+| POST | `/statements/{no}/lines/{id}/book` | **creates** the ledger row, with the statement as its evidence. `post_ledger`; **422** on a foreign line with no rate |
+| POST | `/statements/{no}/lines/{id}/ignore` | left out, with a reason. Never deleted |
 | GET | `/reports/cashflow`, `/reports/liquidation` | |
 
 **Validation at the seam** (ADR-004): `POST /allocations` calls
@@ -268,6 +273,11 @@ dies — the same reason `john-lau` set 15 MB under Next's 16 MB.
 | POST | `/day-marks` | `{work_date, kind, reason, employee_no?}` — omit the employee and it covers the whole office. 409 if that day is already marked for that scope |
 | POST | `/day-marks/{id}/surat-dokter` | link an uploaded letter to a day marked `sick`. **This is what makes the day paid** (D144), and it may arrive days later — nothing is recomputed, because nothing was stored |
 | DELETE | `/day-marks/{id}` | the holiday was the Tuesday, not the Monday. Audited like any other act |
+| GET | `/files` · `/files/{employee_no}` | Berkas 201 as a **checklist**: every required kind listed whether or not anything is filed, with what is missing and what expires (D177) |
+| POST | `/files/{employee_no}/documents` | 422 when neither a scan nor a number is given — a number with no scan is still a record |
+| GET | `/leave/balances` | entitlement − marked − approved-not-yet-taken, computed on read |
+| GET | `/leave` · POST `/leave` | asking. 409 on an overlapping request for the same person; never refused for exceeding the entitlement (D144) |
+| POST | `/leave/{request_no}/decide` | approving **writes the day marks** and reports which days were skipped because they already carried one; rejecting without a reason is 422 (D178) |
 | GET | `/overtime` | waiting claims first |
 | POST | `/overtime` | claim hours against a day. 409 if a live claim already exists for it |
 | GET | `/overtime` | every sheet with its lines, its stage and the paper behind it. Anything still waiting comes first |
@@ -281,6 +291,9 @@ dies — the same reason `john-lau` set 15 MB under Next's 16 MB.
 | POST | `/payroll` | open a run for a period. 409 if a run already covers those dates |
 | POST | `/payroll/{run_no}/approve` | requires `approve_funds`. **422 while any day in the period is still unread** (D139) |
 | GET | `/payroll/period?from=&to=` | the same figures for **any** period, run or no run — the week slider reads this (D158). `opened:false` and an empty `run_no` where nothing has been opened |
+| GET | `/pay-rules` | every dated version, newest first, with the one in force marked |
+| POST | `/pay-rules` | writes the **next** version. 422 in the past or before the latest version; 409 inside an existing run's period (D173) |
+| POST | `/pay-rules/preview` | applies a proposed book to a real period and returns only the lines that move. Nothing is saved (D175) |
 | GET | `/payroll/{run_no}/adjustments` | what was added or taken off by hand, each with its reason (D155) |
 | POST | `/payroll/{run_no}/adjustments` | 422 without a reason; **403 once the run leaves `DRAFT`** |
 | DELETE | `/payroll/{run_no}/adjustments/{id}` | same rule — an approved run is not edited |
@@ -353,6 +366,25 @@ that posting is the consequence of the signature on the sheet and the signature
 is its authority (D147).
 
 Events: `production.work_order.closed`.
+
+## `inventory` — stock and timber
+
+Stock, added M27:
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/stock` | every counted item, whether or not it has ever moved — *we have none* and *nobody ever bought this* lead to opposite actions (D170) |
+| GET | `/stock/{item_code}` | movements, which BOMs call for it, what is approved and not yet arrived |
+| POST | `/stock/issue` | 200 **with `went_negative: true`** rather than a refusal — the wood is there or it is not (A6, D170) |
+| POST | `/stock/return` | material coming back unused |
+| POST | `/stock/adjust` | takes the **counted** quantity and a location; stores the difference. 422 without a reason; `outcome: noop` when the count matches (D171) |
+| POST | `/stock/transfer` | writes two moves, one per location |
+| PUT | `/stock/{item_code}/minimum` | null clears it — *belum ditetapkan* is not zero |
+
+`procurement.receipt.confirmed` is consumed here: a confirmed delivery becomes
+a `receipt` move at the item's home location, priced from the line where the
+line carries a price and `null` where it does not (D172). A receipt whose line
+names no catalogue item stocks nothing and says so.
 
 ## `inventory` — timber
 

@@ -95,6 +95,12 @@ export default function PayrollRunPage({ params }: { params: { run: string } }) 
             {formatIDR(l.overtime_pay)}
           </span>
           {l.overtime_hours > 0 && <p className="text-[11px] text-slate-500">{formatNumber(l.overtime_hours)} h approved</p>}
+          {/* Which ladder produced it (D173). */}
+          {l.overtime_parts.length > 0 && (
+            <p className="text-[11px] text-slate-400">
+              {l.overtime_parts.map((p) => (p.multiplier > 0 ? `${formatNumber(p.hours)}×${formatNumber(p.multiplier)}` : "form")).join(" + ")}
+            </p>
+          )}
           {l.overtime_pending_hours > 0 && (
             <p className="text-[11px] text-amber-700">{formatNumber(l.overtime_pending_hours)} h waiting</p>
           )}

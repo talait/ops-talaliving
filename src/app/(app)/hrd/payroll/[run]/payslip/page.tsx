@@ -264,8 +264,34 @@ function Slip({
           </tr>
           {l.overtime_pay > 0 && (
             <tr>
-              <td className="py-0.5">Lembur — {formatNumber(l.overtime_hours)} jam</td>
+              <td className="py-0.5">
+                Lembur — {formatNumber(l.overtime_hours)} jam
+                {/* The ladder, not just the total: *3 jam = Rp 96.250* invites an
+                    argument, *1 jam × 1,5 + 2 jam × 2* ends one (D173). */}
+                {l.overtime_parts.length > 0 && (
+                  <span className="block text-[8px] leading-snug text-slate-500">
+                    {l.overtime_parts.map((p, i) => (
+                      <span key={i}>
+                        {i > 0 ? " · " : ""}
+                        {p.multiplier > 0
+                          ? `${formatNumber(p.hours)} jam × ${formatNumber(p.multiplier)}`
+                          : "sesuai form"}
+                      </span>
+                    ))}
+                    {l.overtime_parts[0]?.hourly > 0 && ` · jam biasa ${formatIDR(l.overtime_parts[0].hourly)}`}
+                  </span>
+                )}
+              </td>
               <td className="py-0.5 text-right tabular-nums">{formatIDR(l.overtime_pay)}</td>
+            </tr>
+          )}
+          {l.undertime_amount > 0 && (
+            <tr>
+              <td className="py-0.5">
+                Kurang jam — {formatNumber(l.undertime_hours)} jam
+                <span className="block text-[8px] text-slate-500">Sesuai aturan penggajian yang berlaku</span>
+              </td>
+              <td className="py-0.5 text-right tabular-nums">({formatIDR(l.undertime_amount)})</td>
             </tr>
           )}
           <tr className="border-t border-slate-300">

@@ -185,3 +185,171 @@ export function timberVendorSummaries(state: DemoState): TimberVendorSummary[] {
     .sort((a, b) => a.species.localeCompare(b.species)
       || (b.cost_per_sawn_m3 ?? 0) - (a.cost_per_sawn_m3 ?? 0));
 }
+
+/* ── Stock ──────────────────────────────────────────────────────────────── */
+
+import type {
+  StockItemView, StockItemDetail, StockMoveView, StockMove,
+} from "@/services/inventory/contracts";
+import { STOCKED_CATEGORIES } from "./fixtures/reference";
+
+/** What one item's stock is worth, and how sure we are of it.
+ *
+ *  Weighted average over the **priced** receipts, applied to what is on hand.
+ *  Two decisions in that sentence, both deliberate (D172):
+ *
+ *  - A receipt with no unit price does not value the rack at zero. It is
+ *    counted in `unpriced_qty` and left out of the average, so the value that
+ *    comes back is a value of *part* of the stock and the screen says which
+ *    part. A rack valued at zero because nobody typed a price looks like a
+ *    rack that cost nothing.
+ *  - Issues are not valued here at all. Costing what left the rack is a
+ *    different question with a different answer (FIFO, average, standard), and
+ *    nobody has said which this business uses. What is asked today is *what is
+ *    on the rack and what did it cost*, and that is what this returns.
+ */
+function valueOf(moves: StockMove[]): { avg: number | null; unpriced: number } {
+  const priced = moves.filter((m) => m.qty > 0 && m.unit_cost != null);
+  const unpricedIn = moves
+    .filter((m) => m.qty > 0 && m.unit_cost == null && m.kind === "receipt")
+    .reduce((s, m) => s + m.qty, 0);
+  if (priced.length === 0) return { avg: null, unpriced: unpricedIn };
+  const qty = priced.reduce((s, m) => s + m.qty, 0);
+  const cost = priced.reduce((s, m) => s + m.qty * (m.unit_cost ?? 0), 0);
+  return { avg: qty > 0 ? Math.round(cost / qty) : null, unpriced: unpricedIn };
+}
+
+function moveView(state: DemoState, m: StockMove): StockMoveView {
+  return {
+    ...m,
+    item_name: state.items.find((i) => i.code === m.item_code)?.name ?? m.item_code,
+    location_name: state.stock_locations.find((l) => l.code === m.location)?.name ?? m.location,
+    by_name: state.users.find((u) => u.id === m.moved_by)?.full_name ?? "—",
+  };
+}
+
+/** Every catalogue item that is **meant** to be counted, whether or not it has
+ *  ever moved.
+ *
+ *  Items in an unstocked category — a service, the electricity bill — are not
+ *  here at all (D169). An item that is stocked and has never moved **is** here,
+ *  showing nought: *we have none* and *nobody has ever bought this* look
+ *  identical on a screen that hides the second one, and they lead to opposite
+ *  actions.
+ */
+export function stockItems(state: DemoState): StockItemView[] {
+  const byItem = new Map<string, StockMove[]>();
+  for (const m of state.stock_moves) {
+    const list = byItem.get(m.item_code) ?? [];
+    list.push(m);
+    byItem.set(m.item_code, list);
+  }
+
+  const rows: StockItemView[] = [];
+  for (const item of state.items) {
+    if (item.merged_into) continue;
+    if (!STOCKED_CATEGORIES.has(item.category_code)) continue;
+
+    const moves = (byItem.get(item.code) ?? []).sort((a, b) => a.moved_at.localeCompare(b.moved_at));
+    const on_hand = Math.round(moves.reduce((s, m) => s + m.qty, 0) * 1000) / 1000;
+
+    const perLocation = new Map<string, number>();
+    for (const m of moves) perLocation.set(m.location, (perLocation.get(m.location) ?? 0) + m.qty);
+
+    const { avg, unpriced } = valueOf(moves);
+    const cat = state.item_categories.find((c) => c.code === item.category_code);
+    const parent = cat?.parent_code
+      ? state.item_categories.find((c) => c.code === cat.parent_code)
+      : cat;
+    const setting = state.stock_settings.find((s) => s.item_code === item.code);
+    /* Value only the part we can price. `unpriced_qty` is capped at what is
+       actually still on the rack — eight unpriced sheets that have since been
+       used are not eight unknowns today. */
+    const unpricedHere = Math.min(unpriced, Math.max(on_hand, 0));
+    const pricedQty = Math.max(on_hand - unpricedHere, 0);
+
+    rows.push({
+      item_code: item.code,
+      item_name: item.name,
+      category_code: item.category_code,
+      category_name: cat?.name ?? item.category_code,
+      group_code: parent?.code ?? item.category_code,
+      group_name: parent?.name ?? item.category_code,
+      uom: item.base_uom,
+      on_hand,
+      by_location: [...perLocation.entries()]
+        .filter(([, q]) => Math.abs(q) > 0.0001)
+        .map(([location, qty]) => ({
+          location,
+          location_name: state.stock_locations.find((l) => l.code === location)?.name ?? location,
+          qty: Math.round(qty * 1000) / 1000,
+        }))
+        .sort((a, b) => b.qty - a.qty),
+      avg_cost: avg,
+      value: avg == null ? null : Math.round(avg * pricedQty),
+      unpriced_qty: Math.round(unpricedHere * 1000) / 1000,
+      min_qty: setting?.min_qty ?? null,
+      below_min: setting?.min_qty != null && on_hand < setting.min_qty,
+      last_move_at: moves.length > 0 ? moves[moves.length - 1].moved_at : null,
+      moves_count: moves.length,
+    });
+  }
+
+  /* Trouble first: below the minimum, then never counted, then the rest by
+     name. A stock list read top to bottom should start with the thing that
+     stops the workshop on Saturday. */
+  return rows.sort((a, b) => {
+    if (a.below_min !== b.below_min) return a.below_min ? -1 : 1;
+    if ((a.moves_count === 0) !== (b.moves_count === 0)) return a.moves_count === 0 ? 1 : -1;
+    return a.item_name.localeCompare(b.item_name);
+  });
+}
+
+export function stockItemDetail(state: DemoState, itemCode: string): StockItemDetail | null {
+  const row = stockItems(state).find((r) => r.item_code === itemCode);
+  if (!row) return null;
+
+  const moves = state.stock_moves
+    .filter((m) => m.item_code === itemCode)
+    .sort((a, b) => b.moved_at.localeCompare(a.moved_at))
+    .map((m) => moveView(state, m));
+
+  /* What calls for it. The question behind this column is "can this go" — an
+     item nothing is made from is a candidate for the skip, and one that four
+     products need is not (D170). */
+  const item = state.items.find((i) => i.code === itemCode);
+  const used_in = item
+    /* A BOM line names the catalogue item by **code**, across the seam
+       (ADR-004) — so this matches on the code, not on an id. */
+    ? state.bom_components
+      .filter((c) => c.kind === "material" && c.ref_code === itemCode)
+      .map((c) => {
+        const product = state.products.find((p) => p.id === c.product_id);
+        return {
+          product_code: product?.product_code ?? "—",
+          product_name: product?.name ?? "—",
+          qty_per_unit: c.qty,
+        };
+      })
+    : [];
+
+  /* Asked for and not yet on the rack. Approved lines only: a request nobody
+     has said yes to is not stock arriving. */
+  const on_order = item
+    ? state.pr_lines
+      .filter((l) => l.item_id === item.id && !l.removed_at)
+      .filter((l) => state.pr_approvals.some((a) => a.line_id === l.id && a.approved))
+      .filter((l) => !state.receipts.some((r) => r.line_id === l.id && r.status === "CONFIRMED"))
+      .map((l) => ({ pr_line_no: l.line_no_full, qty: l.qty ?? 0, need_by: l.need_by }))
+    : [];
+
+  return { ...row, moves, used_in, on_order };
+}
+
+export function stockMoveViews(state: DemoState, filter: { item_code?: string; ref_no?: string } = {}): StockMoveView[] {
+  return state.stock_moves
+    .filter((m) => (!filter.item_code || m.item_code === filter.item_code)
+      && (!filter.ref_no || m.ref_no === filter.ref_no))
+    .sort((a, b) => b.moved_at.localeCompare(a.moved_at))
+    .map((m) => moveView(state, m));
+}

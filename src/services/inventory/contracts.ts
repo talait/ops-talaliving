@@ -164,3 +164,131 @@ export interface TimberVendorSummary {
    *  vendor's real figure is not final until it has. */
   unsawn_m3: number;
 }
+
+/* ── Stock: what is on the rack, and how it got there ──────────────────────
+ *
+ *  Timber above is a special case with a saw in the middle of it. This is the
+ *  ordinary one: plywood, engsel, thinner, amplas — bought by the box and used
+ *  by the piece, and until now bought into a system that forgot about them the
+ *  moment the receipt was confirmed (D170).
+ *
+ *  The model is a **movement ledger**, not a quantity. Nothing anywhere stores
+ *  "how many are on the rack": that number is the sum of the moves, computed on
+ *  read like every other figure in this system (A3). A stored quantity is one
+ *  that disagrees with its own history, and the disagreement is discovered by
+ *  somebody standing in front of an empty rack.
+ */
+
+/** Why the quantity moved. Each kind has a different piece of paper behind it,
+ *  which is why they are not one `qty +/-` column. */
+export type StockMoveKind =
+  /** Goods arrived and a receipt was confirmed. The only kind the system
+   *  creates by itself (D170). */
+  | "receipt"
+  /** Taken out to the floor, against a work order where there is one. */
+  | "issue"
+  /** Came back unused. */
+  | "return"
+  /** A count said the rack held something different. Always carries a reason;
+   *  the difference is the record, not the new number (D171). */
+  | "adjust"
+  /** Moved between locations. Written as two rows — out of one, into the
+   *  other — so every location's own history stays readable. */
+  | "transfer";
+
+export const MOVE_LABEL: Record<StockMoveKind, string> = {
+  receipt: "Barang masuk",
+  issue: "Dikeluarkan",
+  return: "Dikembalikan",
+  adjust: "Penyesuaian",
+  transfer: "Pindah lokasi",
+};
+
+/** Where stock physically is. Deliberately few: a location nobody walks to is
+ *  a location nobody counts. */
+export interface StockLocation {
+  code: string;
+  name: string;
+  is_active: boolean;
+}
+
+/** One movement of one item. Append-only: a mistake is corrected by another
+ *  move with a reason, never by editing this one (A5). */
+export interface StockMove {
+  id: string;
+  move_no: string;
+  /** The catalogue item, **by code** — inventory does not own the catalogue
+   *  (ADR-004). */
+  item_code: string;
+  location: string;
+  kind: StockMoveKind;
+  /** Signed: negative takes stock off the rack. The kind says what happened;
+   *  the sign says which way, because an adjustment can go either way. */
+  qty: number;
+  uom: string;
+  /** What one unit cost, where that is known. Null is honest — a transfer has
+   *  no price, and a receipt without a priced line has none either. It is
+   *  never written as zero, because zero would quietly value the rack down
+   *  (D172). */
+  unit_cost: number | null;
+  /** The document behind it: `rcv-…`, `spk-…`, an opname reference. */
+  ref_no: string | null;
+  /** Required on an adjustment; free elsewhere. */
+  reason: string | null;
+  moved_by: string;
+  moved_at: string;
+}
+
+export interface StockMoveView extends StockMove {
+  item_name: string;
+  location_name: string;
+  by_name: string;
+}
+
+/** What a storeman needs on top of the item itself: how low is too low. */
+export interface StockSetting {
+  item_code: string;
+  /** Below this, the item shows as needing a purchase. Null means nobody has
+   *  said, and the screen says *belum ditetapkan* rather than implying zero. */
+  min_qty: number | null;
+  /** Where this item normally lives, for the default on a form. */
+  home_location: string | null;
+}
+
+/** One item's stock, computed from its moves. */
+export interface StockItemView {
+  item_code: string;
+  item_name: string;
+  category_code: string;
+  category_name: string;
+  /** The parent category, for grouping a report by something wider. */
+  group_code: string;
+  group_name: string;
+  uom: string;
+  /** On the rack now, everywhere. */
+  on_hand: number;
+  by_location: { location: string; location_name: string; qty: number }[];
+  /** Weighted average of what the stock on hand actually cost, and the value
+   *  that follows from it. Both null when **nothing** priced it. */
+  avg_cost: number | null;
+  value: number | null;
+  /** How much of what is on hand arrived with no price on it. A value computed
+   *  over the rest is **incomplete, not wrong**, and the screen says so
+   *  (D172). */
+  unpriced_qty: number;
+  min_qty: number | null;
+  /** Below the minimum somebody set. False when nobody set one — an unstated
+   *  minimum is not a satisfied one. */
+  below_min: boolean;
+  last_move_at: string | null;
+  moves_count: number;
+}
+
+export interface StockItemDetail extends StockItemView {
+  moves: StockMoveView[];
+  /** Which products' bills of material call for this item, by product code —
+   *  the answer to "can I throw this away" (D170). */
+  used_in: { product_code: string; product_name: string; qty_per_unit: number }[];
+  /** Requests raised for it that have not been received yet. */
+  on_order: { pr_line_no: string; qty: number; need_by: string | null }[];
+}

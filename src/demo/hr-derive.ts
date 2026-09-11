@@ -11,8 +11,13 @@ import type {
   Employee, TimesheetDay, DayState, ScanSlot, DayPay, DayMark,
   OvertimeSheet, OvertimeStage, PayrollLine, PayrollView, PayrollRun,
   PayslipDay, AdjustmentKind,
+  PayRules, PayRuleSet, OvertimeTier, OvertimePart,
+  EmployeeFileView, EmployeeDocSlot, LeaveBalance, LeaveRequest, LeaveRequestView,
 } from "@/services/hr/contracts";
-import { ADJUSTMENT_LABEL, DAY_MARK_SHORT } from "@/services/hr/contracts";
+import {
+  ADJUSTMENT_LABEL, DAY_MARK_SHORT,
+  EMPLOYEE_DOC_CHECKLIST, EMPLOYEE_DOC_LABEL,
+} from "@/services/hr/contracts";
 
 const HOURS = 3_600_000;
 
@@ -337,6 +342,10 @@ export function payrollLine(
   /** Adjustments belong to a run, so the line has to know which one it is
    *  being computed for (D155). */
   runNo = "",
+  /** A rule book to apply instead of the one in force. Only the preview uses
+   *  it: *what would this multiplier do to this period* is a question worth
+   *  answering before somebody commits to the answer (D175). */
+  rulesOverride?: PayRules,
 ): PayrollLine {
   const days = timesheet(state, employee, from, to);
   /* A day is worth what the timesheet says it is worth: a full day, half of
@@ -355,16 +364,8 @@ export function payrollLine(
       && x.line.employee_id === employee.id
       && x.sheet.work_date >= from && x.sheet.work_date <= to);
 
-  const payableLines = myLines.filter((x) => overtimePayable(state, x.sheet!));
+  const payableLines = payableLinesOf(state, employee, from, to);
   const approvedOt = payableLines.reduce((s, x) => s + x.line.hours, 0);
-  /* What the paper form said, where it said anything: the GAJI column beside
-     the name, which is the figure the man signed for (D154). */
-  const formPaid = payableLines
-    .filter((x) => x.line.form_amount != null)
-    .reduce((s, x) => s + (x.line.form_amount ?? 0), 0);
-  const formHours = payableLines
-    .filter((x) => x.line.form_amount != null)
-    .reduce((s, x) => s + x.line.hours, 0);
   const pendingOt = myLines
     .filter((x) => !overtimePayable(state, x.sheet!) && !x.sheet!.declined_reason && x.sheet!.paid)
     .reduce((s, x) => s + x.line.hours, 0);
@@ -383,20 +384,19 @@ export function payrollLine(
       ? Math.round(worked_days * employee.base_rate)
       : Math.round(normal_hours * employee.base_rate);
 
-  /* The hourly value of an ordinary hour, which is what overtime is a multiple
-     of. No multiplier is applied here: what this business pays for an overtime
-     hour has not been stated, so it pays the ordinary rate and says so
-     (Q31). */
-  const hourly = employee.pay_basis === "hourly"
-    ? employee.base_rate
-    : employee.pay_basis === "daily"
-      ? Math.round(employee.base_rate / employee.daily_hours)
-      : Math.round(employee.base_rate / 21 / employee.daily_hours);
-  /* Hours with no figure on the form are paid at the ordinary hourly rate;
-     hours that carry one are paid what the sheet says. The two are added
-     rather than one overriding the other, because they cover different
-     hours (D154). */
-  const overtime_pay = Math.round(formPaid + (approvedOt - formHours) * hourly);
+  /* What an ordinary hour of this person's time is worth, and then the ladder
+     the active rule book says to multiply it by (D173). Both come out of the
+     rules — the monthly divisor is 173 because the regulation says so, not
+     because the code does. */
+  const rules = rulesOverride ?? activePayRules(state, from).rules;
+  const hourly = hourlyRate(employee, rules);
+  const overtime_parts = overtimeParts(state, employee, from, to, rules, hourly);
+  const overtime_pay = overtime_parts.reduce((s, p) => s + p.amount, 0);
+
+  /* Hours short of the contracted day. Off by default: what a short hour costs
+     here has not been stated, and a deduction invented by software reaches
+     somebody's pocket (D174). */
+  const under = undertimeOf(days, employee, rules, hourly);
 
   /* What the paid days are made of, so a payslip can say it rather than
      showing one total nobody can take apart (D144). */
@@ -451,7 +451,7 @@ export function payrollLine(
     const inAt = d.slots.in;
     if (!inAt || d.mark) return s;
     const mins = Number(inAt.slice(11, 13)) * 60 + Number(inAt.slice(14, 16));
-    return s + Math.max(mins - LATE_AFTER_MINUTES, 0);
+    return s + Math.max(mins - rules.late_after_minutes, 0);
   }, 0);
 
   const payslipDays: PayslipDay[] = days.map((d) => ({
@@ -488,22 +488,210 @@ export function payrollLine(
     overtime_pending_hours: pendingOt,
     base_pay,
     overtime_pay,
-    gross: base_pay + overtime_pay,
+    overtime_parts,
+    undertime_hours: under.hours,
+    undertime_amount: under.amount,
+    /* Undertime is part of the gross, not an adjustment: it is arithmetic over
+       recorded hours under a stated rule, while an adjustment is one person's
+       decision about another (D155). */
+    gross: base_pay + overtime_pay - under.amount,
     adjustments,
     adjustment_total,
-    net: base_pay + overtime_pay + adjustment_total,
+    net: base_pay + overtime_pay - under.amount + adjustment_total,
     late_minutes,
     days: payslipDays,
     warnings,
   };
 }
 
-/** The office day starts at 08:00; anything past this is late.
+
+/* ── The rule book ─────────────────────────────────────────────────────────
  *
- *  One constant, in one place, because it is a policy and not a fact — the
- *  moment somebody says the workshop starts at half past seven, this is the
- *  line that changes (Q41). */
-const LATE_AFTER_MINUTES = 8 * 60;
+ *  Which version applies is decided by the **period's start**, not by today:
+ *  recomputing an August payslip in December must produce August's figure
+ *  (D173). A rule that changed mid-period does not split a payslip in two —
+ *  the version in force when the period opened governs all of it, which is
+ *  what a person who has already been paid would expect.
+ */
+export function activePayRules(state: DemoState, onDate: string): PayRuleSet {
+  const sets = [...state.pay_rule_sets].sort((a, b) => a.effective_from.localeCompare(b.effective_from));
+  const found = sets.filter((r) => r.effective_from <= onDate).pop();
+  /* Before the first version there is no policy, and the honest fallback is
+     the earliest one somebody wrote down rather than an invented default. */
+  return found ?? sets[0];
+}
+
+/** Whether a date is a weekly rest day under the active pattern, or a public
+ *  holiday somebody marked. Both take the steeper ladder. */
+function isRestDay(state: DemoState, rules: PayRules, date: string): boolean {
+  const marked = state.day_marks.some((m) => m.work_date === date && m.employee_id === null && m.kind === "holiday");
+  if (marked) return true;
+  const wd = weekdayOf(date);
+  return rules.week_pattern === "5day" ? wd >= 6 : wd === 7;
+}
+
+/** The ladder, applied to one night's hours.
+ *
+ *  Returns the parts rather than a total, because the total is the thing
+ *  nobody can check: *3 jam lembur = Rp 91.000* invites an argument, while
+ *  *jam ke-1 × 1,5 + 2 jam × 2 = 5,5 jam × Rp 16.500* ends one (D173).
+ */
+function tierParts(hours: number, tiers: OvertimeTier[]): { hours: number; multiplier: number; from: number }[] {
+  const ladder = [...tiers].sort((a, b) => a.after_hours - b.after_hours);
+  const parts: { hours: number; multiplier: number; from: number }[] = [];
+  let taken = 0;
+  for (let i = 0; i < ladder.length && taken < hours; i += 1) {
+    const from = ladder[i].after_hours;
+    const to = i + 1 < ladder.length ? ladder[i + 1].after_hours : Infinity;
+    const slice = Math.min(hours, to) - Math.max(taken, from);
+    if (slice > 0) {
+      parts.push({ hours: Math.round(slice * 100) / 100, multiplier: ladder[i].multiplier, from });
+      taken = Math.max(taken, from) + slice;
+    }
+  }
+  return parts;
+}
+
+/** `jam ke-1`, `jam 2–7`, `jam 8 ke atas` — how the ladder reads on paper. */
+function tierLabel(restDay: boolean, from: number, hours: number): string {
+  const day = restDay ? "Hari libur" : "Hari kerja";
+  const first = from + 1;
+  const last = from + hours;
+  const span = hours <= 1 || first === last
+    ? `jam ke-${Math.round(first)}`
+    : `jam ${Math.round(first)}–${Math.round(last)}`;
+  return `${day} · ${span}`;
+}
+
+/** Rounding, where the rule asks for it. Zero minutes means exact — the figure
+ *  the machine produced, not one somebody negotiated. */
+function roundHours(hours: number, minutes: number): number {
+  if (!minutes) return hours;
+  const step = minutes / 60;
+  return Math.round(hours / step) * step;
+}
+
+
+/** The overtime lines that reach a payslip: on sheets covering the period,
+ *  belonging to this person, and signed all the way (D146). */
+function payableLinesOf(state: DemoState, employee: Employee, from: string, to: string) {
+  return state.overtime_lines
+    .map((l) => ({ line: l, sheet: state.overtime_sheets.find((sh) => sh.id === l.sheet_id) }))
+    .filter((x) => x.sheet
+      && x.line.employee_id === employee.id
+      && x.sheet.work_date >= from && x.sheet.work_date <= to
+      && overtimePayable(state, x.sheet))
+    .map((x) => ({ line: x.line, sheet: x.sheet! }));
+}
+
+/** What one ordinary hour of this person is worth, under the active rules. */
+export function hourlyRate(employee: Employee, rules: PayRules): number {
+  if (employee.pay_basis === "hourly") return employee.base_rate;
+  if (employee.pay_basis === "daily") return Math.round(employee.base_rate / employee.daily_hours);
+  /* A month divided by the regulation's own figure. Written as a rule rather
+     than as `/ 21 / 8`, which was this code's previous guess at the same
+     thing. */
+  return Math.round(employee.base_rate / rules.monthly_divisor);
+}
+
+/** Overtime, night by night and tier by tier.
+ *
+ *  Three rules meet here and the order matters:
+ *
+ *  1. **The paper wins where it speaks.** A GAJI figure written on the form is
+ *     what the man signed for, and is paid as written (D154) — no ladder, no
+ *     recomputation. A system that quietly pays a different number because its
+ *     own multiplication came out differently is wrong even when its arithmetic
+ *     is right.
+ *  2. **Otherwise the ladder applies**, per night, because "the first hour" is
+ *     the first hour of *that* night and not of the fortnight.
+ *  3. **A rest day takes the steeper ladder**, and a tanggal merah counts as
+ *     one (D173).
+ */
+export function overtimeParts(
+  state: DemoState,
+  employee: Employee,
+  from: string,
+  to: string,
+  rules: PayRules,
+  hourly: number,
+): OvertimePart[] {
+  const out: OvertimePart[] = [];
+
+  for (const { line, sheet } of payableLinesOf(state, employee, from, to)) {
+    if (line.form_amount != null) {
+      out.push({
+        source: sheet.sheet_no, work_date: sheet.work_date,
+        hours: line.hours, multiplier: 0, hourly,
+        amount: line.form_amount, label: "Sesuai form lembur",
+      });
+      continue;
+    }
+    if (rules.overtime_mode === "form_only") {
+      out.push({
+        source: sheet.sheet_no, work_date: sheet.work_date,
+        hours: line.hours, multiplier: 0, hourly, amount: 0,
+        label: "Tidak ada angka di form — tidak dibayar",
+      });
+      continue;
+    }
+
+    const hours = roundHours(line.hours, rules.overtime_rounding_minutes);
+    const restDay = isRestDay(state, rules, sheet.work_date);
+    const tiers = rules.overtime_mode === "flat"
+      ? [{ after_hours: 0, multiplier: rules.flat_multiplier }]
+      : restDay ? rules.restday_tiers : rules.workday_tiers;
+
+    for (const part of tierParts(hours, tiers)) {
+      out.push({
+        source: sheet.sheet_no, work_date: sheet.work_date,
+        hours: part.hours, multiplier: part.multiplier, hourly,
+        amount: Math.round(part.hours * part.multiplier * hourly),
+        label: rules.overtime_mode === "flat"
+          ? `Tarif rata ${part.multiplier}×`
+          : tierLabel(restDay, part.from, part.hours),
+      });
+    }
+  }
+  return out;
+}
+
+/** Hours short of the contracted day, and what the rule says they cost.
+ *
+ *  Only for people paid **by the day**: an hourly person is already paid for
+ *  the hours they were here, and a monthly salary is a month. Days that are
+ *  marked — sakit, cuti, tanggal merah — are not short days, they are
+ *  different days, and counting them here would deduct twice (D174).
+ */
+export function undertimeOf(
+  days: TimesheetDay[],
+  employee: Employee,
+  rules: PayRules,
+  hourly: number,
+): { hours: number; amount: number } {
+  if (rules.undertime_mode === "off" || employee.pay_basis !== "daily") {
+    return { hours: 0, amount: 0 };
+  }
+  const grace = rules.undertime_grace_minutes / 60;
+  let short = 0;
+  let halfDays = 0;
+  for (const d of days) {
+    if (d.mark || d.state !== "complete") continue;
+    const gap = employee.daily_hours - d.work_hours;
+    if (gap <= grace) continue;
+    short += gap;
+    if (gap > employee.daily_hours / 2) halfDays += 1;
+  }
+  short = Math.round(short * 100) / 100;
+  if (rules.undertime_mode === "half_day_step") {
+    return { hours: short, amount: Math.round(halfDays * (employee.base_rate / 2)) };
+  }
+  return { hours: short, amount: Math.round(short * hourly) };
+}
+
+/* The office day used to start at 08:00 in a constant here. It is a policy,
+   not a fact, so it moved into the rule book where somebody can change it
+   without a deployment — `rules.late_after_minutes` (D168, D173). */
 
 /** 1 Monday … 7 Sunday, from a `YYYY-MM-DD` string without going near a
  *  timezone (F39). */
@@ -511,6 +699,13 @@ function weekdayOf(key: string): number {
   const [y, m, d] = key.split("-").map(Number);
   const js = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
   return js === 0 ? 7 : js;
+}
+
+/** The same line under a rule book that is not in force. Preview only. */
+export function payrollLineWith(
+  state: DemoState, employee: Employee, from: string, to: string, rules: PayRules,
+): PayrollLine {
+  return payrollLine(state, employee, from, to, "", rules);
 }
 
 export function payrollView(state: DemoState, run: PayrollRun): PayrollView {
@@ -529,5 +724,155 @@ export function payrollView(state: DemoState, run: PayrollRun): PayrollView {
     adjustment_total: lines.reduce((s, l) => s + l.adjustment_total, 0),
     open_days: lines.reduce((s, l) => s + l.days_open, 0),
     pending_overtime_hours: lines.reduce((s, l) => s + l.overtime_pending_hours, 0),
+  };
+}
+
+/* ── Berkas 201 and leave ─────────────────────────────────────────────────── */
+
+/** Somebody's file, slot by slot, with what is missing named (D177).
+ *
+ *  The checklist is the point. A folder answers "what is in here"; a checklist
+ *  answers "what is not", which is the only version of the question anybody
+ *  ever actually needs — before a BPJS registration, before an audit, before
+ *  paying somebody whose contract ran out last month.
+ */
+export function employeeFile(state: DemoState, employee: Employee, today: string): EmployeeFileView {
+  const mine = state.employee_documents.filter((d) => d.employee_id === employee.id);
+
+  const slots: EmployeeDocSlot[] = EMPLOYEE_DOC_CHECKLIST.map((c) => {
+    const documents = mine
+      .filter((d) => d.kind === c.kind)
+      .sort((a, b) => (b.issued_on ?? "").localeCompare(a.issued_on ?? ""));
+    const expiries = documents.map((d) => d.expires_on).filter((x): x is string => !!x);
+    const soonest = expiries.sort()[0] ?? null;
+    return {
+      kind: c.kind,
+      label: EMPLOYEE_DOC_LABEL[c.kind],
+      required: c.required,
+      note: c.note,
+      documents,
+      expires_in_days: soonest ? daysBetween(today, soonest) : null,
+    };
+  });
+
+  const missing = slots.filter((s) => s.required && s.documents.length === 0).map((s) => s.kind);
+  /* Already expired, or expiring inside two months. Sixty days because a PKWT
+     renewal takes a conversation, not an afternoon. */
+  const expiring = slots
+    .filter((s) => s.expires_in_days != null && s.expires_in_days <= 60)
+    .map((s) => ({
+      kind: s.kind,
+      label: s.label,
+      expires_on: s.documents.map((d) => d.expires_on).filter((x): x is string => !!x).sort()[0],
+      days: s.expires_in_days as number,
+    }));
+
+  return {
+    employee_id: employee.id,
+    employee_no: employee.employee_no,
+    full_name: employee.full_name,
+    position: employee.position,
+    unit: employee.unit,
+    joined_on: employee.joined_on,
+    active: employee.active,
+    slots,
+    missing,
+    expiring,
+    complete: missing.length === 0,
+  };
+}
+
+/** Whole days between two `YYYY-MM-DD` strings, walked in UTC so the office day
+ *  is not the browser's (F17, F39). */
+function daysBetween(from: string, to: string): number {
+  const [fy, fm, fd] = from.split("-").map(Number);
+  const [ty, tm, td] = to.split("-").map(Number);
+  return Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)) / 86_400_000);
+}
+
+/** Every date in an inclusive range. */
+export function datesBetween(from: string, to: string): string[] {
+  const out: string[] = [];
+  const [y, m, d] = from.split("-").map(Number);
+  let t = Date.UTC(y, m - 1, d);
+  const end = (() => { const [ey, em, ed] = to.split("-").map(Number); return Date.UTC(ey, em - 1, ed); })();
+  while (t <= end) {
+    out.push(new Date(t).toISOString().slice(0, 10));
+    t += 86_400_000;
+  }
+  return out;
+}
+
+/** What somebody has left, computed from the marks (A3, D178).
+ *
+ *  `taken` counts the days already marked; `booked` counts approved requests
+ *  that have not become the past yet. Both matter: an employee asking on the
+ *  first of the month wants to know what is left **after** the week they have
+ *  already been given.
+ */
+export function leaveBalance(state: DemoState, employee: Employee, year: string): LeaveBalance {
+  const marks = state.day_marks.filter(
+    (m) => m.employee_id === employee.id && m.work_date.startsWith(year),
+  );
+  const leaveDays = marks.filter((m) => m.kind === "leave");
+  const taken = leaveDays.length;
+  const entitlement = employee.paid_leave_days;
+
+  const booked = state.leave_requests
+    .filter((r) => r.employee_id === employee.id && r.status === "APPROVED" && r.kind === "cuti")
+    .flatMap((r) => datesBetween(r.from_date, r.to_date))
+    .filter((d) => d.startsWith(year))
+    /* Only the ones that have not already become marks — otherwise the same
+       day is counted twice, which is how a balance ends up wrong in the
+       employee's favour and nobody notices until December. */
+    .filter((d) => !marks.some((m) => m.work_date === d && m.kind === "leave"))
+    .length;
+
+  const sick = marks.filter((m) => m.kind === "sick");
+  return {
+    employee_id: employee.id,
+    employee_no: employee.employee_no,
+    full_name: employee.full_name,
+    entitlement,
+    taken,
+    booked,
+    remaining: Math.max(entitlement - taken - booked, 0),
+    over: Math.max(taken + booked - entitlement, 0),
+    sick_days: sick.length,
+    sick_without_letter: sick.filter((m) => !suratDokter(state, m)).length,
+    permit_days: marks.filter((m) => m.kind === "permit").length,
+  };
+}
+
+/** A request, with what it would cost before anybody decides (D178). */
+export function leaveRequestView(state: DemoState, r: LeaveRequest): LeaveRequestView {
+  const employee = state.employees.find((e) => e.id === r.employee_id);
+  const dates = datesBetween(r.from_date, r.to_date);
+
+  /* How these days would land if approved. Cuti is paid out of the balance and
+     nothing else is (D144), so the split is known before the decision rather
+     than after the payslip. */
+  let paid = 0;
+  if (employee && r.kind === "cuti") {
+    const bal = leaveBalance(state, employee, r.from_date.slice(0, 4));
+    paid = Math.min(dates.length, bal.remaining);
+  } else if (r.kind === "sakit") {
+    /* Sick is paid only with the letter, and the letter arrives with the day —
+       not with the request. So a request cannot promise it. */
+    paid = 0;
+  }
+
+  return {
+    ...r,
+    employee_no: employee?.employee_no ?? "—",
+    full_name: employee?.full_name ?? "—",
+    decided_by_name: r.decided_by
+      ? state.users.find((u) => u.id === r.decided_by)?.full_name ?? null
+      : null,
+    paid_days: paid,
+    unpaid_days: dates.length - paid,
+    clashes: dates.filter((d) => state.day_marks.some(
+      (m) => m.work_date === d && (m.employee_id === r.employee_id || m.employee_id === null),
+    )),
   };
 }

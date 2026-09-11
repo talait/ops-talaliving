@@ -1068,6 +1068,54 @@ already encodes exactly that — but the owner's call is to complete them by
 hand for now and turn the rule on once we have watched which types really
 never get a delivery. The column exists so that switch is a data change.
 
+### Rekening koran
+
+```mermaid
+erDiagram
+    accounts ||--o{ bank_statements : "has"
+    bank_statements ||--o{ statement_lines : "lists"
+    bank_statements {
+        uuid id PK
+        text statement_no UK "rkk-26-09-08_01"
+        uuid account_id FK
+        date period_start
+        date period_end
+        numeric opening_balance "typed from the header"
+        numeric closing_balance "typed from the header"
+        text currency "IDR | USD"
+        text filename
+        uuid attachment_id FK
+        statement_status_t status
+    }
+    statement_lines {
+        uuid id PK
+        uuid statement_id FK
+        int line_no
+        date value_date
+        direction_t direction
+        numeric amount "the statement's own currency"
+        numeric amount_idr "null until a rate is typed"
+        numeric fx_rate "typed, never looked up"
+        text raw_description "the bank's words, verbatim"
+        numeric balance_after
+        statement_line_status_t status "unmatched|matched|booked|ignored"
+        text trx_no "the ledger row this line IS"
+        text note "required on ignored"
+    }
+```
+
+| Constraint | Why |
+|---|---|
+| `bank_statements` UNIQUE `(account_id, period_start, period_end)` | the same period twice is a re-upload, and booking one movement twice is the most expensive mistake this screen offers (D180) |
+| `statement_lines` UNIQUE `(trx_no)` where `trx_no IS NOT NULL` | one movement, one ledger row |
+| `statement_lines` CHECK `status = 'booked' → amount_idr IS NOT NULL` | a foreign line reaches the ledger only after somebody types the rate (D181) |
+| `statement_lines` CHECK `status = 'ignored' → note IS NOT NULL` | a line nobody can explain is the one somebody will ask about |
+| `fx_rate` stored per **line**, not per statement | a month's transfers are not one rate, and averaging them is how a dollar account stops reconciling |
+
+`opening_balance + Σ lines = closing_balance` is **not** a constraint — a
+partial file is still worth having. It is computed on read and shown as a
+disagreement, because hiding it is the only unacceptable option (D182).
+
 ### The payment calendar (new, M12b)
 
 Three small tables, and the reason they are tables rather than a spreadsheet
@@ -1288,6 +1336,79 @@ slots are computed, never stored.
 | `payroll_adjustments` writable only while the run is `DRAFT` | an approved run is a figure somebody signed; moving money inside it afterwards is a new run, not an edit (D155) |
 | `overtime_lines.form_amount` NULL-able | most nights have no figure on the paper; a nought there would mean *worked for free* rather than *not stated* (D154) |
 
+### Berkas 201 and leave
+
+```mermaid
+erDiagram
+    employees ||--o{ employee_documents : "file"
+    employees ||--o{ leave_requests : "asks"
+    employee_documents {
+        uuid id PK
+        uuid employee_id FK
+        employee_doc_kind_t kind
+        uuid attachment_id FK "null = a number with no scan yet"
+        text doc_no
+        date issued_on
+        date expires_on "null = never expires"
+        text note
+        uuid recorded_by FK
+    }
+    leave_requests {
+        uuid id PK
+        text request_no UK "izn-26-09-08_01"
+        uuid employee_id FK
+        leave_kind_t kind "cuti|izin|sakit"
+        date from_date
+        date to_date
+        text reason
+        leave_status_t status "PENDING|APPROVED|REJECTED|CANCELLED"
+        uuid decided_by FK
+        text decision_note "required on a rejection"
+    }
+```
+
+| Constraint | Why |
+|---|---|
+| `employee_documents` CHECK `attachment_id IS NOT NULL OR doc_no IS NOT NULL` | one line with neither is not a document (D177) |
+| `employee_documents` CHECK `expires_on IS NULL OR expires_on >= issued_on` | |
+| the checklist itself is **code**, not rows | adding a required kind makes every incomplete file say so the same day, with nothing to back-fill |
+| `leave_requests` CHECK `status = 'REJECTED' → decision_note IS NOT NULL` | a refusal an employee cannot read is one they cannot argue with (A7) |
+| no overlapping PENDING/APPROVED range per employee | the same days asked for twice is a mistake, not a second request |
+| approval writes `day_marks`, skipping days that already have one | a public holiday inside somebody's leave is still a public holiday (D178) |
+
+The balance is **not a table**. Entitlement minus days marked minus days
+approved-and-not-yet-taken, computed on read (A3) — a stored balance is the one
+that drifts from the marks behind it.
+
+### The rule book
+
+```mermaid
+erDiagram
+    pay_rule_sets {
+        uuid id PK
+        int version UK
+        date effective_from UK "inclusive; the period's START decides"
+        text note "required — why it changed"
+        jsonb rules "the whole book, one document"
+        uuid created_by FK
+        timestamptz created_at
+    }
+```
+
+The rules themselves are `jsonb` rather than forty columns, deliberately: the
+shape changes when a policy gains a step (a third overtime tier, a second grace
+window), and a schema migration per policy tweak is exactly the deployment this
+model exists to avoid (D173). What is **not** flexible is the versioning — a
+row is never updated, and a payslip is computed under the version in force when
+its period opened.
+
+| Constraint | Why |
+|---|---|
+| `pay_rule_sets` no UPDATE, no DELETE | a payslip from March must stay recomputable under March's rule (D173) |
+| `effective_from` must be `>= current_date` | days already worked were worked under a rule somebody could have read at the time |
+| `effective_from` not inside an existing run's period | the payroll picks the rule in force when the period **opened**, so a mid-period version would look applied and do nothing |
+| `note` NOT NULL, non-empty | a pay rule that changed without a sentence is one nobody can explain to the person whose wage moved |
+
 ### What makes a marked day paid
 
 Two of the six marks can be worth money, and both depend on something outside
@@ -1469,6 +1590,58 @@ that posting is the consequence of a signature, and the signature is its
 authority (D147).
 
 ---
+
+## Schema `inv` — stock
+
+```mermaid
+erDiagram
+    stock_locations ||--o{ stock_moves : "holds"
+    items ||--o{ stock_moves : "counted as"
+    stock_locations {
+        text code PK
+        text name
+        boolean is_active
+    }
+    stock_settings {
+        text item_code PK "procure.items.code, at the seam"
+        numeric min_qty "null = nobody has said"
+        text home_location FK
+    }
+    stock_moves {
+        uuid id PK
+        text move_no UK "stk-26-09-11_04"
+        text item_code "by code, across the seam"
+        text location FK
+        stock_move_kind_t kind "receipt|issue|return|adjust|transfer"
+        numeric qty "signed"
+        text uom
+        numeric unit_cost "null = arrived unpriced, NOT zero"
+        text ref_no "rcv-… | spk-…"
+        text reason "required on adjust"
+        uuid moved_by FK
+        timestamptz moved_at
+    }
+```
+
+**There is no quantity column anywhere.** On-hand is `sum(qty)` over the moves,
+per item and per location, computed on read (A3, D170). The failure this avoids
+is the one the spreadsheet already has: a stored quantity that disagrees with
+its own history, discovered by somebody standing in front of an empty rack.
+
+| Constraint | Why |
+|---|---|
+| `stock_moves` no UPDATE, no DELETE | a mistake is another move with a reason (A5, D171) |
+| `stock_moves` CHECK `kind = 'adjust' → reason IS NOT NULL` | the sentence *is* the record; "adjustment" alone is a shrug |
+| `stock_moves` CHECK `qty <> 0` | a zero move says nothing and clutters the one history somebody reads |
+| `stock_moves` UNIQUE `(ref_no, item_code)` where `kind = 'receipt'` | confirming the same delivery twice stocks it once (D170) |
+| `stock_moves.unit_cost` NULL-able | unpriced stock is counted and left out of the valuation, never valued at nought (D172) |
+| `stock_settings.min_qty` NULL-able | an unstated minimum is not a satisfied one; the screen says *belum ditetapkan* |
+| a transfer writes **two** rows | so each location's own history reads correctly on its own |
+
+**Issues are not valued.** What stock cost on the way out — FIFO, average,
+standard — is three different numbers and nobody has chosen (Q43). The rack is
+valued at the weighted average of what is on it, which is the question being
+asked today.
 
 ## Schema `inv` — timber
 

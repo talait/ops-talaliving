@@ -177,14 +177,46 @@ export interface IncomingMoney {
   proof_filename: string | null;
 }
 
+/** One uploaded rekening koran (D180).
+ *
+ *  For BCA 064 and BCA USD 081 this is not a check on rows somebody typed: the
+ *  two accounts are held by leadership and not shared openly, so the statement
+ *  is **how their rows come to exist at all**. Importing one therefore creates
+ *  ledger entries rather than merely ticking existing ones off — and the file
+ *  itself is the evidence behind every row it creates (D85).
+ */
 export interface BankStatement {
   id: string;
+  statement_no: string;
   account_id: string;
   period_start: string;
   period_end: string;
+  /** What the bank says the account held at each end. The two, against the sum
+   *  of the lines, are what says whether the file is complete (D182). */
+  opening_balance: number;
+  closing_balance: number;
+  /** `IDR`, `USD` — the account's own currency, carried on the statement
+   *  because a dollar statement is not a rupiah one with a different number. */
+  currency: string;
+  filename: string;
   status: StatementStatus;
-  attachment_id: string;
+  attachment_id: string | null;
+  note: string | null;
+  uploaded_by: string;
+  uploaded_at: string;
 }
+
+/** Where one line of the statement has got to. */
+export type StatementLineStatus =
+  /** Nothing in the ledger looks like it, and nobody has decided. */
+  | "unmatched"
+  /** Tied to a ledger row that already existed. Nothing is created. */
+  | "matched"
+  /** A ledger row was created from it — the ordinary case for the leadership
+   *  accounts (D180). */
+  | "booked"
+  /** Deliberately left out, with a reason. Never deleted. */
+  | "ignored";
 
 export interface StatementLine {
   id: string;
@@ -192,9 +224,63 @@ export interface StatementLine {
   line_no: number;
   value_date: string;
   direction: Direction;
-  amount_idr: number;
+  /** The amount in the statement's own currency. For an IDR statement this and
+   *  `amount_idr` are the same number. */
+  amount: number;
+  /** Rupiah, once somebody has said at what rate. **Null until then** — a
+   *  dollar line booked at a guessed rate is a wrong number in the ledger and
+   *  a right-looking one on the screen (D181). */
+  amount_idr: number | null;
+  /** Rupiah per unit of the statement's currency, typed by a person. Null for
+   *  an IDR statement, where there is nothing to convert. */
+  fx_rate: number | null;
   raw_description: string;
-  booked_trx_id: string | null;
+  /** The running balance the bank printed, carried verbatim for checking. */
+  balance_after: number | null;
+  status: StatementLineStatus;
+  /** The ledger row this line is, whether it was found or created. */
+  trx_no: string | null;
+  /** Required on `ignored`. */
+  note: string | null;
+  decided_by: string | null;
+  decided_at: string | null;
+}
+
+/** A ledger row that looks like this line — same account, same direction, same
+ *  amount, near the same day. **A suggestion, never applied by itself** (D180). */
+export interface StatementMatch {
+  trx_no: string;
+  trx_date: string;
+  description: string;
+  amount_idr: number;
+  /** How far apart the dates are, in days. Zero is the usual case; a couple of
+   *  days is a bank posting late, which is normal and worth showing. */
+  days_apart: number;
+}
+
+export interface StatementLineView extends StatementLine {
+  suggestions: StatementMatch[];
+}
+
+export interface BankStatementView extends BankStatement {
+  account_code: string;
+  account_name: string;
+  uploaded_by_name: string;
+  lines: StatementLineView[];
+  /** Σ in − Σ out, in the statement's currency. */
+  movement: number;
+  /** `opening + movement`, against what the bank printed as closing. They
+   *  disagree when the file is partial — which is worth refusing to hide
+   *  (D182). */
+  computed_closing: number;
+  balance_ok: boolean;
+  unmatched: number;
+  booked: number;
+  matched: number;
+  ignored: number;
+  /** Lines in a foreign currency with no rate typed yet: they cannot reach the
+   *  ledger, and the screen says which (D181). */
+  awaiting_rate: number;
 }
 
 /* ------------------------------------------------------------------ */

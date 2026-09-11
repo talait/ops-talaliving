@@ -16,6 +16,17 @@ that only shows what is left teaches nobody anything.
 | B3 | An image has to be opened through a button before it can be seen. Every picture in the queue should show its own preview | `/accounting/verifikasi` | open |
 | B4 | **Already decided** grows without limit and pushes the queue off the screen. It should carry a window of the last few days and paginate | `/accounting/verifikasi` | **half done (M26)** — both lists now page, twelve at a time, and the queue pages too (D157). The date window is still open: paging keeps the screen usable, it does not answer *how far back is worth showing* |
 
+## Scheduled — the owner's answers of 2026-09-11
+
+| # | What | Note |
+|---|---|---|
+| S1 | ~~**Stock: materials and hardware, properly categorised**~~ | **built 2026-09-11 (M27)** — `/inventory/material` and `/inventory/penyesuaian`, D169–D172. Confirming a receipt now stocks the goods. What is still open is the other half of Q40: nothing draws stock down from a BOM automatically — an issue is recorded by the person who carried it out, against the SPK |
+| S2 | ~~**Berkas 201 and Cuti & Izin**~~ | **built 2026-09-11 (M29)** — D177, D178. Compliance removed from the menu |
+| S3 | ~~**Desain, for the drafters**~~ | **built 2026-09-11 (M30)** — `/produksi/desain`, D179 |
+| S4 | ~~**Pay schemes as configuration**~~ | **built 2026-09-11 (M28)** — `/it/aturan-gaji`, D173–D176. Overtime now follows the national ladder (Q31 answered); undertime is built and off by default |
+| S5 | ~~**Rekening koran upload for the leadership accounts**~~ | **built 2026-09-11 (M31)** — `/accounting/rekening-koran`, D180–D182. Q42 answered: the statement is the only road, and the USD rate is typed per line |
+| S6 | **Package: the agent-commission programme** | its own session; the owner has an artifact (D166) |
+
 ## Asked for, not yet scheduled
 
 | # | What | Note |

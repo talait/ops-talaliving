@@ -10,6 +10,7 @@ import type { DemoState } from "./state";
 import {
   PROCESS_STAGES, type WorkOrder, type WorkOrderView, type StageProgress,
   type Product, type ProductView, type BomLineView, type ProductDrawing,
+  type DesignTask, type DesignTaskView, type DesignKind,
 } from "@/services/production/contracts";
 
 /** Today, as an office day. The board is about deadlines, so "what day is it"
@@ -272,4 +273,155 @@ export function productViews(state: DemoState): ProductView[] {
   return state.products
     .map((p) => productView(state, p))
     .sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name));
+}
+
+/* ── Desain ───────────────────────────────────────────────────────────────── */
+
+/** One drafting task, with everything that decides whether it matters today.
+ *
+ *  The two computed facts are the whole module (D179):
+ *
+ *  - **`ahead_of_release`** — a newer revision exists that nobody released, so
+ *    the workshop is still cutting from the older one. Nothing about the task
+ *    *looks* wrong: it has a drawing, it has a recent upload, somebody has
+ *    clearly been working on it. That is exactly why it needs saying.
+ *  - **`needed_by`** — the soonest date anything waiting on this drawing is
+ *    due, taken from the open work orders and the projects that ordered the
+ *    product. A drafter cannot prioritise from a list of products; they can
+ *    from a list of dates.
+ */
+export function designTaskView(state: DemoState, task: DesignTask, today: string): DesignTaskView {
+  const product = state.products.find((p) => p.product_code === task.product_code);
+
+  const revisions = state.design_revisions
+    .filter((r) => r.task_id === task.id)
+    .sort((a, b) => a.uploaded_at.localeCompare(b.uploaded_at))
+    .map((r) => ({
+      ...r,
+      uploaded_by_name: state.users.find((u) => u.id === r.uploaded_by)?.full_name ?? "—",
+      released_by_name: r.released_by
+        ? state.users.find((u) => u.id === r.released_by)?.full_name ?? null
+        : null,
+    }));
+
+  const questions = state.design_questions
+    .filter((q) => q.task_id === task.id)
+    .sort((a, b) => b.asked_at.localeCompare(a.asked_at))
+    .map((q) => ({
+      ...q,
+      asked_by_name: state.users.find((u) => u.id === q.asked_by)?.full_name ?? "—",
+      answered_by_name: q.answered_by
+        ? state.users.find((u) => u.id === q.answered_by)?.full_name ?? null
+        : null,
+      waiting_days: q.answer ? null : daysApart(q.asked_at.slice(0, 10), today),
+    }));
+
+  const released = [...revisions].reverse().find((r) => r.released_at);
+  const latest = revisions[revisions.length - 1];
+
+  /* Who is waiting. Work orders name the product directly; a project line names
+     it too, and both are by code across the seam (ADR-004). */
+  const workOrders = state.work_orders
+    .filter((w) => w.product_code === task.product_code && w.status !== "CANCELLED")
+    .map((w) => ({ wo_no: w.wo_no, due_date: w.due_date, status: w.status }));
+
+  const orderedBy = state.project_lines
+    .filter((l) => l.product_code === task.product_code)
+    .map((l) => state.projects.find((p) => p.id === l.project_id))
+    .filter((p): p is NonNullable<typeof p> => !!p && p.is_active)
+    .map((p) => p.code);
+
+  /* Only jobs that are still live. A finished project's target date is not a
+     deadline — counting one made a released drawing read *lewat 74 hari*
+     because an office fit-out handed over in June still had a line for the
+     same wardrobe (F51). A date that is not a deadline is worse than no date:
+     it moves a real one down the queue. */
+  const dates = [
+    ...workOrders.filter((w) => w.status !== "DONE").map((w) => w.due_date),
+    ...state.project_lines
+      .filter((l) => l.product_code === task.product_code)
+      .map((l) => state.projects.find((p) => p.id === l.project_id))
+      .filter((p): p is NonNullable<typeof p> => !!p && p.is_active)
+      .map((p) => p.target_date)
+      .filter((d): d is string => !!d),
+    ...(task.due_date ? [task.due_date] : []),
+  ].sort();
+  const needed_by = dates[0] ?? null;
+
+  return {
+    ...task,
+    product_name: product?.name ?? task.product_code,
+    category: product?.category ?? "—",
+    dimension: product && product.length_mm && product.width_mm && product.height_mm
+      ? `${product.length_mm} × ${product.width_mm} × ${product.height_mm} mm`
+      : null,
+    revisions,
+    questions,
+    released_rev: released?.rev ?? null,
+    latest_rev: latest?.rev ?? null,
+    ahead_of_release: !!released && !!latest && latest.rev !== released.rev,
+    blocked: questions.some((q) => !q.answer),
+    ordered_by: [...new Set(orderedBy)],
+    work_orders: workOrders,
+    needed_by,
+    days_left: needed_by ? daysApart(today, needed_by) : null,
+  };
+}
+
+function daysApart(from: string, to: string): number {
+  const [fy, fm, fd] = from.split("-").map(Number);
+  const [ty, tm, td] = to.split("-").map(Number);
+  return Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)) / 86_400_000);
+}
+
+/** The queue, in the order a drafter should work it.
+ *
+ *  Blocked first — a question waiting nine days is somebody else's problem that
+ *  only the drafter can see. Then by the date something is actually needed,
+ *  then the unstarted ones. Released-and-current tasks sink to the bottom,
+ *  which is where finished work belongs.
+ */
+export function designQueue(state: DemoState, today: string): DesignTaskView[] {
+  return state.design_tasks
+    .map((t) => designTaskView(state, t, today))
+    .sort((a, b) => {
+      const rank = (t: DesignTaskView) =>
+        t.blocked ? 0
+          : t.ahead_of_release ? 1
+            : t.status === "BELUM" ? 2
+              : t.status === "DIGAMBAR" ? 3 : 4;
+      if (rank(a) !== rank(b)) return rank(a) - rank(b);
+      const ad = a.days_left ?? 9999;
+      const bd = b.days_left ?? 9999;
+      if (ad !== bd) return ad - bd;
+      return a.product_name.localeCompare(b.product_name);
+    });
+}
+
+/** Products that are ordered or on the floor and have **no task at all** for a
+ *  drawing kind. The queue's blind spot, and the reason it is computed rather
+ *  than typed: adding a product to an order makes its missing drawings appear
+ *  the same day, without anybody remembering to raise a task (D179). */
+export function designGaps(state: DemoState): { product_code: string; product_name: string; kind: DesignKind; why: string }[] {
+  const out: { product_code: string; product_name: string; kind: DesignKind; why: string }[] = [];
+  const wanted = new Map<string, string>();
+
+  for (const w of state.work_orders) {
+    if (!w.product_code || w.status === "CANCELLED" || w.status === "DONE") continue;
+    wanted.set(w.product_code, `sedang dikerjakan · ${w.wo_no}`);
+  }
+  for (const l of state.project_lines) {
+    if (!l.product_code || wanted.has(l.product_code)) continue;
+    const project = state.projects.find((p) => p.id === l.project_id);
+    if (project?.is_active) wanted.set(l.product_code, `dipesan · ${project.code}`);
+  }
+
+  for (const [code, why] of wanted) {
+    const product = state.products.find((p) => p.product_code === code);
+    for (const kind of ["gambar_kerja", "gambar_jadi"] as DesignKind[]) {
+      if (state.design_tasks.some((t) => t.product_code === code && t.kind === kind)) continue;
+      out.push({ product_code: code, product_name: product?.name ?? code, kind, why });
+    }
+  }
+  return out;
 }

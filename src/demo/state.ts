@@ -8,16 +8,20 @@ import type {
 import type {
   Account, TransactionType, Transaction, TransactionLine,
   PaymentAllocation, EvidenceInboxRow,
-  CashComponent, CashOverride, CashSettlement,
+  CashComponent, CashOverride, CashSettlement, BankStatement, StatementLine,
 } from "@/services/accounting/contracts";
 import type { Attachment, AttachmentLink } from "@/services/documents/contracts";
-import type { LogPurchase, LogPiece, SawnBoard } from "@/services/inventory/contracts";
+import type {
+  LogPurchase, LogPiece, SawnBoard,
+  StockLocation, StockMove, StockSetting,
+} from "@/services/inventory/contracts";
 import type {
   Employee, AttendanceScan, DayMark, OvertimeSheet, OvertimeLine, PayrollRun,
-  PayrollAdjustment,
+  PayrollAdjustment, PayRuleSet, EmployeeDocument, LeaveRequest,
 } from "@/services/hr/contracts";
 import type {
   WorkOrder, ProgressEntry, Product, BomComponent,
+  DesignTask, DesignRevision, DesignQuestion,
 } from "@/services/production/contracts";
 
 export interface DemoUser extends User {
@@ -95,6 +99,10 @@ export interface DemoState {
   transaction_lines: TransactionLine[];
   payment_allocations: PaymentAllocation[];
   evidence_inbox: EvidenceInboxRow[];
+  /** Rekening koran, and its lines. For the two leadership accounts this is
+   *  how their ledger rows come to exist at all (D180). */
+  bank_statements: BankStatement[];
+  statement_lines: StatementLine[];
 
   /** The payment calendar: what repeats, what changed in one month, and which
    *  ledger row somebody says settled it. */
@@ -118,6 +126,14 @@ export interface DemoState {
   overtime_sheets: OvertimeSheet[];
   overtime_lines: OvertimeLine[];
   payroll_runs: PayrollRun[];
+  /** Berkas 201: somebody's own file, and what is missing from it (D177). */
+  employee_documents: EmployeeDocument[];
+  /** Asked for, then decided. Approving one writes the timesheet mark (D178). */
+  leave_requests: LeaveRequest[];
+
+  /** The rule book, dated. Never edited: a change writes the next version, so
+   *  a payslip from March stays recomputable under March's rule (D173). */
+  pay_rule_sets: PayRuleSet[];
   /** Added or taken off a payslip by a person, with a reason (D155). */
   payroll_adjustments: PayrollAdjustment[];
 
@@ -129,6 +145,19 @@ export interface DemoState {
   /** What we sell and make, and what each one is made of (D149). */
   products: Product[];
   bom_components: BomComponent[];
+  /** The drafters' queue: what has to be drawn, which revision the floor may
+   *  cut from, and what is stuck on an answer (D179). */
+  design_tasks: DesignTask[];
+  design_revisions: DesignRevision[];
+  design_questions: DesignQuestion[];
+
+  /* --- inventory: stock -------------------------------------------- */
+  /** Where stock lives, and how low is too low. Settings, not quantities —
+   *  the quantity is the sum of the moves (D170). */
+  stock_locations: StockLocation[];
+  stock_settings: StockSetting[];
+  /** Append-only. A mistake is another move with a reason (A5, D171). */
+  stock_moves: StockMove[];
 
   /* --- inventory: timber ------------------------------------------- */
   /** Logs are bought by the load and used as boards — two quantities with a

@@ -2165,3 +2165,120 @@ So the slip marks those days `?`, names them in words, and says the same about
 overtime the machine saw and nobody approved: *10,27 jam catatan mesin, 2 jam
 dibayar*. The figures did not change. What changed is that the paper now
 answers the question it was provoking.
+
+## F49 — the delivery that nobody could find afterwards
+
+Building stock turned up the gap it was built to close, and it is worth naming
+precisely because it had been invisible for twenty-six milestones.
+
+A request was raised, approved, ordered, delivered, confirmed with a photo and
+a signed tanda terima, and paid. Every one of those steps had a screen and a
+document. And then **the goods stopped existing.** Nothing in the system knew
+that sixty sheets of plywood were in the gudang, so the next person to need
+plywood had exactly two ways to find out whether there was any: walk to the
+rack, or raise another request.
+
+The fix is one call — confirming a receipt writes a stock movement — but the
+shape matters more than the call:
+
+**On-hand is never stored.** It is the sum of the movements, computed on read.
+The spreadsheet version of this module stores the number, and it has been wrong
+since the day somebody forgot a row: a stored quantity disagrees with its own
+history, and the disagreement is discovered by a man standing in front of an
+empty rack.
+
+**Issuing more than the record shows is recorded, not refused.** This one is
+counter-intuitive until you stand in the workshop. The wood is either on the
+rack or it is not; a screen that refuses to record what a storeman just carried
+out does not prevent the issue, it prevents the *record* of it — and it teaches
+him to stop typing. What the system owes him instead is to say the figure has
+gone negative and needs counting, which it does.
+
+**An unpriced delivery is counted and left out of the value.** Eight sheets
+arrived on a lump-sum line with no unit price. Valuing them at nought would
+have shown the rack as Rp 2,3 juta cheaper than it is, with nothing on screen
+to say why. So the value is over the priced part and says *belum lengkap* — the
+same rule as the BOM's material cost (D149) and timber's unsawn logs (F46).
+Three modules, one principle: **a figure is allowed to be missing, never
+allowed to be quietly wrong.**
+
+### And the category list that was a word list
+
+The first filing had nine flat headings, one of which was "Production" — which
+is every item in the workshop. A category earns its place by separating two
+questions somebody actually asks: *how much wood is on the rack*, *which
+finishing is running out*. Filing is now two levels, and **whether an item is
+counted at all is a property of its category**, not a checkbox somebody has to
+remember: a service is never on a rack, and neither is the electricity bill.
+
+## F50 — the multiplier that moved a monthly salary by seventy per cent
+
+Making the pay rules configurable was supposed to be plumbing. It changed a
+number instead, and the change is worth writing down because it had been wrong
+in plain sight for four milestones.
+
+Overtime for a salaried person was priced at `base_rate / 21 / daily_hours` —
+a month divided by twenty-one working days divided by eight hours. It is a
+reasonable-looking guess. The regulation's own figure is **173** hours a month
+(40 × 52 ÷ 12), and the difference is not small:
+
+| | Rp / hour | 2 hours of overtime |
+|---|---|---|
+| `/ 21 / 8` with no multiplier | 38.690 | **77.380** |
+| `/ 173`, national ladder (1,5× then 2×) | 37.572 | **131.502** |
+
+The hourly rate barely moved. The **pay** moved by 70%, because the ladder was
+missing entirely: this system had been paying overtime at the ordinary rate and
+saying so on the screen (Q31), which was honest and also not what the business
+does. One sentence from the owner — *lembur normal sesuai peraturan nasional* —
+replaced a guess that had been visible, marked, and unchallenged since M17.
+
+### Three rules that came out of building it
+
+**A rule change cannot be backdated.** Days already worked were worked under a
+rule somebody could have read at the time. The first version of the guard only
+checked that the new version came after the previous one, which let a change
+dated 1 August through on 11 September — and the test caught it saving happily.
+
+**A version dated inside an existing run is refused, not ignored.** Payroll
+picks the rule in force when the period *opened*, so a version dated mid-period
+would look applied and do nothing. Silently doing nothing is worse than
+refusing: the setting reads as changed, and the payslip disagrees.
+
+**Undertime ships off.** The owner named it as a scheme that exists here, but
+not what a short hour costs — and the demo had no short day in it at all, which
+is how the first preview came back saying *nothing changes*. The fixture now
+has one (Sumiati leaves at 14:47 on the third), and turning the rule on moves
+her week by Rp 23.963. That is the number the decision needs, and it did not
+exist until somebody had to look at it.
+
+## F51 — a finished project made a finished drawing look ten weeks late
+
+The drafting queue is sorted by the date the job actually needs each drawing,
+which means it has to work out what "needed by" is. The first version took the
+soonest of: the open work orders' due dates, the task's own due date, and the
+target dates of every project that ordered the product.
+
+It read, against a drawing released three weeks ago with nothing outstanding:
+
+> **Lemari pakaian 3 pintu — lewat 74 hari**
+
+Seventy-four days before today is 29 June. Nothing live is due then. The date
+came from **OFFICE FITOUT**, a project handed over in June, closed, inactive —
+which happens to have a line for the same wardrobe. A target date on a finished
+job is not a deadline, and treating it as one did the specific damage this
+project keeps finding: it did not just show a wrong number, it **moved a real
+deadline down the queue**, because the rak display genuinely due in three days
+sorted below it.
+
+Two fixes, and the second is the more interesting one:
+
+- Only **active** projects contribute a date. A closed job's target date is
+  history.
+- A released, current, unblocked task shows **selesai**, not a countdown. Its
+  deadline passed because the work was done; painting that red teaches the
+  drafter to ignore red.
+
+The general rule this is the third instance of: a derived date is as capable of
+being quietly wrong as a derived figure, and a wrong date is worse, because
+sorting by it hides the right one.

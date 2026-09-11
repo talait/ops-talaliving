@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, Users, CalendarCheck, FileBadge, ShieldCheck, Wallet,
+  LayoutDashboard, Users, CalendarCheck, FileBadge, Wallet,
   ShoppingCart, ClipboardList, FileText, PackageCheck, Boxes, TreePine,
   Layers, Landmark, BookOpen, TrendingUp, PiggyBank, Receipt,
   Megaphone, UserRound, Target, HandCoins,
@@ -46,9 +46,8 @@ export const NAV: NavSection[] = [
       { label: "Employees", href: "/hrd/karyawan", icon: Users, permission: "hrd.read", badge: "core" },
       { label: "Attendance", href: "/hrd/absensi", icon: CalendarCheck, permission: "hrd.read" },
       { label: "Overtime", href: "/hrd/lembur", icon: Clock, permission: "hrd.read", badge: "new" },
-      { label: "Employee Files", href: "/hrd/berkas-201", icon: FileBadge, permission: "hrd.read" },
-      { label: "Leave & Permits", href: "/hrd/cuti", icon: CalendarClock, permission: "hrd.read" },
-      { label: "Compliance", href: "/hrd/compliance", icon: ShieldCheck, permission: "hrd.read" },
+      { label: "Employee Files", href: "/hrd/berkas-201", icon: FileBadge, permission: "hrd.read", badge: "new" },
+      { label: "Leave & Permits", href: "/hrd/cuti", icon: CalendarClock, permission: "hrd.read", badge: "new" },
       { label: "Payroll", href: "/hrd/payroll", icon: Wallet, permission: "payroll.read" },
       { label: "Gajian mingguan", href: "/hrd/payroll/minggu", icon: CalendarRange, permission: "payroll.read", badge: "new" },
     ],
@@ -73,14 +72,15 @@ export const NAV: NavSection[] = [
     items: [
       { label: "Logs", href: "/inventory/log", icon: TreePine, permission: "inventory.read", badge: "core" },
       { label: "Sawn Boards", href: "/inventory/papan", icon: Layers, permission: "inventory.read" },
-      { label: "Materials & Hardware", href: "/inventory/material", icon: Boxes, permission: "inventory.read" },
-      { label: "Stock Adjustments", href: "/inventory/penyesuaian", icon: Wrench, permission: "inventory.adjust" },
+      { label: "Materials & Hardware", href: "/inventory/material", icon: Boxes, permission: "inventory.read", badge: "new" },
+      { label: "Stock Adjustments", href: "/inventory/penyesuaian", icon: Wrench, permission: "inventory.adjust", badge: "new" },
     ],
   },
   {
     title: "Accounting",
     icon: Landmark,
     items: [
+      { label: "Rekening koran", href: "/accounting/rekening-koran", icon: Landmark, permission: "accounting.read", badge: "new" },
       { label: "Ledger", href: "/accounting/ledger", icon: BookOpen, permission: "accounting.read", badge: "core" },
       { label: "Liquidation", href: "/accounting/liquidation", icon: TrendingUp, permission: "accounting.read", badge: "new" },
       { label: "Payment Calendar", href: "/accounting/calendar", icon: PiggyBank, permission: "accounting.read", badge: "new" },
@@ -113,7 +113,7 @@ export const NAV: NavSection[] = [
     title: "Production",
     icon: Hammer,
     items: [
-      { label: "Design", href: "/produksi/desain", icon: PencilRuler, permission: "production.read" },
+      { label: "Design", href: "/produksi/desain", icon: PencilRuler, permission: "production.read", badge: "new" },
       { label: "Products & BOM", href: "/produksi/bom", icon: ListTree, permission: "production.read", badge: "core" },
       { label: "Planning & Schedule", href: "/produksi/jadwal", icon: CalendarClock, permission: "production.read", badge: "new" },
     ],
@@ -125,6 +125,7 @@ export const NAV: NavSection[] = [
       { label: "Audit Log", href: "/it/audit", icon: ScrollText, permission: "it.read" },
       { label: "Activity Log", href: "/it/aktivitas", icon: Activity, permission: "it.read" },
       { label: "Users", href: "/it/pengguna", icon: UserCog, permission: "it.manage_users" },
+      { label: "Aturan penggajian", href: "/it/aturan-gaji", icon: Scale, permission: "payroll.read", badge: "new" },
       { label: "Roles & Permissions", href: "/it/peran", icon: KeyRound, permission: "it.manage_roles" },
     ],
   },

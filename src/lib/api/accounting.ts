@@ -263,6 +263,123 @@ export async function resolveInbox(
 }
 
 /* ------------------------------------------------------------------ */
+/* The payment calendar                                                */
+/* ------------------------------------------------------------------ */
+
+/** Twelve months, planned against actual — computed on every read from three
+ *  tables and the ledger as it stands. **No projection is stored** (D109–D115):
+ *  a stored one disagrees with the ledger the moment a payment lands.
+ *
+ *  `from` exists because the engine takes a date, and pinning it is what makes
+ *  the calendar testable. Left off, it starts at the office day. */
+export async function getCashPlan(from?: string): Promise<Result<unknown[]>> {
+  const { data, error } = await supabaseBrowser()
+    .rpc("cash_events", { p_from: from ?? null });
+  return fromRows<unknown[]>(SERVICE, data as unknown[], error);
+}
+
+/** One line, one month: the cell a calendar draws. Its state is the **worst**
+ *  of the occurrences behind it, because a month with one overdue payday is an
+ *  overdue month however well the other three went. */
+export async function listCells(month?: string): Promise<Result<unknown[]>> {
+  let q = supabaseBrowser().from("v_cash_cell").select("*");
+  if (month) q = q.eq("month", month);
+  const { data, error } = await q.order("month").order("due_date");
+  return fromRows<unknown[]>(SERVICE, data as unknown[], error);
+}
+
+export async function listComponents(): Promise<Result<unknown[]>> {
+  const { data, error } = await supabaseBrowser()
+    .from("v_cash_row").select("*").order("name");
+  return fromRows<unknown[]>(SERVICE, data as unknown[], error);
+}
+
+/** Cash across the accounts that actually pay people. **Leadership's are not
+ *  among them**: money sitting there has not been given to operations yet, and
+ *  counting it would make every month look survivable. */
+export async function getCashPosition(): Promise<Result<{ opening_cash: number; as_of: string }>> {
+  const { data, error } = await supabaseBrowser()
+    .from("v_cash_position").select("*").maybeSingle();
+  if (error) return fail(SERVICE, error);
+  return ok(SERVICE, data as { opening_cash: number; as_of: string });
+}
+
+/** What left the paying accounts and no planned line claimed. Not an error —
+ *  most spending is not on the calendar — but the figure a month is short by
+ *  when the plan looked fine. */
+export async function listUnplanned(): Promise<Result<unknown[]>> {
+  const { data, error } = await supabaseBrowser()
+    .from("v_cash_unplanned").select("*").order("month");
+  return fromRows<unknown[]>(SERVICE, data as unknown[], error);
+}
+
+export async function saveComponent(input: {
+  id?: string | null;
+  name: string;
+  amount: number;
+  frequency: "weekly" | "monthly" | "once";
+  direction?: Direction;
+  due_day?: number | null;
+  due_weekday?: number | null;
+  due_date?: string | null;
+  type_code?: string | null;
+  vendor_code?: string | null;
+  account_code?: string | null;
+  starts_on?: string | null;
+  note?: string | null;
+}): Promise<Result<unknown>> {
+  const { data, error } = await supabaseBrowser().rpc("save_cash_component", {
+    p_name: input.name,
+    p_amount: input.amount,
+    p_frequency: input.frequency,
+    p_direction: input.direction ?? "OUT",
+    p_due_day: input.due_day ?? null,
+    p_due_weekday: input.due_weekday ?? null,
+    p_due_date: input.due_date ?? null,
+    p_type_code: input.type_code ?? null,
+    p_vendor_code: input.vendor_code ?? null,
+    p_account_code: input.account_code ?? null,
+    p_starts_on: input.starts_on ?? null,
+    p_note: input.note ?? null,
+    p_id: input.id ?? null,
+  });
+  return fromSeam(SERVICE, data, error);
+}
+
+/** A month changed. `skip: true` means *not this month* — a bill that skips is
+ *  a fact, not a deletion. On a **weekly** line the amount is the month's
+ *  total, and the difference lands on the last run: the THR is paid with one
+ *  payday rather than spread across four (D114). */
+export async function setOverride(input: {
+  component_id: string;
+  month: string;
+  amount?: number | null;
+  reason?: string | null;
+  skip?: boolean;
+}): Promise<Result<unknown>> {
+  const { data, error } = await supabaseBrowser().rpc("set_cash_override", {
+    p_component_id: input.component_id,
+    p_month: input.month,
+    p_amount: input.amount ?? null,
+    p_reason: input.reason ?? null,
+    p_skip: input.skip ?? false,
+  });
+  return fromSeam(SERVICE, data, error);
+}
+
+/** Somebody saying *this ledger row is that bill*. It beats the category
+ *  guess, which is the point — the guess is the fallback, not the answer. One
+ *  row, one bill: a payment already on the calendar is a 409. */
+export async function linkPayment(input: {
+  component_id: string; month: string; trx_no: string;
+}): Promise<Result<unknown>> {
+  const { data, error } = await supabaseBrowser().rpc("link_cash_payment", {
+    p_component_id: input.component_id, p_month: input.month, p_trx_no: input.trx_no,
+  });
+  return fromSeam(SERVICE, data, error);
+}
+
+/* ------------------------------------------------------------------ */
 /* Vendors and statements                                              */
 /* ------------------------------------------------------------------ */
 

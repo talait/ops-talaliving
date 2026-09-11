@@ -212,7 +212,20 @@ create type acct.inbox_status_t as enum (
 
 create type acct.account_custody_t as enum ('accounting','leadership');
 create type acct.statement_status_t as enum ('PENDING','BOOKED','ABANDONED');
-create type acct.cash_frequency_t as enum ('weekly','monthly','one_off');
+-- `once`, not `one_off` — the contract's spelling. Three shapes because the
+-- business has three: `monthly` is the electricity bill, `weekly` is payroll
+-- (four runs in most months and five in some, which is a real difference in
+-- what a month costs), `once` is a bill that is certain but not repeating
+-- (D113).
+create type acct.cash_frequency_t as enum ('weekly','monthly','once');
+
+-- What a planned line is doing in a given month. Derived, never stored.
+create type acct.cash_cell_state_t as enum (
+  'PAID','PARTIAL','OVERDUE','DUE','PLANNED','SKIPPED');
+
+-- How an actual was arrived at: somebody's link, or a category match the
+-- screen is honest about being a guess (D110).
+create type acct.cash_match_t as enum ('linked','category');
 
 -- ── HR ────────────────────────────────────────────────────────────────────
 create type hr.pay_basis_t as enum ('monthly','daily','hourly');

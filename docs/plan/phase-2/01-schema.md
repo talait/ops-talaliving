@@ -57,7 +57,7 @@ saying why.
 | 0019 | `acct_review` | `evidence_inbox`, `bank_statements`, `statement_lines` | **Done.** Five roads out, none of them delete (F26, D94). For the two leadership accounts a statement is not a check on typed rows — it is the only way their rows exist (D180) |
 | 0020 | `acct_views` | `v_account_balance`, `v_transaction`, `v_transaction_detail`, `v_allocation`, `v_vendor_payment`, `v_inbox_health`, `v_bank_statement`, `v_statement_suggestion` | **Done.** The database owns the balance (D9); the leadership figure is *locked, not hidden* (D87) |
 | 0021 | `acct_seams` | `post_transaction`, `void_transaction`, `allocate_payment`, `supersede_allocation`, `resolve_inbox` | **Done.** The two money seams (ADR-006), `post_ledger` or 403 |
-| 0022 | `acct_calendar` | `cash_components`, `cash_overrides`, `cash_settlements`, `v_cash_plan` | three tables, **no projection stored** — the twelve months are a view (D109–D115). The largest single view left in `acct` |
+| 0022 | `acct_calendar` | `cash_components`, `cash_overrides`, `cash_settlements`, `cash_events()`, `v_cash_cell`, `v_cash_row`, `v_cash_position`, `v_cash_unplanned` | **Done.** Three tables and **no projection stored** (D109–D115). The engine is a set-returning function rather than a view, because claiming is sequential — see below |
 | 00xx | `hr_people` | `employees` | `paid_leave_days` per person (D144); nobody is deleted, `left_on` retires |
 | 00xx | `hr_attendance` | `attendance_imports`, `attendance_scans`, `day_marks` | one row per **tap** (D141); a mark never overrides a scan (D142); re-upload is a no-op (D143) |
 | 00xx | `hr_overtime` | `overtime_sheets`, `overtime_lines` | two kinds of sheet (D146); leadership signs **after** HRD (D145); `form_amount` is the GAJI column of the paper (D154) |
@@ -124,6 +124,22 @@ view and the seam are all suspects.
 | `acct.inbox_origin_t` / `_status_t` | `upload/chat/email/bank`; no `CANCELLED` | `chat/web`; `CANCELLED` | two doors exist, not four. And withdrawing a document is not the same act as accounting rejecting it — the difference is who to ask about it |
 | `prod.work_order_status_t` | + `IN_PROGRESS` | `OPEN`, `DONE`, `CANCELLED` | how far along it is comes from the progress entries (A3) |
 | `core.doc_kind_t` | 13 | 14 | `laporan_lembur` was missing; a staff session's own report is a kind the screens already file (D146), and a kind the database cannot store is evidence that lands under `other` |
+
+### The one derivation that is a function, not a view
+
+Everything derived in this system is a view, with one exception: the payment
+calendar's `acct.cash_events()`.
+
+The reason is **claiming**. A ledger row may be counted once, and which planned
+line gets it depends on how specific that line is — a dated one-off takes its
+own payment before the standing line for that category sweeps it up (D110).
+That is a loop with state: each line claims, and the next sees a smaller pool.
+A pure SQL view could be made to produce something similar with window
+functions, and it would be a *reimplementation* of the rule rather than a port
+of it — which is the one thing `0014`'s header says not to do.
+
+It is still computed on read. A3 is about not storing a derived figure, not
+about which language derives it.
 
 ### The shadowing rule, and why it is a script
 

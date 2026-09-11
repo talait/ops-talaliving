@@ -80,6 +80,7 @@ export const NAV: NavSection[] = [
     title: "Accounting",
     icon: Landmark,
     items: [
+      { label: "Rekening koran", href: "/accounting/rekening-koran", icon: Landmark, permission: "accounting.read", badge: "new" },
       { label: "Ledger", href: "/accounting/ledger", icon: BookOpen, permission: "accounting.read", badge: "core" },
       { label: "Liquidation", href: "/accounting/liquidation", icon: TrendingUp, permission: "accounting.read", badge: "new" },
       { label: "Payment Calendar", href: "/accounting/calendar", icon: PiggyBank, permission: "accounting.read", badge: "new" },

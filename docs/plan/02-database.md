@@ -1068,6 +1068,54 @@ already encodes exactly that — but the owner's call is to complete them by
 hand for now and turn the rule on once we have watched which types really
 never get a delivery. The column exists so that switch is a data change.
 
+### Rekening koran
+
+```mermaid
+erDiagram
+    accounts ||--o{ bank_statements : "has"
+    bank_statements ||--o{ statement_lines : "lists"
+    bank_statements {
+        uuid id PK
+        text statement_no UK "rkk-26-09-08_01"
+        uuid account_id FK
+        date period_start
+        date period_end
+        numeric opening_balance "typed from the header"
+        numeric closing_balance "typed from the header"
+        text currency "IDR | USD"
+        text filename
+        uuid attachment_id FK
+        statement_status_t status
+    }
+    statement_lines {
+        uuid id PK
+        uuid statement_id FK
+        int line_no
+        date value_date
+        direction_t direction
+        numeric amount "the statement's own currency"
+        numeric amount_idr "null until a rate is typed"
+        numeric fx_rate "typed, never looked up"
+        text raw_description "the bank's words, verbatim"
+        numeric balance_after
+        statement_line_status_t status "unmatched|matched|booked|ignored"
+        text trx_no "the ledger row this line IS"
+        text note "required on ignored"
+    }
+```
+
+| Constraint | Why |
+|---|---|
+| `bank_statements` UNIQUE `(account_id, period_start, period_end)` | the same period twice is a re-upload, and booking one movement twice is the most expensive mistake this screen offers (D180) |
+| `statement_lines` UNIQUE `(trx_no)` where `trx_no IS NOT NULL` | one movement, one ledger row |
+| `statement_lines` CHECK `status = 'booked' → amount_idr IS NOT NULL` | a foreign line reaches the ledger only after somebody types the rate (D181) |
+| `statement_lines` CHECK `status = 'ignored' → note IS NOT NULL` | a line nobody can explain is the one somebody will ask about |
+| `fx_rate` stored per **line**, not per statement | a month's transfers are not one rate, and averaging them is how a dollar account stops reconciling |
+
+`opening_balance + Σ lines = closing_balance` is **not** a constraint — a
+partial file is still worth having. It is computed on read and shown as a
+disagreement, because hiding it is the only unacceptable option (D182).
+
 ### The payment calendar (new, M12b)
 
 Three small tables, and the reason they are tables rather than a spreadsheet

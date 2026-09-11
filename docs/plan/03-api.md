@@ -213,7 +213,12 @@ quotation, and nothing in this system produces either yet (Q37).
 | POST | `/review/{ref_id}/attach` | → links to existing transactions, creates no money |
 | POST | `/review/{ref_id}/reject` | recorded, never discarded |
 | POST | `/review/{ref_id}/rows` | add an item the extraction missed |
-| POST | `/statements` | upload a leadership-account statement; line-by-line confirm before booking |
+| GET | `/statements` · `/statements/{no}` | every uploaded rekening koran, with each line's status and the ledger rows that look like it — suggestions, never applied (D180) |
+| POST | `/statements` | upload one. **409** re-uploading the same account and period. The two balances are typed from the statement header and checked against the sum of the lines (D182) |
+| PUT | `/statements/{no}/lines/{id}/rate` | the rate the bank gave that day, for a foreign line. Typed, never looked up (D181) |
+| POST | `/statements/{no}/lines/{id}/match` | tie the line to a ledger row that already exists. **409** if that row is already tied to another line |
+| POST | `/statements/{no}/lines/{id}/book` | **creates** the ledger row, with the statement as its evidence. `post_ledger`; **422** on a foreign line with no rate |
+| POST | `/statements/{no}/lines/{id}/ignore` | left out, with a reason. Never deleted |
 | GET | `/reports/cashflow`, `/reports/liquidation` | |
 
 **Validation at the seam** (ADR-004): `POST /allocations` calls

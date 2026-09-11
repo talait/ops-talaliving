@@ -16,6 +16,10 @@ export const DOC_KINDS = [
   /** A shop page, a marketplace listing, a quotation somebody sent a link to.
    *  What a request is usually built from before any nota exists (D125). */
   "Reference Link",
+  /** The bank's own statement. For the two leadership accounts it is not a
+   *  check on rows somebody typed — it is the **only** way their rows exist at
+   *  all, so it stands as evidence in its own right (D180). */
+  "Rekening Koran",
   /** HR evidence. A day off sick is paid **only** with the doctor's letter
    *  behind it, and overtime reaches leadership only with the surat lembur
    *  attached (D144, D145) — so both are document kinds like any other, on the
@@ -60,6 +64,9 @@ export const PRIMARY_DOC_KINDS: DocKind[] = [
   "Receipt / Invoice / Nota",
   "Payment Proof",
   "Receiving Item",
+  /* A bank statement evidences the movement better than a transfer proof does:
+     it is the bank's own record rather than a screenshot of one (D180). */
+  "Rekening Koran",
 ];
 
 export const SUPPORTING_DOC_KINDS: DocKind[] = [

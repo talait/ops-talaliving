@@ -7,6 +7,7 @@ import type {
   CashPlan, CashDue, CashComponent, CashOverride, CashSettlement,
   CashFrequency, CashMonthDetail,
   Direction, PaymentAllocation, EvidenceInboxRow, InboxHealth, AllocMethod,
+  BankStatementView,
 } from "@/services/accounting/contracts";
 import { LOCALE } from "@/lib/format";
 import { getState, apply, newId, nextDocNumber, writeAudit, writeOutbox } from "../store";
@@ -14,6 +15,7 @@ import type { AuditRow } from "../state";
 import {
   accountBalances, transactionView, allocatedTotal, inboxHealth, lineCoverage,
   lineStatus, fundings, fundingView, cashPlan, cashDue, cashMonthDetail,
+  bankStatementView, bankStatementViews,
 } from "../derive";
 import { latency, actingUser, requireAuthority, requireModule, conflict, replayed, remember, paged } from "./_kit";
 import { PRIMARY_DOC_KINDS, type DocKind } from "@/services/documents/contracts";
@@ -1134,4 +1136,316 @@ export async function getMonthDetail(month: string): Promise<Result<CashMonthDet
     return notFound(SERVICE, "month_not_in_plan", `${month} is outside the twelve months the plan covers.`);
   }
   return ok(SERVICE, detail);
+}
+
+/* ── Rekening koran ───────────────────────────────────────────────────────
+ *
+ *  For BCA 064 and BCA USD 081 the statement is not a check on rows somebody
+ *  typed — it is how their rows come to exist at all (D180). So the verbs here
+ *  are: upload one, tie a line to a row the ledger already has, or **book** a
+ *  line the ledger has never seen.
+ */
+export async function listStatements(): Promise<Result<BankStatementView[]>> {
+  await latency();
+  const denied = requireModule(SERVICE, "accounting");
+  if (denied) return denied;
+  return ok(SERVICE, bankStatementViews(getState()));
+}
+
+export async function getStatement(statementNo: string): Promise<Result<BankStatementView>> {
+  await latency();
+  const denied = requireModule(SERVICE, "accounting");
+  if (denied) return denied;
+  const state = getState();
+  const st = state.bank_statements.find((s) => s.statement_no === statementNo);
+  if (!st) return notFound(SERVICE, "statement_not_found", `No statement ${statementNo}.`);
+  return ok(SERVICE, bankStatementView(state, st));
+}
+
+/** Importing a file. The lines arrive parsed by the screen — the browser reads
+ *  the CSV, the service stores what it read (D143's shape, reused). */
+export async function importStatement(
+  input: {
+    account_code: string;
+    period_start: string;
+    period_end: string;
+    opening_balance: number;
+    closing_balance: number;
+    currency: string;
+    filename: string;
+    attachment_id?: string | null;
+    note?: string | null;
+    rows: {
+      value_date: string; direction: Direction; amount: number;
+      raw_description: string; balance_after?: number | null;
+    }[];
+  },
+  idempotencyKey?: string,
+): Promise<Result<BankStatementView>> {
+  await latency();
+  const cached = replayed<BankStatementView>(SERVICE, "importStatement", idempotencyKey);
+  if (cached) return cached;
+
+  const denied = requireModule(SERVICE, "accounting");
+  if (denied) return denied;
+
+  const state = getState();
+  const account = state.accounts.find((a) => a.code === input.account_code);
+  if (!account) return notFound(SERVICE, "account_not_found", `No account ${input.account_code}.`);
+  if (input.rows.length === 0) {
+    return invalid(SERVICE, "no_rows", "Tidak ada baris yang terbaca di file itu.", { field: "rows" });
+  }
+  /* The same period twice is a re-upload, not a second statement. Refusing it
+     keeps one movement from being booked twice — the single most expensive
+     mistake available on this screen. */
+  const clash = state.bank_statements.find(
+    (s) => s.account_id === account.id
+      && s.period_start === input.period_start && s.period_end === input.period_end,
+  );
+  if (clash) {
+    return conflict(
+      SERVICE, "period_already_uploaded",
+      `${clash.statement_no} sudah memuat ${input.period_start} → ${input.period_end} untuk ${account.code}.`,
+    );
+  }
+
+  const user = actingUser();
+  let no = "";
+  apply((draft) => {
+    no = nextDocNumber(draft, "rkk");
+    const id = newId("bst");
+    draft.bank_statements.push({
+      id, statement_no: no, account_id: account.id,
+      period_start: input.period_start, period_end: input.period_end,
+      opening_balance: input.opening_balance, closing_balance: input.closing_balance,
+      currency: input.currency || account.currency,
+      filename: input.filename,
+      status: "PENDING",
+      attachment_id: input.attachment_id ?? null,
+      note: input.note?.trim() || null,
+      uploaded_by: user.id, uploaded_at: new Date().toISOString(),
+    });
+    input.rows.forEach((r, i) => {
+      draft.statement_lines.push({
+        id: newId("stl"), statement_id: id, line_no: i + 1,
+        value_date: r.value_date, direction: r.direction, amount: r.amount,
+        /* A rupiah line needs no conversion; a foreign one waits for a rate
+           somebody types (D181). */
+        amount_idr: (input.currency || account.currency) === "IDR" ? r.amount : null,
+        fx_rate: null,
+        raw_description: r.raw_description,
+        balance_after: r.balance_after ?? null,
+        status: "unmatched", trx_no: null, note: null,
+        decided_by: null, decided_at: null,
+      });
+    });
+    writeAudit(draft, {
+      service: SERVICE, entity: "bank_statement", entity_no: no,
+      action: "import", outcome: "ok", reason: null,
+      detail: { account: account.code, rows: input.rows.length, period: `${input.period_start}…${input.period_end}`, by: user.email },
+    });
+  });
+
+  const view = await getStatement(no);
+  if (view.data) remember(SERVICE, "importStatement", idempotencyKey, view.data);
+  return view;
+}
+
+/** The rate for one foreign line. Typed, never looked up: what the bank
+ *  actually gave on the day is on the advice, and a mid-market rate from
+ *  anywhere else is a different number (D181). */
+export async function setStatementRate(
+  input: { statement_no: string; line_id: string; fx_rate: number },
+): Promise<Result<BankStatementView>> {
+  await latency();
+  const denied = requireModule(SERVICE, "accounting");
+  if (denied) return denied;
+  if (input.fx_rate <= 0) {
+    return invalid(SERVICE, "rate_positive", "Kurs harus lebih dari nol.", { field: "fx_rate" });
+  }
+
+  const state = getState();
+  const st = state.bank_statements.find((s) => s.statement_no === input.statement_no);
+  if (!st) return notFound(SERVICE, "statement_not_found", `No statement ${input.statement_no}.`);
+  const line = state.statement_lines.find((l) => l.id === input.line_id);
+  if (!line) return notFound(SERVICE, "line_not_found", "Baris itu tidak ada.");
+  if (line.status === "booked") {
+    return conflict(SERVICE, "already_booked", "Baris itu sudah masuk ledger — kursnya ikut baris ledger-nya.");
+  }
+
+  const user = actingUser();
+  apply((draft) => {
+    const row = draft.statement_lines.find((l) => l.id === input.line_id);
+    if (!row) return;
+    row.fx_rate = input.fx_rate;
+    row.amount_idr = Math.round(row.amount * input.fx_rate);
+    writeAudit(draft, {
+      service: SERVICE, entity: "statement_line", entity_no: st.statement_no,
+      action: "set_rate", outcome: "ok", reason: null,
+      detail: { line: row.line_no, rate: input.fx_rate, amount: row.amount, amount_idr: row.amount_idr, by: user.email },
+    });
+  });
+  return getStatement(input.statement_no);
+}
+
+/** Tying a line to a ledger row that already exists. Creates nothing. */
+export async function matchStatementLine(
+  input: { statement_no: string; line_id: string; trx_no: string },
+): Promise<Result<BankStatementView>> {
+  await latency();
+  const denied = requireModule(SERVICE, "accounting");
+  if (denied) return denied;
+
+  const state = getState();
+  const st = state.bank_statements.find((s) => s.statement_no === input.statement_no);
+  if (!st) return notFound(SERVICE, "statement_not_found", `No statement ${input.statement_no}.`);
+  const trx = state.transactions.find((t) => t.trx_no === input.trx_no);
+  if (!trx) return notFound(SERVICE, "trx_not_found", `No ledger row ${input.trx_no}.`);
+  const taken = state.statement_lines.find((l) => l.trx_no === input.trx_no && l.id !== input.line_id);
+  if (taken) {
+    return conflict(
+      SERVICE, "trx_already_tied",
+      `${input.trx_no} sudah ditautkan ke baris lain. Satu mutasi, satu baris ledger.`,
+    );
+  }
+
+  const user = actingUser();
+  apply((draft) => {
+    const row = draft.statement_lines.find((l) => l.id === input.line_id);
+    if (!row) return;
+    row.status = "matched";
+    row.trx_no = input.trx_no;
+    row.decided_by = user.id;
+    row.decided_at = new Date().toISOString();
+    writeAudit(draft, {
+      service: SERVICE, entity: "statement_line", entity_no: st.statement_no,
+      action: "match", outcome: "ok", reason: null,
+      detail: { line: row.line_no, trx_no: input.trx_no, by: user.email },
+    });
+  });
+  return getStatement(input.statement_no);
+}
+
+/** Booking a line the ledger has never seen — the ordinary case for these two
+ *  accounts (D180).
+ *
+ *  The statement is the evidence. That is not a shortcut around D85: a bank's
+ *  own record of a movement is stronger than the screenshot of a transfer that
+ *  usually stands in for it.
+ */
+export async function bookStatementLine(
+  input: {
+    statement_no: string; line_id: string;
+    type_code: TransactionTypeCode; description: string;
+    vendor_id?: string | null; project_id?: string | null;
+  },
+): Promise<Result<BankStatementView>> {
+  await latency();
+  const denied = requireAuthority(SERVICE, "post_ledger");
+  if (denied) return denied;
+
+  const state = getState();
+  const st = state.bank_statements.find((s) => s.statement_no === input.statement_no);
+  if (!st) return notFound(SERVICE, "statement_not_found", `No statement ${input.statement_no}.`);
+  const line = state.statement_lines.find((l) => l.id === input.line_id);
+  if (!line) return notFound(SERVICE, "line_not_found", "Baris itu tidak ada.");
+  if (line.status !== "unmatched") {
+    return conflict(SERVICE, "already_decided", `Baris ${line.line_no} sudah ${line.status}.`);
+  }
+  if (line.amount_idr == null) {
+    return invalid(
+      SERVICE, "rate_required",
+      `Baris ini dalam ${st.currency}. Isi kursnya dulu — sistem tidak menebak kurs, karena yang benar adalah kurs yang bank berikan hari itu (D181).`,
+      { field: "fx_rate" },
+    );
+  }
+  if (!input.description.trim()) {
+    return invalid(SERVICE, "description_required", "Tulis keterangannya — baris bank apa adanya bukan penjelasan.", { field: "description" });
+  }
+
+  const user = actingUser();
+  let trxNo = "";
+  apply((draft) => {
+    const row = draft.statement_lines.find((l) => l.id === input.line_id);
+    if (!row || row.amount_idr == null) return;
+    trxNo = nextDocNumber(draft, "trx");
+    draft.transactions.push({
+      id: newId("trx"), trx_no: trxNo,
+      trx_date: row.value_date,
+      account_id: st.account_id,
+      direction: row.direction,
+      amount_idr: row.amount_idr,
+      type_code: input.type_code,
+      vendor_id: input.vendor_id ?? null,
+      project_id: input.project_id ?? null,
+      description: input.description.trim(),
+      remark: st.currency === "IDR"
+        ? `Dari ${st.statement_no} baris ${row.line_no}.`
+        : `Dari ${st.statement_no} baris ${row.line_no} — ${st.currency} ${row.amount} @ ${row.fx_rate}.`,
+      status: "COMPLETED",
+      source_ref: st.statement_no,
+      posted_by: user.id,
+      posted_at: new Date().toISOString(),
+      void_reason: null,
+    });
+    if (st.attachment_id) {
+      draft.attachment_links.push({
+        id: newId("lnk"), attachment_id: st.attachment_id,
+        entity: "transaction", entity_no: trxNo,
+        kind: "Rekening Koran", linked_by: user.id, linked_at: new Date().toISOString(),
+      });
+    }
+    row.status = "booked";
+    row.trx_no = trxNo;
+    row.decided_by = user.id;
+    row.decided_at = new Date().toISOString();
+
+    writeAudit(draft, {
+      service: SERVICE, entity: "transaction", entity_no: trxNo,
+      action: "book_from_statement", outcome: "ok", reason: null,
+      detail: {
+        statement: st.statement_no, line: row.line_no,
+        amount_idr: row.amount_idr, currency: st.currency,
+        original: row.amount, rate: row.fx_rate, by: user.email,
+      },
+    });
+    writeOutbox(draft, {
+      service: SERVICE, event_type: "accounting.transaction.posted",
+      payload: { trx_no: trxNo, source: st.statement_no, amount_idr: row.amount_idr },
+    });
+  });
+  return getStatement(input.statement_no);
+}
+
+/** Leaving a line out, with a reason. Never deleted — a line nobody can
+ *  explain is exactly the one somebody will ask about (A5). */
+export async function ignoreStatementLine(
+  input: { statement_no: string; line_id: string; note: string },
+): Promise<Result<BankStatementView>> {
+  await latency();
+  const denied = requireModule(SERVICE, "accounting");
+  if (denied) return denied;
+  if (!input.note.trim()) {
+    return invalid(SERVICE, "reason_required", "Tulis alasannya — baris yang dilewati tanpa keterangan adalah baris yang akan ditanyakan.", { field: "note" });
+  }
+
+  const state = getState();
+  const st = state.bank_statements.find((s) => s.statement_no === input.statement_no);
+  if (!st) return notFound(SERVICE, "statement_not_found", `No statement ${input.statement_no}.`);
+
+  const user = actingUser();
+  apply((draft) => {
+    const row = draft.statement_lines.find((l) => l.id === input.line_id);
+    if (!row) return;
+    row.status = "ignored";
+    row.note = input.note.trim();
+    row.decided_by = user.id;
+    row.decided_at = new Date().toISOString();
+    writeAudit(draft, {
+      service: SERVICE, entity: "statement_line", entity_no: st.statement_no,
+      action: "ignore", outcome: "ok", reason: row.note,
+      detail: { line: row.line_no, by: user.email },
+    });
+  });
+  return getStatement(input.statement_no);
 }

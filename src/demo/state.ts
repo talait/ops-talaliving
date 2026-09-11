@@ -8,7 +8,7 @@ import type {
 import type {
   Account, TransactionType, Transaction, TransactionLine,
   PaymentAllocation, EvidenceInboxRow,
-  CashComponent, CashOverride, CashSettlement,
+  CashComponent, CashOverride, CashSettlement, BankStatement, StatementLine,
 } from "@/services/accounting/contracts";
 import type { Attachment, AttachmentLink } from "@/services/documents/contracts";
 import type {
@@ -99,6 +99,10 @@ export interface DemoState {
   transaction_lines: TransactionLine[];
   payment_allocations: PaymentAllocation[];
   evidence_inbox: EvidenceInboxRow[];
+  /** Rekening koran, and its lines. For the two leadership accounts this is
+   *  how their ledger rows come to exist at all (D180). */
+  bank_statements: BankStatement[];
+  statement_lines: StatementLine[];
 
   /** The payment calendar: what repeats, what changed in one month, and which
    *  ledger row somebody says settled it. */

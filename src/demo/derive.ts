@@ -25,6 +25,7 @@ import type {
   FundingView, FundingDetail, FundingSpendGroup, FundingSpendRow,
   CashPlan, CashRow, CashCell, CashCellState, CashMonth, CashUnplanned, CashDue,
   CashComponent, CashEvent, CashMonthDetail, CashDayRow, Transaction as TrxRow,
+  BankStatement, BankStatementView, StatementLineView,
 } from "@/services/accounting/contracts";
 import type { DocKind } from "@/services/documents/contracts";
 import { REQUEST_SUPPORT_KINDS } from "@/services/documents/contracts";
@@ -1585,4 +1586,84 @@ export function poDetail(state: DemoState, poId: string): PoDetail | null {
     status_view: view,
     close_blockers,
   };
+}
+
+/* ── Rekening koran ───────────────────────────────────────────────────────── */
+
+/** One statement, with what each line is and what the ledger already knows.
+ *
+ *  Two computations earn this view (D180, D182):
+ *
+ *  - **Suggestions, never applications.** A ledger row on the same account, same
+ *    direction, same rupiah, within three days, is offered — and a person ties
+ *    it. Auto-matching on amount alone is how two identical Rp 12.100.000
+ *    transfers in one week get reconciled against each other's rows and nobody
+ *    ever finds out.
+ *  - **The balance check.** Opening plus the movements should be the closing
+ *    balance the bank printed. When it is not, the file is partial — pages
+ *    missing, a filtered export — and every figure derived from it is
+ *    incomplete. That is worth saying before anybody books a row from it.
+ */
+export function bankStatementView(state: DemoState, statement: BankStatement): BankStatementView {
+  const account = state.accounts.find((a) => a.id === statement.account_id);
+  const lines = state.statement_lines
+    .filter((l) => l.statement_id === statement.id)
+    .sort((a, b) => a.line_no - b.line_no);
+
+  const movement = lines.reduce((s, l) => s + (l.direction === "IN" ? l.amount : -l.amount), 0);
+  const computed = statement.opening_balance + movement;
+
+  const views: StatementLineView[] = lines.map((line) => ({
+    ...line,
+    /* Only for lines nobody has decided yet: a booked line does not need to be
+       offered alternatives to the row it created. */
+    suggestions: line.status !== "unmatched" ? [] : state.transactions
+      .filter((t) => t.account_id === statement.account_id
+        && t.status !== "VOID"
+        && t.direction === line.direction
+        && line.amount_idr != null
+        && t.amount_idr === line.amount_idr
+        && Math.abs(daysApartIso(t.trx_date, line.value_date)) <= 3
+        /* A ledger row already tied to another line of any statement is not a
+           candidate — one movement, one row. */
+        && !state.statement_lines.some((x) => x.trx_no === t.trx_no && x.id !== line.id))
+      .map((t) => ({
+        trx_no: t.trx_no,
+        trx_date: t.trx_date,
+        description: t.description,
+        amount_idr: t.amount_idr,
+        days_apart: daysApartIso(t.trx_date, line.value_date),
+      }))
+      .sort((a, b) => Math.abs(a.days_apart) - Math.abs(b.days_apart)),
+  }));
+
+  return {
+    ...statement,
+    account_code: account?.code ?? "—",
+    account_name: account?.name ?? "—",
+    uploaded_by_name: state.users.find((u) => u.id === statement.uploaded_by)?.full_name ?? "—",
+    lines: views,
+    movement,
+    computed_closing: computed,
+    /* Whole units: a rupiah statement is whole rupiah, a dollar one is cents,
+       and both should land exactly. */
+    balance_ok: Math.abs(computed - statement.closing_balance) < 0.01,
+    unmatched: lines.filter((l) => l.status === "unmatched").length,
+    booked: lines.filter((l) => l.status === "booked").length,
+    matched: lines.filter((l) => l.status === "matched").length,
+    ignored: lines.filter((l) => l.status === "ignored").length,
+    awaiting_rate: lines.filter((l) => l.status === "unmatched" && l.amount_idr == null).length,
+  };
+}
+
+export function bankStatementViews(state: DemoState): BankStatementView[] {
+  return [...state.bank_statements]
+    .sort((a, b) => b.period_end.localeCompare(a.period_end))
+    .map((s) => bankStatementView(state, s));
+}
+
+function daysApartIso(from: string, to: string): number {
+  const [fy, fm, fd] = from.slice(0, 10).split("-").map(Number);
+  const [ty, tm, td] = to.slice(0, 10).split("-").map(Number);
+  return Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)) / 86_400_000);
 }

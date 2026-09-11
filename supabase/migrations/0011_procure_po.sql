@@ -76,7 +76,15 @@ create table procure.po_lines (
   -- An amendment after issue is a **new row** pointing back at the old one
   -- (D129, D135). The old row stays readable, which is what makes "who changed
   -- the quantity after we agreed it" answerable at all.
-  superseded_by uuid references procure.po_lines(id),
+  --
+  -- **Deferrable**, and that is not a loosening. A supersession has to retire
+  -- the old row and create the new one in one step, or the two of them are both
+  -- live for an instant and both claim the vendor's line number — which the
+  -- partial unique index below correctly refuses. Deferring the reference lets
+  -- `amend_po_line()` stamp the old row with the new row's id *before* that row
+  -- exists, and the check still runs before the transaction commits: a dangling
+  -- pointer is impossible, it is merely allowed to be momentary.
+  superseded_by uuid references procure.po_lines(id) deferrable initially deferred,
   created_at    timestamptz not null default now(),
   constraint supersede_not_self check (superseded_by is null or superseded_by <> id)
 );

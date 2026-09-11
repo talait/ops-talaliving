@@ -36,7 +36,8 @@ afterwards and never learns where the rows came from.
 | `supabase/local/rebuild.sh` | drops everything and re-applies the ladder. A migration that only works against yesterday's database is one that will fail on a fresh one |
 | `supabase/local/smoke/` | one file per schema, each proving a **refusal** and a **derivation**, run by `smoke.sh` |
 | `src/lib/supabase/` | the browser client, the per-request server client, and the guard that stops a `service_role` key ever carrying a `NEXT_PUBLIC_` prefix |
-| `src/lib/api/_kit.ts`, `identity.ts` | the envelope, carried across from the database; `identity` with the same signatures as the demo's, minus `actAs` |
+| `supabase/migrations/0008`–`0016` | **B1 — procurement, end to end.** The PR chain, the chat approval road, rounds, orders, receipts, the ledger tables their money views read, every procurement view, idempotency, and fifteen write seams |
+| `src/lib/api/_kit.ts`, `identity.ts`, `procurement.ts` | the envelope, carried across from the database; the same signatures as the demo's, minus `actAs` |
 
 Run it:
 

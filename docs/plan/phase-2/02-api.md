@@ -153,3 +153,46 @@ which implementation answers.
 `identity` → `documents` → `procurement` → `accounting` → `hr` →
 `production` → `inventory`. Identity first because everything else's refusals
 are meaningless until the database knows who is asking.
+
+---
+
+## Where the swap stands
+
+`src/lib/api/` exists and typechecks against the same contracts the screens
+read. What is in it:
+
+| Module | Reads | Writes | Notes |
+|---|---|---|---|
+| `identity` | `me`, `listUsers` | `setModules`, `setAuthorities`, `signIn`, `signOut`, `recordSignIn` | **`actAs` is gone.** Against a real database it is an endpoint that lets anybody become anybody — not a feature with a guard missing, the absence of authentication. It stays in `src/demo`, where there is nothing to impersonate |
+| `procurement` | `listOpenLines`, `listAllLines`, `queue`, `decidedLines`, `listVariances`, `listLinesForWorkOrder`, `lineHistory`, `listVendors`, `listVendorViews`, `listItems`, `listItemViews`, `listUom`, `listCategories`, `listProjects`, `listRounds`, `getRound`, `listVendorJourneys`, `getVendorJourney`, `listReported` | `approveLine`, `removeLine`, `noteLine`, `explainVariance`, `submitPr`, `answerFromChat`, `curateVendor`, `mergeVendor`, `approveRound`, `transferRound`, `approvePo`, `issuePo`, `amendPoLine`, `closePo`, `confirmReceipt` | every refusal is the database's; nothing is computed or reworded in TypeScript |
+
+**Not yet ported**, and each one needs a seam before its client function is
+worth writing: `createPr` / `quickAddLine` / `addDraftLine` / `updateLine`
+(document and line creation, including minting `line_no_full` through
+`core.next_doc_number`), `requestApproval` / `answerBatch` (the send side of the
+chat road — the answer side is done), `syncRound` / `closeRound`, `createPo` /
+`requestPoApproval` / `setExpectedDelivery` / `markPoResent`, `createReceipt`,
+`createVendor` / `createItem` / `curateItem` / `updateVendorContact`,
+`saveProject` and the project-line functions, `getPoDetail` / `getPo` /
+`listPo` (these need a `v_po_detail` assembling terms, amendments, payments and
+documents into one object), `whereToBuy`, `lineForPosting`, `listPr` / `getPr`.
+
+### The one line this cannot change itself
+
+Screens import from `@/demo/api`. Pointing them here is **one re-export** in
+`src/demo/api/index.ts`, guarded by `useRealApi()` — and that file belongs to
+the design session. Per the protocol in `README.md`, the build session does not
+edit it; this is the request:
+
+```ts
+// src/demo/api/index.ts
+import { useRealApi } from "@/lib/api";
+export * as procurement from useRealApi() ? "@/lib/api/procurement" : "./procurement";
+```
+
+— written as a real conditional rather than that pseudo-import, since ES modules
+have no conditional export. The shape that works is a small re-export module
+that picks at call time, or a build-time alias in `tsconfig.json`. Either is a
+design-session change, and it is deliberately **not** 52 per-screen edits: those
+are 52 chances to swap one screen and forget another, and a half-swapped app is
+one where two screens disagree about the same number with no visible reason.

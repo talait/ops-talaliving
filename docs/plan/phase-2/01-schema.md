@@ -48,9 +48,9 @@ saying why.
 | 0011 | `procure_po` | `purchase_orders`, `po_lines`, `po_schedule` | terms with a guard, amendment by supersession (D132–D135); deposit earned on issue (F27, D99) |
 | 0012 | `procure_receipts` | `receipts` | two documents, a receiver **and** a checker (D101); report and confirmation are separate acts (D131) |
 | 0013 | `acct_ledger` | `accounts`, `transaction_types`, `transactions`, `transaction_lines`, `payment_allocations` | the five real accounts seeded; the leadership account is *locked*, not hidden (D87). **No document, no row** (D85); VOID never DELETE. Pulled forward from 0012–0014 because procurement's money views read it — see *Per schema, not per layer* |
-| 0014 | `procure_views` | every procurement `v_*` | the ladder, coverage, the meeting quadrant, the variance, the round, the PO's two axes, the vendor journey |
-| 0015 | `procure_seams` | procurement's write functions | `submit_pr()`, `approve_line()`, `answer_request()`, `revise_line()`, `issue_po()`, `confirm_receipt()`, … — each with its audit row, its outbox row and its refusal |
-| 0016 | `core_idempotency` | `core.idempotency_keys` | `(service, endpoint, key) → response`. Held on 409, released on 422/5xx. Pulled forward from 0027: a seam without it is a seam that has to be retrofitted through |
+| 0014 | `procure_views` | every procurement `v_*` | **Done.** The ladder, coverage, the meeting quadrant, the variance, the round, the PO's two axes with terms and the BLOCKED guard, the vendor journey, purchase facts |
+| 0015 | `core_idempotency` | `core.idempotency_keys` | **Done.** `(service, endpoint, key) → response`. `ok`/`noop`/409 stored; 403/422/5xx not — storing a 422 would make a corrected resubmission return the old complaint for ever. Pulled forward from 0027: a seam written without it has to be opened again and threaded through |
+| 0016 | `procure_seams` | procurement's write functions | **Done**, for the fifteen that carry a decision: `submit_pr`, `approve_line`, `remove_line`, `note_line`, `explain_variance`, `answer_request`, `approve_po`, `issue_po`, `amend_po_line`, `close_po`, `confirm_receipt`, `approve_round`, `transfer_round`, `merge_vendor`, `curate_vendor`. The creation seams are listed as outstanding in `02-api.md` |
 | 0017 | `acct_review` | `evidence_inbox` | five roads, none of them delete (F26, D94) |
 | 0018 | `acct_calendar` | `cash_components`, `cash_overrides`, `cash_settlements` | three tables, **no projection stored** — the twelve months are a view (D109–D115) |
 | 0019 | `acct_views` + `acct_seams` | `v_transaction`, `v_cash_plan`, `v_inbox_health`; `post_transaction()`, `allocate_payment()`, `resolve_inbox()` | the two money seams (ADR-006) |
@@ -121,8 +121,24 @@ view and the seam are all suspects.
 | `prod.work_order_status_t` | + `IN_PROGRESS` | `OPEN`, `DONE`, `CANCELLED` | how far along it is comes from the progress entries (A3) |
 | `core.doc_kind_t` | 13 | 14 | `laporan_lembur` was missing; a staff session's own report is a kind the screens already file (D146), and a kind the database cannot store is evidence that lands under `other` |
 
-Two more corrections went with them, both found by running the ladder rather
-than by reading it:
+### Three bugs the smoke found that reading would not have
+
+Worth recording, because each one applies cleanly and fails only when exercised
+— which is the argument for a smoke file over a careful review:
+
+- **`amend_po_line` inserted the new line before retiring the old one.** Both
+  were live for an instant, both claiming the vendor's line number, and
+  `po_lines_live_no_idx` refused it — correctly. The supersession foreign key is
+  now `deferrable initially deferred`, so the old row can point at a line that
+  does not exist yet; the check still runs before commit, so a dangling pointer
+  is impossible and merely allowed to be momentary.
+- **A PL/pgSQL variable named `covered` shadowed a column of that name.**
+  Postgres refuses the query rather than guessing, at run time.
+- **`text[] || 'a literal'`** resolves to array-concatenation, not
+  element-append, and fails when the branch is finally reached — which for a
+  close-blocker message is the first time an order is genuinely unclosable.
+
+Two more corrections, both found the same way:
 
 - **`0006` seeded nothing.** `items.base_uom` and `items.category_code` are
   foreign keys, so a schema with no `uom` and no `item_categories` rows is one

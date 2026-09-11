@@ -16,6 +16,17 @@ that only shows what is left teaches nobody anything.
 | B3 | An image has to be opened through a button before it can be seen. Every picture in the queue should show its own preview | `/accounting/verifikasi` | open |
 | B4 | **Already decided** grows without limit and pushes the queue off the screen. It should carry a window of the last few days and paginate | `/accounting/verifikasi` | **half done (M26)** — both lists now page, twelve at a time, and the queue pages too (D157). The date window is still open: paging keeps the screen usable, it does not answer *how far back is worth showing* |
 
+## Scheduled — the owner's answers of 2026-09-11
+
+| # | What | Note |
+|---|---|---|
+| S1 | **Stock: materials and hardware, properly categorised** | *oke bangun inventory/stock, kategorikan tiap item dengan baik.* Closes the open link between receiving and production: goods confirmed on a receipt become stock, and a BOM can be issued against a work order (Q40) |
+| S2 | **Berkas 201 and Cuti & Izin** | the two HR screens that stay. Compliance is dropped (D165) |
+| S3 | **Desain, for the drafters** | the queue, not the folder: what is undrawn, whose turn, which revision the workshop is cutting from (D167) |
+| S4 | **Pay schemes as configuration** | daily, hourly, statutory overtime, undertime — each a named, dated, editable rule under IT (D168) |
+| S5 | **Rekening koran upload for the leadership accounts** | 064 and 081, which are not shared openly, so the statement is how they reach the ledger at all. Blocked on **Q42** — what 081 is |
+| S6 | **Package: the agent-commission programme** | its own session; the owner has an artifact (D166) |
+
 ## Asked for, not yet scheduled
 
 | # | What | Note |

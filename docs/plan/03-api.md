@@ -354,6 +354,25 @@ is its authority (D147).
 
 Events: `production.work_order.closed`.
 
+## `inventory` — stock and timber
+
+Stock, added M27:
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/stock` | every counted item, whether or not it has ever moved — *we have none* and *nobody ever bought this* lead to opposite actions (D170) |
+| GET | `/stock/{item_code}` | movements, which BOMs call for it, what is approved and not yet arrived |
+| POST | `/stock/issue` | 200 **with `went_negative: true`** rather than a refusal — the wood is there or it is not (A6, D170) |
+| POST | `/stock/return` | material coming back unused |
+| POST | `/stock/adjust` | takes the **counted** quantity and a location; stores the difference. 422 without a reason; `outcome: noop` when the count matches (D171) |
+| POST | `/stock/transfer` | writes two moves, one per location |
+| PUT | `/stock/{item_code}/minimum` | null clears it — *belum ditetapkan* is not zero |
+
+`procurement.receipt.confirmed` is consumed here: a confirmed delivery becomes
+a `receipt` move at the item's home location, priced from the line where the
+line carries a price and `null` where it does not (D172). A receipt whose line
+names no catalogue item stocks nothing and says so.
+
 ## `inventory` — timber
 
 | Method | Path | Notes |

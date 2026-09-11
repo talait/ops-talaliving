@@ -20,11 +20,11 @@ that only shows what is left teaches nobody anything.
 
 | # | What | Note |
 |---|---|---|
-| S1 | **Stock: materials and hardware, properly categorised** | *oke bangun inventory/stock, kategorikan tiap item dengan baik.* Closes the open link between receiving and production: goods confirmed on a receipt become stock, and a BOM can be issued against a work order (Q40) |
+| S1 | ~~**Stock: materials and hardware, properly categorised**~~ | **built 2026-09-11 (M27)** — `/inventory/material` and `/inventory/penyesuaian`, D169–D172. Confirming a receipt now stocks the goods. What is still open is the other half of Q40: nothing draws stock down from a BOM automatically — an issue is recorded by the person who carried it out, against the SPK |
 | S2 | **Berkas 201 and Cuti & Izin** | the two HR screens that stay. Compliance is dropped (D165) |
 | S3 | **Desain, for the drafters** | the queue, not the folder: what is undrawn, whose turn, which revision the workshop is cutting from (D167) |
 | S4 | **Pay schemes as configuration** | daily, hourly, statutory overtime, undertime — each a named, dated, editable rule under IT (D168) |
-| S5 | **Rekening koran upload for the leadership accounts** | 064 and 081, which are not shared openly, so the statement is how they reach the ledger at all. Blocked on **Q42** — what 081 is |
+| S5 | **Rekening koran upload for the leadership accounts** | BCA 064 and **BCA USD 081** — both already in the ledger as `custody: leadership`, neither pays a vendor directly. Not shared openly, so the statement is how their rows reach the ledger at all. One is in USD: the rate goes on the row (Q42) |
 | S6 | **Package: the agent-commission programme** | its own session; the owner has an artifact (D166) |
 
 ## Asked for, not yet scheduled

@@ -11,7 +11,10 @@ import type {
   CashComponent, CashOverride, CashSettlement,
 } from "@/services/accounting/contracts";
 import type { Attachment, AttachmentLink } from "@/services/documents/contracts";
-import type { LogPurchase, LogPiece, SawnBoard } from "@/services/inventory/contracts";
+import type {
+  LogPurchase, LogPiece, SawnBoard,
+  StockLocation, StockMove, StockSetting,
+} from "@/services/inventory/contracts";
 import type {
   Employee, AttendanceScan, DayMark, OvertimeSheet, OvertimeLine, PayrollRun,
   PayrollAdjustment,
@@ -129,6 +132,14 @@ export interface DemoState {
   /** What we sell and make, and what each one is made of (D149). */
   products: Product[];
   bom_components: BomComponent[];
+
+  /* --- inventory: stock -------------------------------------------- */
+  /** Where stock lives, and how low is too low. Settings, not quantities —
+   *  the quantity is the sum of the moves (D170). */
+  stock_locations: StockLocation[];
+  stock_settings: StockSetting[];
+  /** Append-only. A mistake is another move with a reason (A5, D171). */
+  stock_moves: StockMove[];
 
   /* --- inventory: timber ------------------------------------------- */
   /** Logs are bought by the load and used as boards — two quantities with a

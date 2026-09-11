@@ -73,8 +73,8 @@ export const NAV: NavSection[] = [
     items: [
       { label: "Logs", href: "/inventory/log", icon: TreePine, permission: "inventory.read", badge: "core" },
       { label: "Sawn Boards", href: "/inventory/papan", icon: Layers, permission: "inventory.read" },
-      { label: "Materials & Hardware", href: "/inventory/material", icon: Boxes, permission: "inventory.read" },
-      { label: "Stock Adjustments", href: "/inventory/penyesuaian", icon: Wrench, permission: "inventory.adjust" },
+      { label: "Materials & Hardware", href: "/inventory/material", icon: Boxes, permission: "inventory.read", badge: "new" },
+      { label: "Stock Adjustments", href: "/inventory/penyesuaian", icon: Wrench, permission: "inventory.adjust", badge: "new" },
     ],
   },
   {

@@ -13,6 +13,11 @@ import type { DocKind } from "@/services/documents/contracts";
 import { REQUEST_SUPPORT_KINDS } from "@/services/documents/contracts";
 import { LOCALE } from "@/lib/format";
 import { getState, apply, newId, nextDocNumber, writeAudit, writeOutbox } from "../store";
+/* The one cross-service call in this module, and it is deliberate: confirming
+   a delivery puts the goods on a rack (D170). Written as a function the
+   inventory service owns, so Phase 2 replaces the call with the outbox
+   consumer and nothing else moves (ADR-004, ADR-008). */
+import { stockFromReceipt } from "./inventory";
 import {
   prLineView, approvalQueue, lineCoverage, roundSummary, poStatus, isApproved,
   poDetail, poTerms,
@@ -2384,6 +2389,7 @@ export async function confirmReceipt(
 
   const user = actingUser();
   let updated: Receipt | null = null;
+  let stocked: { stocked: boolean; why?: string } = { stocked: false };
   apply((draft) => {
     const row = draft.receipts.find((r) => r.receipt_no === input.receipt_no);
     if (!row) return;
@@ -2420,8 +2426,16 @@ export async function confirmReceipt(
       service: SERVICE, event_type: "procurement.receipt.confirmed",
       payload: { receipt_no: row.receipt_no, qty: row.qty_received, condition: row.condition },
     });
+
+    /* Goods that arrived are goods on a rack (D170). In Phase 2 this is the
+       consumer of the event written just above; here it is a direct call with
+       the same shape, because the alternative — a confirmed delivery that
+       leaves no trace in stock — is the gap this whole module exists to close.
+       It stocks nothing for a free-text line or an uncounted category, and
+       says which, rather than inventing an item to hang the quantity on. */
+    stocked = stockFromReceipt(draft, row.receipt_no, user.id, user.email);
   });
-  return ok(SERVICE, updated as unknown as Receipt);
+  return ok(SERVICE, updated as unknown as Receipt & { stocked?: { stocked: boolean; why?: string } });
 }
 
 /** Arrivals somebody reported and nobody has completed — the morning queue. */

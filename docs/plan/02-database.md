@@ -1470,6 +1470,58 @@ authority (D147).
 
 ---
 
+## Schema `inv` — stock
+
+```mermaid
+erDiagram
+    stock_locations ||--o{ stock_moves : "holds"
+    items ||--o{ stock_moves : "counted as"
+    stock_locations {
+        text code PK
+        text name
+        boolean is_active
+    }
+    stock_settings {
+        text item_code PK "procure.items.code, at the seam"
+        numeric min_qty "null = nobody has said"
+        text home_location FK
+    }
+    stock_moves {
+        uuid id PK
+        text move_no UK "stk-26-09-11_04"
+        text item_code "by code, across the seam"
+        text location FK
+        stock_move_kind_t kind "receipt|issue|return|adjust|transfer"
+        numeric qty "signed"
+        text uom
+        numeric unit_cost "null = arrived unpriced, NOT zero"
+        text ref_no "rcv-… | spk-…"
+        text reason "required on adjust"
+        uuid moved_by FK
+        timestamptz moved_at
+    }
+```
+
+**There is no quantity column anywhere.** On-hand is `sum(qty)` over the moves,
+per item and per location, computed on read (A3, D170). The failure this avoids
+is the one the spreadsheet already has: a stored quantity that disagrees with
+its own history, discovered by somebody standing in front of an empty rack.
+
+| Constraint | Why |
+|---|---|
+| `stock_moves` no UPDATE, no DELETE | a mistake is another move with a reason (A5, D171) |
+| `stock_moves` CHECK `kind = 'adjust' → reason IS NOT NULL` | the sentence *is* the record; "adjustment" alone is a shrug |
+| `stock_moves` CHECK `qty <> 0` | a zero move says nothing and clutters the one history somebody reads |
+| `stock_moves` UNIQUE `(ref_no, item_code)` where `kind = 'receipt'` | confirming the same delivery twice stocks it once (D170) |
+| `stock_moves.unit_cost` NULL-able | unpriced stock is counted and left out of the valuation, never valued at nought (D172) |
+| `stock_settings.min_qty` NULL-able | an unstated minimum is not a satisfied one; the screen says *belum ditetapkan* |
+| a transfer writes **two** rows | so each location's own history reads correctly on its own |
+
+**Issues are not valued.** What stock cost on the way out — FIFO, average,
+standard — is three different numbers and nobody has chosen (Q43). The rack is
+valued at the weighted average of what is on it, which is the question being
+asked today.
+
 ## Schema `inv` — timber
 
 An eighth service (D153), and the narrowest one: it exists because **a cubic

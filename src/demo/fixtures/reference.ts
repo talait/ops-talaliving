@@ -172,18 +172,55 @@ export const UOM_CONVERSIONS: UomConversion[] = [
   { id: "uc_04", from_uom: "m3", to_uom: "lembar", factor: 55, yield_ratio: 0.52, note: "teak log -> 3cm board, 45-60% yield" },
 ];
 
+/** The catalogue's own filing, two levels deep (D169).
+ *
+ *  The first version of this list had nine flat headings and one of them was
+ *  "Production", which is every item in the workshop. A category earns its
+ *  place by answering a question somebody actually asks: *how much wood is on
+ *  the rack*, *which finishing is running out*, *what did we spend on hardware
+ *  this month*. Anything that does not separate two of those is a word, not a
+ *  category.
+ *
+ *  Two levels, deliberately not three: the parent is what a report groups by,
+ *  the child is what a storeman looks for. A third level would be the item.
+ *
+ *  `stocked` is on the category rather than on each item, because it is a
+ *  property of the *kind* of thing: a service is never on a rack, and neither
+ *  is electricity. An item in a stocked category is counted; one in an
+ *  unstocked category is bought and expensed, and the stock screen says which
+ *  of the two it is rather than showing a silent zero.
+ */
 export const ITEM_CATEGORIES: ItemCategory[] = [
-  { code: "production", parent_code: null, name: "Production" },
-  { code: "raw-wood", parent_code: "production", name: "Timber & panels" },
-  { code: "hardware", parent_code: "production", name: "Hardware" },
-  { code: "sanding", parent_code: null, name: "Sanding" },
+  { code: "bahan", parent_code: null, name: "Bahan baku" },
+  { code: "kayu", parent_code: "bahan", name: "Kayu solid" },
+  { code: "panel", parent_code: "bahan", name: "Panel & pelapis" },
+
+  { code: "hardware", parent_code: null, name: "Hardware" },
+  { code: "engsel-rel", parent_code: "hardware", name: "Engsel, rel & mekanis" },
+  { code: "handle", parent_code: "hardware", name: "Handle & aksesori" },
+  { code: "pengikat", parent_code: "hardware", name: "Sekrup, paku & baut" },
+
   { code: "finishing", parent_code: null, name: "Finishing" },
-  { code: "packing", parent_code: null, name: "Packing" },
-  { code: "machining", parent_code: null, name: "Machining" },
-  { code: "office", parent_code: null, name: "Office" },
-  { code: "service", parent_code: null, name: "Services" },
-  { code: "uncurated", parent_code: null, name: "Not yet curated" },
+  { code: "cat", parent_code: "finishing", name: "Cat, stain & sealer" },
+  { code: "pelarut", parent_code: "finishing", name: "Pelarut & pembersih" },
+  { code: "lem", parent_code: "finishing", name: "Lem & dempul" },
+
+  { code: "abrasif", parent_code: null, name: "Amplas & abrasif" },
+  { code: "mesin", parent_code: null, name: "Perkakas & sparepart mesin" },
+  { code: "kemasan", parent_code: null, name: "Kemasan & pengiriman" },
+  { code: "kantor", parent_code: null, name: "Kantor & umum" },
+
+  { code: "jasa", parent_code: null, name: "Jasa" },
+  { code: "uncurated", parent_code: null, name: "Belum dikategorikan" },
 ];
+
+/** Which categories sit on a rack and are counted. Everything else is bought
+ *  and gone the same day — a service, the electricity bill, an item nobody has
+ *  filed yet (D169). */
+export const STOCKED_CATEGORIES = new Set([
+  "kayu", "panel", "engsel-rel", "handle", "pengikat",
+  "cat", "pelarut", "lem", "abrasif", "mesin", "kemasan", "kantor",
+]);
 
 export const PROJECTS: Project[] = [
   {
@@ -229,27 +266,27 @@ export const VENDORS: Vendor[] = [
     phone: "0361-812445", address: "Jl. Raya Gianyar No. 88, Gianyar, Bali",
     pic_name: "Hendra Wijaya", pic_phone: "0812-3811-4402",
     bank_account: "BCA 145-0882-771", bank_account_secondary: "Mandiri 145-00-1120884-2",
-    npwp: "01.234.567.8-905.000", supplied_categories: ["raw-wood"] },
+    npwp: "01.234.567.8-905.000", supplied_categories: ["kayu", "panel"] },
   { id: "vnd_02", code: "V-0002", name: "UD ALRIZKY JAYA", aka: ["ALRIZKY", "AL RIZKY"], is_curated: true,
     phone: "0361-425190", address: "Jl. Cokroaminoto 210, Denpasar",
     pic_name: "Rina Kusuma", pic_phone: "0813-3902-1188",
     bank_account: "BNI 088-771-2210", bank_account_secondary: null,
-    npwp: null, supplied_categories: ["hardware", "machining"] },
+    npwp: null, supplied_categories: ["hardware", "mesin"] },
   { id: "vnd_03", code: "V-0003", name: "TOKO BANGUNAN MAKMUR SENTOSA", aka: ["MAKMUR SENTOSA"], is_curated: true,
     phone: "0361-733012", address: "Jl. Mahendradatta 45, Denpasar",
     pic_name: "Yanto Suryana", pic_phone: "0878-6120-4471",
     bank_account: "BCA 771-0034-112", bank_account_secondary: "BRI 0271-01-004488-53",
-    npwp: null, supplied_categories: ["raw-wood", "hardware", "finishing", "office"] },
+    npwp: null, supplied_categories: ["panel", "hardware", "lem", "kantor"] },
   { id: "vnd_04", code: "V-0004", name: "PT PROPAN RAYA ICC", aka: ["PROPAN"], is_curated: true,
     phone: "021-5901888", address: "Kawasan Industri Jatake, Tangerang",
     pic_name: "Bagus Nugroho (Sales Bali)", pic_phone: "0811-9004-2213",
     bank_account: "Mandiri 128-00-0912334-5", bank_account_secondary: "BCA 206-3009-118",
-    npwp: "01.311.402.7-054.000", supplied_categories: ["finishing", "sanding"] },
+    npwp: "01.311.402.7-054.000", supplied_categories: ["cat", "pelarut", "abrasif"] },
   { id: "vnd_05", code: "V-0005", name: "CV MITRA TEKNIK MANDIRI", aka: [], is_curated: true,
     phone: "0361-462017", address: "Jl. By Pass Ngurah Rai 122, Sanur",
     pic_name: "Sukirman", pic_phone: "0812-3744-9901",
     bank_account: "BCA 145-0771-330", bank_account_secondary: null,
-    npwp: null, supplied_categories: ["machining", "service"] },
+    npwp: null, supplied_categories: ["mesin", "jasa"] },
   { id: "vnd_06", code: "V-0006", name: "UD KARYA LOGAM ABADI", aka: ["KARYA LOGAM"], is_curated: true,
     phone: "0361-298776", address: "Jl. Gatot Subroto Barat 190, Denpasar",
     pic_name: "Anwar Hidayat", pic_phone: "0857-3388-2210",
@@ -259,17 +296,17 @@ export const VENDORS: Vendor[] = [
     phone: "0361-234881", address: "Jl. Imam Bonjol 77, Denpasar",
     pic_name: "Dewi Anggraini", pic_phone: "0819-3312-7788",
     bank_account: "BNI 771-002-8891", bank_account_secondary: null,
-    npwp: null, supplied_categories: ["sanding"] },
+    npwp: null, supplied_categories: ["abrasif"] },
   { id: "vnd_08", code: "V-0008", name: "PT INDO VENEER UTAMA", aka: ["INDOVENEER"], is_curated: true,
     phone: "031-7885120", address: "Jl. Rungkut Industri III/44, Surabaya",
     pic_name: "Maya Kartika", pic_phone: "0811-3055-6677",
     bank_account: "BCA 188-3300-771", bank_account_secondary: "Mandiri 141-00-7788221-9",
-    npwp: "02.115.889.4-604.000", supplied_categories: ["raw-wood"] },
+    npwp: "02.115.889.4-604.000", supplied_categories: ["kayu", "panel"] },
   { id: "vnd_09", code: "V-0009", name: "CV BALI PACKING PRIMA", aka: [], is_curated: true,
     phone: "0361-901223", address: "Jl. Kargo Permai 12, Denpasar",
     pic_name: "Gede Arya", pic_phone: "0813-3877-2244",
     bank_account: "BCA 145-8812-004", bank_account_secondary: null,
-    npwp: null, supplied_categories: ["packing"] },
+    npwp: null, supplied_categories: ["kemasan"] },
   /* The three below are uncurated: recorded because money moved, and nobody has
    * filled in who to call. That gap is the point — an empty PIC on a vendor we
    * keep buying from is a question the screen should be able to raise. */
@@ -289,54 +326,54 @@ export const VENDORS: Vendor[] = [
     bank_account: null, bank_account_secondary: null, npwp: null, supplied_categories: [] },
   { id: "vnd_12", code: "V-0012", name: "CV KAYU MANIS SELATAN", aka: [], is_curated: false,
     phone: null, address: null, pic_name: null, pic_phone: null,
-    bank_account: null, bank_account_secondary: null, npwp: null, supplied_categories: ["raw-wood"] },
+    bank_account: null, bank_account_secondary: null, npwp: null, supplied_categories: ["kayu", "panel"] },
 ];
 
 type ItemSeed = [string, string, string, Item["base_uom"], number | null, number | null, string | null, boolean, Item["kind"]];
 
 /* code, name, category, uom, standard_price, last_price, last_vendor, curated, kind */
 const ITEM_SEEDS: ItemSeed[] = [
-  ["ITM-0001", "KAYU JATI SORTIMEN A", "raw-wood", "m3", 18_500_000, 18_900_000, "vnd_01", true, "goods"],
-  ["ITM-0002", "KAYU JATI SORTIMEN B", "raw-wood", "m3", 14_200_000, 14_200_000, "vnd_01", true, "goods"],
-  ["ITM-0003", "KAYU MAHONI LOG", "raw-wood", "m3", 6_800_000, 6_950_000, "vnd_01", true, "goods"],
-  ["ITM-0004", "KAYU SUNGKAI PAPAN 2CM", "raw-wood", "lembar", 185_000, 188_000, "vnd_12", true, "goods"],
-  ["ITM-0005", "KAYU MINDI LOG", "raw-wood", "m3", 4_900_000, null, null, true, "goods"],
-  ["ITM-0006", "PAPAN JATI KERING 3CM", "raw-wood", "lembar", 620_000, 640_000, "vnd_01", true, "goods"],
-  ["ITM-0007", "PLYWOOD 18MM 122X244", "raw-wood", "lembar", 285_000, 292_000, "vnd_03", true, "goods"],
-  ["ITM-0008", "PLYWOOD 12MM 122X244", "raw-wood", "lembar", 198_000, 205_000, "vnd_03", true, "goods"],
-  ["ITM-0009", "MDF 15MM 122X244", "raw-wood", "lembar", 165_000, null, null, true, "goods"],
-  ["ITM-0010", "HPL TACO TH 133 GLOSSY", "raw-wood", "lembar", 245_000, 248_000, "vnd_08", true, "goods"],
-  ["ITM-0011", "VENEER JATI 0.6MM", "raw-wood", "lembar", 87_000, 89_500, "vnd_08", true, "goods"],
-  ["ITM-0012", "AMPLAS 80 GRIT", "sanding", "lembar", 7_500, 7_500, "vnd_07", true, "goods"],
-  ["ITM-0013", "AMPLAS 120 GRIT", "sanding", "lembar", 7_500, 7_650, "vnd_07", true, "goods"],
-  ["ITM-0014", "AMPLAS 240 GRIT", "sanding", "lembar", 8_000, 8_000, "vnd_07", true, "goods"],
-  ["ITM-0015", "AMPLAS ROLL 180 GRIT", "sanding", "roll", 385_000, 392_000, "vnd_07", true, "goods"],
-  ["ITM-0016", "SANDING SEALER PROPAN", "finishing", "ltr", 78_000, 79_500, "vnd_04", true, "goods"],
-  ["ITM-0017", "CAT DUCO PUTIH", "finishing", "ltr", 165_000, 168_000, "vnd_04", true, "goods"],
-  ["ITM-0018", "THINNER ND SUPER", "finishing", "ltr", 32_000, 33_500, "vnd_04", true, "goods"],
-  ["ITM-0019", "MELAMINE CLEAR DOFF", "finishing", "ltr", 142_000, 145_000, "vnd_04", true, "goods"],
-  ["ITM-0020", "WOOD STAIN WALNUT", "finishing", "ltr", 118_000, null, null, true, "goods"],
-  ["ITM-0021", "DEMPUL KAYU", "finishing", "kg", 45_000, 46_500, "vnd_03", true, "goods"],
-  ["ITM-0022", "LEM PUTIH FOX 5 KG", "finishing", "pack", 230_000, 230_000, "vnd_03", true, "goods"],
-  ["ITM-0023", "LEM KUNING AIBON", "finishing", "kg", 68_000, 69_000, "vnd_03", true, "goods"],
-  ["ITM-0024", "ENGSEL SENDOK HUBEN", "hardware", "pcs", 18_500, 18_500, "vnd_02", true, "goods"],
-  ["ITM-0025", "REL LACI FULL EXTENSION 45CM", "hardware", "set", 95_000, 97_500, "vnd_02", true, "goods"],
-  ["ITM-0026", "HANDLE TARIK ALUMUNIUM 128MM", "hardware", "pcs", 32_000, 32_000, "vnd_02", true, "goods"],
-  ["ITM-0027", "SEKRUP GYPSUM 1 INCH", "hardware", "box", 42_000, 43_000, "vnd_02", true, "goods"],
-  ["ITM-0028", "PAKU 5CM", "hardware", "kg", 22_000, 22_500, "vnd_03", true, "goods"],
-  ["ITM-0029", "MATA BOR SET HSS", "machining", "set", 285_000, null, null, true, "goods"],
-  ["ITM-0030", "PISAU PLANER 300MM", "machining", "set", 420_000, 435_000, "vnd_05", true, "goods"],
-  ["ITM-0031", "BATU GERINDA 4 INCH", "machining", "pcs", 12_000, 12_500, "vnd_05", true, "goods"],
-  ["ITM-0032", "KARDUS DOUBLE WALL 60X40X40", "packing", "pcs", 28_000, 28_500, "vnd_09", true, "goods"],
-  ["ITM-0033", "BUBBLE WRAP 125CM", "packing", "roll", 420_000, 428_000, "vnd_09", true, "goods"],
-  ["ITM-0034", "STRETCH FILM 500MM", "packing", "roll", 95_000, 96_000, "vnd_09", true, "goods"],
-  ["ITM-0035", "STYROFOAM SHEET 2CM", "packing", "lembar", 35_000, null, null, true, "goods"],
-  ["ITM-0036", "LAKBAN COKLAT 2 INCH", "packing", "pcs", 12_500, 12_500, "vnd_09", true, "goods"],
-  ["ITM-0037", "KERTAS HVS A4 80GR", "office", "pack", 58_000, 59_000, "vnd_03", true, "goods"],
-  ["ITM-0038", "TINTA PRINTER EPSON 003", "office", "pcs", 95_000, null, null, true, "goods"],
-  ["ITM-0039", "JASA POTONG RUMPUT HALAMAN", "service", "unit", 350_000, 350_000, "vnd_10", true, "service"],
-  ["ITM-0040", "JASA SERVIS MESIN PLANER", "service", "unit", null, 1_250_000, "vnd_05", true, "service"],
-  ["ITM-0041", "LISTRIK WORKSHOP BULANAN", "service", "unit", null, 4_180_000, null, true, "service"],
+  ["ITM-0001", "KAYU JATI SORTIMEN A", "kayu", "m3", 18_500_000, 18_900_000, "vnd_01", true, "goods"],
+  ["ITM-0002", "KAYU JATI SORTIMEN B", "kayu", "m3", 14_200_000, 14_200_000, "vnd_01", true, "goods"],
+  ["ITM-0003", "KAYU MAHONI LOG", "kayu", "m3", 6_800_000, 6_950_000, "vnd_01", true, "goods"],
+  ["ITM-0004", "KAYU SUNGKAI PAPAN 2CM", "kayu", "lembar", 185_000, 188_000, "vnd_12", true, "goods"],
+  ["ITM-0005", "KAYU MINDI LOG", "kayu", "m3", 4_900_000, null, null, true, "goods"],
+  ["ITM-0006", "PAPAN JATI KERING 3CM", "kayu", "lembar", 620_000, 640_000, "vnd_01", true, "goods"],
+  ["ITM-0007", "PLYWOOD 18MM 122X244", "panel", "lembar", 285_000, 292_000, "vnd_03", true, "goods"],
+  ["ITM-0008", "PLYWOOD 12MM 122X244", "panel", "lembar", 198_000, 205_000, "vnd_03", true, "goods"],
+  ["ITM-0009", "MDF 15MM 122X244", "panel", "lembar", 165_000, null, null, true, "goods"],
+  ["ITM-0010", "HPL TACO TH 133 GLOSSY", "panel", "lembar", 245_000, 248_000, "vnd_08", true, "goods"],
+  ["ITM-0011", "VENEER JATI 0.6MM", "panel", "lembar", 87_000, 89_500, "vnd_08", true, "goods"],
+  ["ITM-0012", "AMPLAS 80 GRIT", "abrasif", "lembar", 7_500, 7_500, "vnd_07", true, "goods"],
+  ["ITM-0013", "AMPLAS 120 GRIT", "abrasif", "lembar", 7_500, 7_650, "vnd_07", true, "goods"],
+  ["ITM-0014", "AMPLAS 240 GRIT", "abrasif", "lembar", 8_000, 8_000, "vnd_07", true, "goods"],
+  ["ITM-0015", "AMPLAS ROLL 180 GRIT", "abrasif", "roll", 385_000, 392_000, "vnd_07", true, "goods"],
+  ["ITM-0016", "SANDING SEALER PROPAN", "cat", "ltr", 78_000, 79_500, "vnd_04", true, "goods"],
+  ["ITM-0017", "CAT DUCO PUTIH", "cat", "ltr", 165_000, 168_000, "vnd_04", true, "goods"],
+  ["ITM-0018", "THINNER ND SUPER", "pelarut", "ltr", 32_000, 33_500, "vnd_04", true, "goods"],
+  ["ITM-0019", "MELAMINE CLEAR DOFF", "cat", "ltr", 142_000, 145_000, "vnd_04", true, "goods"],
+  ["ITM-0020", "WOOD STAIN WALNUT", "cat", "ltr", 118_000, null, null, true, "goods"],
+  ["ITM-0021", "DEMPUL KAYU", "lem", "kg", 45_000, 46_500, "vnd_03", true, "goods"],
+  ["ITM-0022", "LEM PUTIH FOX 5 KG", "lem", "pack", 230_000, 230_000, "vnd_03", true, "goods"],
+  ["ITM-0023", "LEM KUNING AIBON", "lem", "kg", 68_000, 69_000, "vnd_03", true, "goods"],
+  ["ITM-0024", "ENGSEL SENDOK HUBEN", "engsel-rel", "pcs", 18_500, 18_500, "vnd_02", true, "goods"],
+  ["ITM-0025", "REL LACI FULL EXTENSION 45CM", "engsel-rel", "set", 95_000, 97_500, "vnd_02", true, "goods"],
+  ["ITM-0026", "HANDLE TARIK ALUMUNIUM 128MM", "handle", "pcs", 32_000, 32_000, "vnd_02", true, "goods"],
+  ["ITM-0027", "SEKRUP GYPSUM 1 INCH", "pengikat", "box", 42_000, 43_000, "vnd_02", true, "goods"],
+  ["ITM-0028", "PAKU 5CM", "pengikat", "kg", 22_000, 22_500, "vnd_03", true, "goods"],
+  ["ITM-0029", "MATA BOR SET HSS", "mesin", "set", 285_000, null, null, true, "goods"],
+  ["ITM-0030", "PISAU PLANER 300MM", "mesin", "set", 420_000, 435_000, "vnd_05", true, "goods"],
+  ["ITM-0031", "BATU GERINDA 4 INCH", "mesin", "pcs", 12_000, 12_500, "vnd_05", true, "goods"],
+  ["ITM-0032", "KARDUS DOUBLE WALL 60X40X40", "kemasan", "pcs", 28_000, 28_500, "vnd_09", true, "goods"],
+  ["ITM-0033", "BUBBLE WRAP 125CM", "kemasan", "roll", 420_000, 428_000, "vnd_09", true, "goods"],
+  ["ITM-0034", "STRETCH FILM 500MM", "kemasan", "roll", 95_000, 96_000, "vnd_09", true, "goods"],
+  ["ITM-0035", "STYROFOAM SHEET 2CM", "kemasan", "lembar", 35_000, null, null, true, "goods"],
+  ["ITM-0036", "LAKBAN COKLAT 2 INCH", "kemasan", "pcs", 12_500, 12_500, "vnd_09", true, "goods"],
+  ["ITM-0037", "KERTAS HVS A4 80GR", "kantor", "pack", 58_000, 59_000, "vnd_03", true, "goods"],
+  ["ITM-0038", "TINTA PRINTER EPSON 003", "kantor", "pcs", 95_000, null, null, true, "goods"],
+  ["ITM-0039", "JASA POTONG RUMPUT HALAMAN", "jasa", "unit", 350_000, 350_000, "vnd_10", true, "service"],
+  ["ITM-0040", "JASA SERVIS MESIN PLANER", "jasa", "unit", null, 1_250_000, "vnd_05", true, "service"],
+  ["ITM-0041", "LISTRIK WORKSHOP BULANAN", "jasa", "unit", null, 4_180_000, null, true, "service"],
   ["ITM-0042", "BAUT L 8MM", "uncurated", "pcs", null, 3_500, "vnd_10", false, "goods"],
   ["ITM-0043", "OLI KOMPRESOR", "uncurated", "ltr", null, 78_000, "vnd_11", false, "goods"],
 ];

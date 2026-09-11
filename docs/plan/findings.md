@@ -2165,3 +2165,48 @@ So the slip marks those days `?`, names them in words, and says the same about
 overtime the machine saw and nobody approved: *10,27 jam catatan mesin, 2 jam
 dibayar*. The figures did not change. What changed is that the paper now
 answers the question it was provoking.
+
+## F49 — the delivery that nobody could find afterwards
+
+Building stock turned up the gap it was built to close, and it is worth naming
+precisely because it had been invisible for twenty-six milestones.
+
+A request was raised, approved, ordered, delivered, confirmed with a photo and
+a signed tanda terima, and paid. Every one of those steps had a screen and a
+document. And then **the goods stopped existing.** Nothing in the system knew
+that sixty sheets of plywood were in the gudang, so the next person to need
+plywood had exactly two ways to find out whether there was any: walk to the
+rack, or raise another request.
+
+The fix is one call — confirming a receipt writes a stock movement — but the
+shape matters more than the call:
+
+**On-hand is never stored.** It is the sum of the movements, computed on read.
+The spreadsheet version of this module stores the number, and it has been wrong
+since the day somebody forgot a row: a stored quantity disagrees with its own
+history, and the disagreement is discovered by a man standing in front of an
+empty rack.
+
+**Issuing more than the record shows is recorded, not refused.** This one is
+counter-intuitive until you stand in the workshop. The wood is either on the
+rack or it is not; a screen that refuses to record what a storeman just carried
+out does not prevent the issue, it prevents the *record* of it — and it teaches
+him to stop typing. What the system owes him instead is to say the figure has
+gone negative and needs counting, which it does.
+
+**An unpriced delivery is counted and left out of the value.** Eight sheets
+arrived on a lump-sum line with no unit price. Valuing them at nought would
+have shown the rack as Rp 2,3 juta cheaper than it is, with nothing on screen
+to say why. So the value is over the priced part and says *belum lengkap* — the
+same rule as the BOM's material cost (D149) and timber's unsawn logs (F46).
+Three modules, one principle: **a figure is allowed to be missing, never
+allowed to be quietly wrong.**
+
+### And the category list that was a word list
+
+The first filing had nine flat headings, one of which was "Production" — which
+is every item in the workshop. A category earns its place by separating two
+questions somebody actually asks: *how much wood is on the rack*, *which
+finishing is running out*. Filing is now two levels, and **whether an item is
+counted at all is a property of its category**, not a checkbox somebody has to
+remember: a service is never on a rack, and neither is the electricity bill.

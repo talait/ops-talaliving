@@ -59,6 +59,19 @@ export default function PayrollRunPage({ params }: { params: { run: string } }) 
           <p className="text-[11px] text-slate-400">
             {l.pay_basis === "monthly" ? formatIDR(l.base_rate) : `${formatIDR(l.base_rate)} / day`}
           </p>
+          {/* What the paid days are made of. A total nobody can take apart is
+              the one an employee argues with (D144). */}
+          {(l.days_sick_paid > 0 || l.days_leave_paid > 0) && (
+            <p className="text-[11px] text-emerald-700">
+              {[
+                l.days_sick_paid > 0 ? `${formatNumber(l.days_sick_paid)} sakit (surat)` : null,
+                l.days_leave_paid > 0 ? `${formatNumber(l.days_leave_paid)} cuti berbayar` : null,
+              ].filter(Boolean).join(" · ")}
+            </p>
+          )}
+          {l.days_unpaid > 0 && (
+            <p className="text-[11px] text-slate-400">{formatNumber(l.days_unpaid)} hari tidak dibayar</p>
+          )}
         </div>
       ),
     },

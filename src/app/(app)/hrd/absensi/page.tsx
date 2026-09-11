@@ -7,10 +7,13 @@ import { Loaded, SourceBadge, useLoad } from "@/components/ui/loaded";
 import { formatNumber } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { hr } from "@/demo/api";
-import { DAY_MARK_SHORT, type DayState, type OvertimeClaim } from "@/services/hr/contracts";
+import {
+  DAY_MARK_SHORT, OVERTIME_STAGE_LABEL,
+  type DayState, type OvertimeView,
+} from "@/services/hr/contracts";
 import { useSession } from "@/store/session";
-import { useToast } from "@/store/toast";
 import { ImportScans } from "./ImportScans";
+import { OvertimeRow } from "./OvertimeRow";
 import { DayDrawer } from "./DayDrawer";
 import { MarkDay } from "./MarkDay";
 
@@ -38,27 +41,13 @@ const CELL: Record<DayState, string> = {
 
 export default function TimesheetPage() {
   const { can, hasAuthority } = useSession();
-  const { toast } = useToast();
   const [sheet, reload] = useLoad(() => hr.getTimesheet(PERIOD), []);
   const [claims, reloadClaims] = useLoad(() => hr.listOvertime(), []);
   const [importing, setImporting] = useState(false);
   const [marking, setMarking] = useState<string | null>(null);
   const [open, setOpen] = useState<{ employee_no: string; work_date: string } | null>(null);
-  const [busy, setBusy] = useState(false);
   const mayEdit = can("hrd.update");
-  const mayDecide = hasAuthority("approve_goods");
-
-  async function decide(c: OvertimeClaim & { full_name: string }, approved: boolean) {
-    setBusy(true);
-    const res = await hr.decideOvertime({
-      claim_id: c.id, approved,
-      reason: approved ? null : "Tidak disetujui dari layar absensi.",
-    });
-    setBusy(false);
-    if (res.error) { toast(res.error.status === 403 ? "critical" : "warning", "Not decided", res.error.message); return; }
-    toast("success", approved ? "Lembur disetujui" : "Lembur ditolak", `${c.full_name} · ${c.work_date} · ${c.hours} jam`);
-    reloadClaims();
-  }
+  const mayLeader = hasAuthority("approve_overtime");
 
   return (
     <div>
@@ -174,35 +163,34 @@ export default function TimesheetPage() {
 
             <Loaded state={claims} onRetry={reloadClaims}>
               {(all) => {
-                const waiting = all.filter((c) => !c.approved_at && !c.declined_reason);
+                const waiting = all.filter((c) => c.stage !== "approved" && c.stage !== "declined");
+                const byStage = (st: typeof waiting[number]["stage"]) => waiting.filter((c) => c.stage === st).length;
                 return (
                   <Card>
                     <CardHeader
                       title={`Lembur — ${waiting.length} menunggu`}
-                      subtitle="The machine saw them stay. Only a person can say it was work, and only approved hours reach a payslip."
+                      subtitle="Dua tanda tangan: HRD memeriksa jamnya, pimpinan menandatangani suratnya. Hanya yang lengkap masuk payslip."
                       icon={Clock}
+                      action={
+                        <span className="flex flex-wrap gap-1.5">
+                          {byStage("waiting_hrd") > 0 && <Badge tone="amber">{byStage("waiting_hrd")} {OVERTIME_STAGE_LABEL.waiting_hrd}</Badge>}
+                          {byStage("waiting_surat") > 0 && <Badge tone="violet">{byStage("waiting_surat")} {OVERTIME_STAGE_LABEL.waiting_surat}</Badge>}
+                          {byStage("waiting_leader") > 0 && <Badge tone="brand">{byStage("waiting_leader")} {OVERTIME_STAGE_LABEL.waiting_leader}</Badge>}
+                        </span>
+                      }
                     />
                     <ul className="divide-y divide-slate-100">
                       {waiting.length === 0 && (
-                        <li className="px-5 py-6 text-[13px] text-slate-500">Nothing is waiting to be decided.</li>
+                        <li className="px-5 py-6 text-[13px] text-slate-500">Tidak ada lembur yang menunggu keputusan.</li>
                       )}
                       {waiting.map((c) => (
-                        <li key={c.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-5 py-2.5">
-                          <span className="min-w-[160px] flex-1 text-[13px] font-medium text-slate-800">
-                            {c.full_name}
-                            <span className="ml-2 font-normal text-slate-500">{c.work_date}</span>
-                          </span>
-                          <span className="whitespace-nowrap text-[13px] tabular-nums text-slate-700">{formatNumber(c.hours)} jam</span>
-                          <span className="min-w-[200px] flex-1 text-[12px] text-slate-500">{c.reason}</span>
-                          {mayDecide ? (
-                            <span className="flex gap-2">
-                              <Button size="sm" variant="ghost" disabled={busy} onClick={() => decide(c, false)}>Tolak</Button>
-                              <Button size="sm" disabled={busy} onClick={() => decide(c, true)}>Setujui</Button>
-                            </span>
-                          ) : (
-                            <Badge tone="amber">menunggu supervisor</Badge>
-                          )}
-                        </li>
+                        <OvertimeRow
+                          key={c.id}
+                          claim={c}
+                          mayHrd={mayEdit}
+                          mayLeader={mayLeader}
+                          onChanged={reloadClaims}
+                        />
                       ))}
                     </ul>
                   </Card>

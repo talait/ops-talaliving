@@ -33,6 +33,14 @@ export interface Employee {
   /** Standard hours in a working day. Overtime is what goes past it. */
   daily_hours: number;
   joined_on: string;
+  /** Paid leave this person is entitled to in a calendar year, in days.
+   *
+   *  **Per person, deliberately** (owner, answering Q33): length of service,
+   *  what was agreed when they were hired, and whether they are staff or
+   *  workshop all move it, so a company-wide constant would be wrong for
+   *  almost everybody. Days beyond it are still taken and still recorded —
+   *  they are simply not paid, and the timesheet says which is which (D144). */
+  paid_leave_days: number;
   active: boolean;
   /** Set when somebody leaves. Their records stay — a payslip from March is
    *  still a fact in June (A5). */
@@ -129,6 +137,27 @@ export interface DayMark {
   marked_at: string;
 }
 
+/** Whether a marked day reaches the payslip, and why.
+ *
+ *  Answering Q33 (owner): **sakit is paid when the doctor's letter is
+ *  behind it**, and **cuti is paid only out of what that person has left** —
+ *  every one of them has a different number. Everything else stays unpaid
+ *  (D144). The reason travels with the figure because "why is this day worth
+ *  nothing" is the question an employee asks, and an app that cannot answer it
+ *  makes HRD answer it from memory.
+ */
+export interface DayPay {
+  /** What payroll counts this day as: 1, 0,5 or 0. */
+  value: number;
+  /** One sentence, in Indonesian, for the person whose day it is. */
+  why: string;
+  /** Set when the mark could be paid and something is missing — no surat
+   *  dokter, no paid leave left. Never a refusal: the day is recorded either
+   *  way, and this is what makes the unpaid one visible while it can still be
+   *  fixed. */
+  fixable: string | null;
+}
+
 /** How a day stands once the taps have been read against the six slots.
  *
  *  `review` is the honest state for what the real machine mostly produces: an
@@ -156,6 +185,8 @@ export interface TimesheetDay {
   overtime_hours: number;
   /** 1 for a full day, 0.5 for a half day, 0 for absent — what payroll counts. */
   day_value: number;
+  /** Why it is worth that, and what would change it (D144). */
+  pay: DayPay;
   /** What a person has to resolve, in words. */
   issues: string[];
 }
@@ -176,9 +207,41 @@ export interface OvertimeClaim {
   reason: string;
   claimed_by: string;
   claimed_at: string;
-  approved_by: string | null;
-  approved_at: string | null;
+  /** HRD first: the hours are real, the taps say so, the man was here. */
+  hrd_approved_by: string | null;
+  hrd_approved_at: string | null;
+  /** Then leadership, and not before the surat lembur is attached (D145). */
+  leader_approved_by: string | null;
+  leader_approved_at: string | null;
+  /** Either step can decline, and the reason says which one did. */
+  declined_by: string | null;
   declined_reason: string | null;
+}
+
+/** Where a claim has got to. Derived from the two approvals, never stored —
+ *  two columns and a status that can disagree with them is one column too
+ *  many (A3). */
+export type OvertimeStage =
+  | "waiting_hrd"      // nobody has checked it yet
+  | "waiting_surat"    // HRD said yes; the surat lembur is not attached
+  | "waiting_leader"   // the letter is there; leadership has not signed
+  | "approved"         // both yes — and only now does it reach a payslip
+  | "declined";
+
+export const OVERTIME_STAGE_LABEL: Record<OvertimeStage, string> = {
+  waiting_hrd: "Menunggu HRD",
+  waiting_surat: "Menunggu surat lembur",
+  waiting_leader: "Menunggu pimpinan",
+  approved: "Disetujui",
+  declined: "Ditolak",
+};
+
+export interface OvertimeView extends OvertimeClaim {
+  employee_no: string;
+  full_name: string;
+  stage: OvertimeStage;
+  /** The surat lembur, if somebody has attached it. */
+  surat: { attachment_id: string; filename: string } | null;
 }
 
 export type PayrollStatus = "DRAFT" | "APPROVED" | "PAID";
@@ -210,6 +273,13 @@ export interface PayrollLine {
   /** Days present, and of those, how many are still open. */
   days_worked: number;
   days_open: number;
+  /** The paid days that were not worked, kept apart so a payslip can say what
+   *  it is paying for: sakit with a letter, cuti out of the balance (D144). */
+  days_present: number;
+  days_sick_paid: number;
+  days_leave_paid: number;
+  /** Recorded, and not paid — the line an employee will ask about. */
+  days_unpaid: number;
   normal_hours: number;
   /** Approved only — claimed-but-unapproved hours are listed apart. */
   overtime_hours: number;

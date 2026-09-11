@@ -1,14 +1,14 @@
 "use client";
 
-import { useState } from "react";
-import { AlertTriangle, Check, Flag, Plus, Clock, Undo2 } from "lucide-react";
+import { useRef, useState } from "react";
+import { AlertTriangle, Check, Flag, Plus, Clock, Undo2, Paperclip, Wallet } from "lucide-react";
 import { Drawer } from "@/components/ui/drawer";
 import { Badge, Button } from "@/components/ui/primitives";
 import { Loaded, useLoad } from "@/components/ui/loaded";
 import { NumberInput } from "@/components/ui/number-input";
 import { formatNumber } from "@/lib/format";
 import { cn } from "@/lib/cn";
-import { hr } from "@/demo/api";
+import { documents, hr } from "@/demo/api";
 import {
   SCAN_SLOTS, SLOT_LABEL, DAY_MARK_LABEL,
   type DayMarkKind, type ScanSlot,
@@ -46,6 +46,7 @@ export function DayDrawer({
   const [kind, setKind] = useState<DayMarkKind | null>(null);
   const [markReason, setMarkReason] = useState("");
   const [claiming, setClaiming] = useState(false);
+  const suratRef = useRef<HTMLInputElement>(null);
   const [otHours, setOtHours] = useState(0);
   const [otReason, setOtReason] = useState("");
 
@@ -85,6 +86,19 @@ export function DayDrawer({
     after("Mark removed", `${workDate} is back to what the machine recorded.`);
   }
 
+  /** The surat dokter is what turns a sick day into a paid one (D144), so it
+   *  is attached from the day it belongs to — the same road as every other
+   *  document here. */
+  async function attachSurat(f: File, markId: string) {
+    setBusy(true);
+    const up = await documents.upload({ filename: f.name, mime: f.type || "image/jpeg", bytes: f.size });
+    if (up.error) { setBusy(false); toast("critical", "Upload gagal", up.error.message); return; }
+    const res = await hr.attachSuratDokter({ mark_id: markId, attachment_id: up.data.id });
+    setBusy(false);
+    if (res.error) { toast("warning", "Tidak terlampir", res.error.message); return; }
+    after("Surat dokter terlampir", "Hari ini sekarang terhitung dibayar.");
+  }
+
   async function claim() {
     setBusy(true);
     const res = await hr.claimOvertime({ employee_no: employeeNo, work_date: workDate, hours: otHours, reason: otReason });
@@ -116,6 +130,34 @@ export function DayDrawer({
               </span>
             </div>
 
+            {/* What this day is worth on a payslip, and why — the question an
+                employee asks, answered where HRD can see it too (D144). */}
+            <div className={cn(
+              "rounded-xl border px-4 py-3",
+              d.day_value > 0 ? "border-emerald-200 bg-emerald-50/70" : "border-slate-200 bg-slate-50",
+            )}>
+              <p className="flex items-center gap-2 text-[13px] font-medium text-slate-800">
+                <Wallet className="h-4 w-4 text-slate-400" />
+                Nilai untuk payroll: <strong className="tabular-nums">{formatNumber(d.day_value)} hari</strong>
+              </p>
+              <p className="mt-0.5 text-[12px] text-slate-600">{d.pay.why}</p>
+              {d.pay.fixable && (
+                <p className="mt-1 text-[12px] text-amber-800">{d.pay.fixable}</p>
+              )}
+              {mayEdit && d.mark?.kind === "sick" && d.day_value === 0 && (
+                <>
+                  <input
+                    ref={suratRef} type="file" className="hidden" accept="image/*,application/pdf"
+                    onChange={(e) => { const f = e.target.files?.[0]; if (f) void attachSurat(f, d.mark!.id); }}
+                  />
+                  <Button size="sm" variant="outline" icon={Paperclip} className="mt-2" disabled={busy}
+                    onClick={() => suratRef.current?.click()}>
+                    Lampirkan surat dokter
+                  </Button>
+                </>
+              )}
+            </div>
+
             {d.mark && (
               <div className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-3">
                 <p className="text-[13px] font-semibold text-violet-900">
@@ -130,6 +172,9 @@ export function DayDrawer({
                 )}
                 {d.mark.kind === "half_day" && (
                   <p className="mt-1 text-[11px] text-violet-800">Setengah hari: payroll counts this as 0,5 hari.</p>
+                )}
+                {d.mark.kind === "sick" && d.day_value > 0 && (
+                  <p className="mt-1 text-[11px] text-violet-800">Surat dokter sudah dilampirkan — hari ini dibayar penuh.</p>
                 )}
                 {mayEdit && d.mark.employee_id !== null && (
                   <Button size="sm" variant="ghost" icon={Undo2} className="mt-2" disabled={busy}
@@ -265,9 +310,11 @@ export function DayDrawer({
                           className="mt-2 h-9 w-full rounded-lg border border-slate-200 px-2 text-sm focus:border-brand-400 focus:outline-none"
                         />
                         <p className="mt-1 text-[11px] text-slate-500">
-                          {kind === "half_day" ? "Counted as 0,5 hari."
-                            : kind === "holiday" ? "Hours on a tanggal merah count as lembur."
-                              : "No day is counted. Whether it is paid is a policy nobody has written down yet."}
+                          {kind === "half_day" ? "Dihitung 0,5 hari."
+                            : kind === "holiday" ? "Jam yang dikerjakan pada tanggal merah dihitung lembur."
+                              : kind === "sick" ? "Dibayar penuh bila surat dokter dilampirkan — bisa menyusul (D144)."
+                                : kind === "leave" ? "Dibayar bila hak cuti orang ini masih ada; sisanya tercatat tanpa dibayar."
+                                  : "Tercatat, tidak dibayar."}
                         </p>
                         <div className="mt-2 flex justify-end">
                           <Button size="sm" onClick={mark} disabled={busy || !markReason.trim()}>

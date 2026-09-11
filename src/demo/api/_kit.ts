@@ -28,6 +28,7 @@ export function actingUser(state: DemoState = getState()): DemoUser {
 const AUTHORITY_HOLDER: Record<Authority, string> = {
   approve_goods: "the CEO",
   approve_funds: "Finance",
+  approve_overtime: "leadership",
   post_ledger: "Accounting",
   resolve_inbox: "Accounting",
 };

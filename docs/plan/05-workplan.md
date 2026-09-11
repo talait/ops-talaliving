@@ -98,7 +98,7 @@ in a demo, switching role is how you show that permissions work.
 - session from the demo identity API, not from local state
 - **a user holds several module accesses at once** (D23) — the topbar control
   is a grant picker, not a single-choice dropdown: toggle procurement,
-  accounting, HRD, and toggle the four authorities separately (D24)
+  accounting, HRD, and toggle the authorities separately (D24; five since D145)
 - `can()` becomes the union of what the grants allow
 - `/masuk` and `/tanpa-akses` in the existing design system
 - a user with no modules lands on `/tanpa-akses`, and the menu is genuinely

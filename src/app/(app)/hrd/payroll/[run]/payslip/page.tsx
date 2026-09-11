@@ -65,7 +65,7 @@ export default function PayslipsPage({ params }: { params: { run: string } }) {
                       {l.pay_basis === "monthly" ? "/ bulan" : l.pay_basis === "daily" ? "/ hari" : "/ jam"}
                     </p>
                     {l.pay_basis !== "monthly" && (
-                      <p className="text-slate-600">{formatNumber(l.days_worked)} hari kerja</p>
+                      <p className="text-slate-600">{formatNumber(l.days_worked)} hari dibayar</p>
                     )}
                   </div>
                 </div>
@@ -75,12 +75,35 @@ export default function PayslipsPage({ params }: { params: { run: string } }) {
                     <tr className="border-y border-slate-300">
                       <td className="py-2">
                         {l.pay_basis === "monthly" ? "Gaji pokok" : `Upah ${formatNumber(l.days_worked)} hari`}
+                        {/* Which days those are. A payslip that says only a
+                            total makes the employee ask HRD; this one answers
+                            before they have to (D144). */}
+                        {l.pay_basis !== "monthly" && (l.days_sick_paid > 0 || l.days_leave_paid > 0) && (
+                          <span className="block text-[11px] text-slate-600">
+                            {[
+                              `${formatNumber(l.days_present)} hari masuk`,
+                              l.days_sick_paid > 0 ? `${formatNumber(l.days_sick_paid)} hari sakit dengan surat dokter` : null,
+                              l.days_leave_paid > 0 ? `${formatNumber(l.days_leave_paid)} hari cuti berbayar` : null,
+                            ].filter(Boolean).join(" · ")}
+                          </span>
+                        )}
                       </td>
                       <td className="py-2 text-right tabular-nums">{formatIDR(l.base_pay)}</td>
                     </tr>
+                    {l.days_unpaid > 0 && (
+                      <tr className="border-b border-slate-200">
+                        <td className="py-2 text-slate-600">
+                          {formatNumber(l.days_unpaid)} hari tercatat tanpa dibayar
+                          <span className="block text-[11px] text-slate-500">
+                            Sakit tanpa surat dokter, cuti di luar hak, izin atau tidak masuk.
+                          </span>
+                        </td>
+                        <td className="py-2 text-right tabular-nums text-slate-500">{formatIDR(0)}</td>
+                      </tr>
+                    )}
                     {l.overtime_hours > 0 && (
                       <tr className="border-b border-slate-200">
-                        <td className="py-2">Lembur — {formatNumber(l.overtime_hours)} jam (disetujui)</td>
+                        <td className="py-2">Lembur — {formatNumber(l.overtime_hours)} jam (disetujui HRD &amp; pimpinan)</td>
                         <td className="py-2 text-right tabular-nums">{formatIDR(l.overtime_pay)}</td>
                       </tr>
                     )}

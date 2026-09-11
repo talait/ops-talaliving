@@ -46,9 +46,18 @@ export const ATTACHMENTS: Attachment[] = [
   { id: "att_31", storage_path: "", url: "https://mitrateknikmandiri.co.id/produk/pisau-planer-300mm-hss", filename: "mitrateknikmandiri.co.id/pisau-planer-300mm", sha256: "", mime: "text/uri-list", bytes: 0, uploaded_by: "usr_made", uploaded_at: "2026-09-08T15:10:00+08:00", source: "web", duplicate_suspect: false },
   { id: "att_28", storage_path: "demo/2026-09/surat-jalan-veneer-0906.jpg", url: null, filename: "surat-jalan-veneer-0906.jpg", sha256: "ee11ff22aa31", mime: "image/jpeg", bytes: 571_006, uploaded_by: "usr_made", uploaded_at: "2026-09-06T11:22:00+08:00", source: "chat", duplicate_suspect: false },
   { id: "att_14", storage_path: "demo/2026-09/nota-rak-besi.jpg", url: null, filename: "nota-rak-besi.jpg", sha256: "2290ffcc7710", mime: "image/jpeg", bytes: 555_310, uploaded_by: "usr_made", uploaded_at: "2026-09-02T18:30:00+08:00", source: "chat", duplicate_suspect: false },
+  /* HR. A doctor's letter and an overtime letter — evidence like any other. */
+  { id: "att_40", storage_path: "demo/2026-09/surat-dokter-siti.jpg", url: null, filename: "surat-dokter-siti.jpg", sha256: "d41a77bc0091", mime: "image/jpeg", bytes: 612_884, uploaded_by: "usr_wulan", uploaded_at: "2026-09-02T09:08:00+08:00", source: "web", duplicate_suspect: false },
+  { id: "att_41", storage_path: "demo/2026-09/surat-lembur-310826.pdf", url: null, filename: "surat-lembur-310826.pdf", sha256: "6b20aa41cc03", mime: "application/pdf", bytes: 96_441, uploaded_by: "usr_wulan", uploaded_at: "2026-09-01T08:18:00+08:00", source: "web", duplicate_suspect: false },
 ];
 
 export const ATTACHMENT_LINKS: AttachmentLink[] = [
+  /* HR evidence. The surat dokter is what makes a sick day a paid one (D144);
+   * the surat lembur is what leadership is actually signing (D145). Same road
+   * as every other document here: uploaded once, linked by a named person. */
+  { id: "lnk_40", attachment_id: "att_40", entity: "day_mark", entity_no: "dmk_03", kind: "Surat Dokter", linked_by: "usr_wulan", linked_at: "2026-09-02T09:10:00+08:00" },
+  { id: "lnk_41", attachment_id: "att_41", entity: "overtime", entity_no: "ovt_01", kind: "Surat Lembur", linked_by: "usr_wulan", linked_at: "2026-09-01T08:20:00+08:00" },
+
   { id: "lnk_01", attachment_id: "att_01", entity: "transaction", entity_no: "trx-26-08-20_003", kind: "Receipt / Invoice / Nota", linked_by: "usr_putri", linked_at: "2026-08-20T16:06:00+08:00" },
   { id: "lnk_02", attachment_id: "att_02", entity: "transaction", entity_no: "trx-26-08-20_003", kind: "Payment Proof", linked_by: "usr_putri", linked_at: "2026-08-20T16:09:00+08:00" },
   { id: "lnk_03", attachment_id: "att_03", entity: "pr_line", entity_no: "pr-26-08-18_01-L01", kind: "Receiving Item", linked_by: "usr_made", linked_at: "2026-08-25T13:36:00+08:00" },

@@ -1738,3 +1738,79 @@ could not be described by the rule everybody agrees on. That is not a data
 quality problem to clean up before go-live; it is the steady state, and the
 system's job is to make it **visible and cheap to resolve** rather than to
 pretend it away.
+
+---
+
+## F41 — the two rules that decide whether a day is paid
+
+The owner answered Q33 and Q34 in two sentences: *sakit* is paid with a
+doctor's letter, *cuti* is paid only against what that person is owed — and
+every person's number is different; overtime needs HRD, and leadership with
+the overtime letter. Building them changed how the payroll is shaped more than
+the sentences suggest.
+
+### A letter is evidence, not a checkbox
+
+The obvious build is a `has_doctor_note boolean` on the mark. It is wrong in a
+way that shows up in month two: somebody ticks it, the letter never arrives,
+and nothing in the system can tell the difference between *we saw the letter*
+and *we meant to ask for it*.
+
+So the letter goes where every other document in this system goes — uploaded
+once, linked to the mark, with the name of whoever linked it and the minute
+they did (ADR-010). `Surat Dokter` and `Surat Lembur` became document kinds
+like a nota or a receiving photo, and `day_mark` and `overtime` became things
+a document can hang from.
+
+The payoff was not planned and is the best part of it: because the day's value
+is **derived**, a letter handed in three days late makes that day paid the
+moment it is attached. No recalculation, no correction entry, no re-running a
+payroll. The screen showed it directly — Utami's 1 September went from *nilai
+hari 0* to *nilai hari 1* on the upload, with the sentence under it changing
+from "Sakit tanpa surat dokter — tidak dibayar" to "Sakit dengan surat dokter
+— dibayar penuh".
+
+### A leave balance must never be stored
+
+*Cuti hanya jika punya nilai cuti berbayar* invites a `remaining_leave_days`
+column that each approved day decrements. Every system that does this is
+eventually wrong: a mark gets removed, a day gets re-dated, an import is
+replayed, and the counter drifts. The person it drifts against is the one who
+loses a paid day, and they find out at the worst moment.
+
+So the entitlement is stored — per person, because the owner was explicit that
+it differs — and what has been *used* is counted from the marks in that
+calendar year, in date order. The first days of the entitlement are the paid
+ones; past it, the day is still recorded and simply not paid. Roni, with five
+days and five already taken in March, shows exactly that: "Cuti di luar hak —
+jatah 5 hari tahun ini sudah habis." Nothing refused his cuti. It just is not
+paid, and the reason is on the screen rather than in somebody's head.
+
+### Two signatures check two different things
+
+The temptation with *HRD dan pimpinan* is to treat it as one approval needing
+a second click. It is not. HRD checks a **fact** — was he here, are these the
+hours the taps show. Leadership takes a **decision** — was this work worth
+paying for. That is why `approve_overtime` is a fifth authority rather than a
+reuse of `approve_goods` (D24's whole point): approving that a table arrived
+and approving that a man is paid for four extra hours are not the same
+judgement, and the owner may not always want them in the same pair of hands.
+
+The letter is what makes the second step real. Leadership's approval is
+**refused** while no `Surat Lembur` is attached, and the button on the screen
+is disabled with the reason on it — because approving without the letter is
+approving a number somebody typed. HRD's step is *not* gated that way: the
+hours can be checked while the paperwork is still being written, which is how
+it actually happens in a workshop.
+
+And the claim is never hidden while it waits. `waiting_hrd` ·
+`waiting_surat` · `waiting_leader` are separate stages on the list precisely so
+that a claim stuck at *menunggu surat lembur* for a week is visible as the
+thing somebody has to chase.
+
+### What it cost
+
+One column (`paid_leave_days`), two document kinds, two link entities, one
+authority, and two extra timestamps on a claim. No stored balances, no status
+columns beside the signatures, no recalculation job. Everything that decides
+money is read from what somebody actually did, each time it is asked.

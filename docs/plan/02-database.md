@@ -415,9 +415,9 @@ erDiagram
     attachment_links {
         uuid id PK
         uuid attachment_id FK
-        text entity "transaction|pr_line|po|receipt"
+        text entity "transaction|pr_line|po|receipt|day_mark|overtime"
         text entity_no
-        doc_kind_t kind "receipt|payment_proof|receiving_item|other"
+        doc_kind_t kind "receipt|payment_proof|receiving_item|surat_dokter|surat_lembur|other"
         uuid linked_by FK
     }
     outbox {
@@ -475,7 +475,7 @@ belongs to the CEO alone, so the person approving purchases is not a module
 grant at all. The safeguard is no longer needed in that shape.
 
 `src/lib/roles.ts` remains the reviewable seed source (see `03-api.md`), but
-what it seeds is this: modules, levels, and four authorities.
+what it seeds is this: modules, levels, and the authorities — four at D24, five since `approve_overtime` (D145).
 
 ### Three trails, and only one of them is expensive to add late
 
@@ -1157,6 +1157,7 @@ erDiagram
         bigint base_rate "per month, day or hour"
         numeric daily_hours "standard day"
         date joined_on
+        int paid_leave_days "per person - the owner was explicit"
         boolean active
         date left_on "records stay (A5)"
         text note
@@ -1200,8 +1201,11 @@ erDiagram
         numeric hours
         text reason
         uuid claimed_by FK
-        uuid approved_by FK
-        timestamptz approved_at
+        uuid hrd_approved_by FK "step 1 - the hours are real"
+        timestamptz hrd_approved_at
+        uuid leader_approved_by FK "step 2 - holding the surat lembur"
+        timestamptz leader_approved_at
+        uuid declined_by FK
         text declined_reason
     }
     payroll_runs {
@@ -1229,8 +1233,35 @@ slots are computed, never stored.
 | `day_marks` UNIQUE `(work_date, employee_id)` incl. NULL | one mark per person per day, one office-wide mark per day. Postgres needs `NULLS NOT DISTINCT` here |
 | `day_marks.reason` NOT NULL | *setengah hari* with no reason is a decision nobody can check in six months (D142) |
 | `overtime_claims` UNIQUE `(employee_id, work_date) WHERE declined_reason IS NULL` | one live claim per day; a declined one may be re-claimed |
+| `overtime_claims` CHECK `leader_approved_at IS NULL OR hrd_approved_at IS NOT NULL` | leadership signs **after** HRD, not instead of it (D145) |
+| `employees.paid_leave_days` NOT NULL, default 0 | per person, because length of service and what was agreed at hiring both move it (D144) |
 | `employees` no DELETE | a payslip from March is still a fact in June (A5). `left_on` retires somebody |
 | `payroll_runs` UNIQUE `(period_start, period_end)` | the same week is not run twice by accident |
+
+### What makes a marked day paid
+
+Two of the six marks can be worth money, and both depend on something outside
+the mark itself (D144):
+
+- **`sick`** is paid when a `Surat Dokter` is linked to the mark in
+  `core.attachment_links` — evidence on the same road as every nota and every
+  receiving photo (ADR-010). The letter may arrive days later; the day turns
+  paid the moment it does, with **no re-run and no correction**, because the
+  value was never stored.
+- **`leave`** is paid out of `employees.paid_leave_days`, and what has been
+  used is **counted from the marks in that calendar year**, in date order — the
+  first days of the entitlement are the paid ones. There is deliberately no
+  `leave_balance_remaining` column: a stored balance drifts the first time a
+  mark is removed, and the person it drifts against loses a paid day (A3).
+
+Everything else — `permit`, `absent`, `leave` past the entitlement, `sick`
+without a letter — is recorded and not paid, and the timesheet says so in
+words. Q33 is answered; nothing here refuses a mark, because a day taken
+without a letter is still a fact about that person's month.
+
+Overtime is the same shape for the same reason: paid when **both**
+`hrd_approved_at` and `leader_approved_at` are set, and the second is refused
+until a `Surat Lembur` is linked to the claim (D145).
 
 Marks never touch scans, and scans never override a mark. They are different
 kinds of statement: the taps are evidence with a machine behind them, the mark
@@ -1242,15 +1273,15 @@ other loses the only record of what happened (D142).
 | View | Answers |
 |---|---|
 | `v_timesheet_day` | per employee per office day: the taps, the six slots the rule filled, `work_hours`, `break_hours`, `overtime_hours`, `day_value` (1 / 0,5 / 0) and `state` — `complete` · `review` · `marked` · `off` |
-| `v_payroll_line` | per employee per run: days worked, days still unread, normal hours, **approved** overtime hours, base pay, overtime pay, gross. Computed on read, never stored (D139) |
+| `v_payroll_line` | per employee per run: days worked broken into **present · sakit paid · cuti paid · unpaid**, days still unread, normal hours, **twice-approved** overtime hours, base pay, overtime pay, gross. Computed on read, never stored (D139) |
+| `v_overtime_stage` | per claim: `waiting_hrd` · `waiting_surat` · `waiting_leader` · `approved` · `declined`, derived from the two signatures and the linked letter — never a status column beside them (D145) |
+| `v_leave_used` | per employee per year: paid leave days taken, from the marks. The balance is `paid_leave_days − this` (D144) |
 | `v_payroll_run` | the run plus `gross_total`, `open_days`, `pending_overtime_hours` |
 
 `day_value` is where the marks reach the money: 1 for an ordinary day, 0,5 for
-*setengah hari*, 0 for *tidak masuk / sakit / cuti / izin*, and on a *tanggal
-merah* the hours worked become overtime while the day itself counts nothing.
-Whether any of the zero-value days is nonetheless **paid** is policy nobody has
-stated — Q33 — and the marks are recorded so the answer can be applied to
-history the day it arrives.
+*setengah hari*, 1 for *sakit* with the letter and *cuti* inside the balance,
+0 for everything else, and on a *tanggal merah* the hours worked become
+overtime while the day itself counts nothing (D142, D144).
 
 Approving a run is refused while `open_days > 0`: a payroll over days nobody
 finished reading is wrong about the people paid by the day, who are least able

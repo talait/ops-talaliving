@@ -63,6 +63,17 @@ export default function EmployeesPage() {
       ),
     },
     {
+      key: "leave",
+      header: "Hak cuti",
+      align: "right",
+      render: (e) => (
+        <div className="whitespace-nowrap text-right">
+          <span className="tabular-nums text-slate-700">{formatNumber(e.paid_leave_days)}</span>
+          <p className="text-[11px] text-slate-400">hari berbayar</p>
+        </div>
+      ),
+    },
+    {
       key: "joined",
       header: "Since",
       render: (e) => <span className="whitespace-nowrap text-[12px] text-slate-500">{e.joined_on}</span>,

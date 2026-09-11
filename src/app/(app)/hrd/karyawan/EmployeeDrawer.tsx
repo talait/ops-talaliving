@@ -33,6 +33,7 @@ export function EmployeeDrawer({
   const [basis, setBasis] = useState<PayBasis>(employee?.pay_basis ?? "daily");
   const [rate, setRate] = useState(employee?.base_rate ?? 0);
   const [hours, setHours] = useState(employee?.daily_hours ?? 8);
+  const [leave, setLeave] = useState(employee?.paid_leave_days ?? 12);
   const [busy, setBusy] = useState(false);
 
   const changed = employee && rate !== employee.base_rate;
@@ -41,7 +42,7 @@ export function EmployeeDrawer({
     setBusy(true);
     const res = await hr.saveEmployee({
       employee_no: no, full_name: name, position, unit,
-      pay_basis: basis, base_rate: rate, daily_hours: hours,
+      pay_basis: basis, base_rate: rate, daily_hours: hours, paid_leave_days: leave,
     });
     setBusy(false);
     if (res.error) {
@@ -128,7 +129,16 @@ export function EmployeeDrawer({
           <div>
             <label htmlFor="e-hours" className="block text-xs text-slate-500">Hours in a standard day</label>
             <NumberInput id="e-hours" value={hours} min={1} max={24} onChange={setHours} className="mt-1" />
-            <p className="mt-1 text-[11px] text-slate-500">Anything past this is overtime — claimed, then approved.</p>
+            <p className="mt-1 text-[11px] text-slate-500">Anything past this is overtime — claimed, then approved twice.</p>
+          </div>
+          <div>
+            <label htmlFor="e-leave" className="block text-xs text-slate-500">Hak cuti berbayar, per tahun</label>
+            <NumberInput id="e-leave" value={leave} min={0} max={60} onChange={setLeave} className="mt-1" />
+            {/* Per person, because the owner said so: length of service and
+                what was agreed at hiring both move it (D144). */}
+            <p className="mt-1 text-[11px] text-slate-500">
+              Different for everybody. Cuti inside this number is paid; days past it are recorded and not paid.
+            </p>
           </div>
         </div>
       </div>

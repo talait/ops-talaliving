@@ -34,6 +34,12 @@ export type ModuleLevel = "read" | "write" | "admin";
 export type Authority =
   | "approve_goods"
   | "approve_funds"
+  /** Leadership's yes to overtime, after HRD has checked the hours and the
+   *  surat lembur is attached (D145). Its own authority rather than a reuse of
+   *  `approve_goods`: approving that a table arrived and approving that a man
+   *  is paid for four extra hours are different decisions, and the people who
+   *  should hold them will not always be the same. */
+  | "approve_overtime"
   | "post_ledger"
   | "resolve_inbox";
 
@@ -59,6 +65,7 @@ export const MODULE_LABEL: Record<ModuleName, string> = {
 export const AUTHORITIES: Authority[] = [
   "approve_goods",
   "approve_funds",
+  "approve_overtime",
   "post_ledger",
   "resolve_inbox",
 ];
@@ -66,6 +73,7 @@ export const AUTHORITIES: Authority[] = [
 export const AUTHORITY_LABEL: Record<Authority, string> = {
   approve_goods: "Approve goods (CEO)",
   approve_funds: "Approve funds",
+  approve_overtime: "Approve overtime (leadership)",
   post_ledger: "Post to the ledger",
   resolve_inbox: "Resolve unparented documents",
 };

@@ -244,20 +244,26 @@ dies — the same reason `john-lau` set 15 MB under Next's 16 MB.
 | POST | `/attendance/import` | `{filename, rows[]}` from the reader's export. Returns `{import_id, added, duplicates, unknown[]}`. **Never creates a person** — an unrecognised machine number comes back with its tap count (D143). Idempotent on `(employee, at)`, so re-uploading a file adds nothing |
 | POST | `/attendance/scan` | a tap the machine missed. `reason` required (D137) |
 | POST | `/day-marks` | `{work_date, kind, reason, employee_no?}` — omit the employee and it covers the whole office. 409 if that day is already marked for that scope |
+| POST | `/day-marks/{id}/surat-dokter` | link an uploaded letter to a day marked `sick`. **This is what makes the day paid** (D144), and it may arrive days later — nothing is recomputed, because nothing was stored |
 | DELETE | `/day-marks/{id}` | the holiday was the Tuesday, not the Monday. Audited like any other act |
 | GET | `/overtime` | waiting claims first |
 | POST | `/overtime` | claim hours against a day. 409 if a live claim already exists for it |
-| POST | `/overtime/{id}/decide` | `{approved, reason?}`. Requires the `approve_goods` authority; declining requires a sentence (Q34 asks whether that is the right authority) |
+| POST | `/overtime/{id}/surat-lembur` | link the overtime letter to the claim. Needed before leadership can approve, not before HRD can |
+| POST | `/overtime/{id}/decide` | `{step: "hrd" \| "leader", approved, reason?}`. **Two signatures** (D145): `hrd` needs `hrd.update`, `leader` needs the `approve_overtime` authority. `leader` is 409 before HRD has approved, and **422 while no surat lembur is attached**. Declining, at either step, requires a sentence |
 | GET | `/payroll` | runs, newest period first |
 | GET | `/payroll/{run_no}` | the run with every line computed on read |
 | POST | `/payroll` | open a run for a period. 409 if a run already covers those dates |
 | POST | `/payroll/{run_no}/approve` | requires `approve_funds`. **422 while any day in the period is still unread** (D139) |
 
+A payroll line now says what the paid days are made of — `days_present`,
+`days_sick_paid`, `days_leave_paid`, `days_unpaid` — because a single total is
+the one an employee argues with (D144).
+
 Writes need `hrd.create` / `hrd.update`; payroll needs `payroll.read` /
 `payroll.run`; the two decisions need authorities, which no module level
 implies (D24).
 
-Two refusals are the point of this service:
+Three refusals are the point of this service:
 
 ```jsonc
 // POST /payroll/pyr-26-09-11_01/approve
@@ -265,11 +271,17 @@ Two refusals are the point of this service:
   "message": "25 day(s) in this period are still unread — the machine left them
               incomplete and nobody has said what happened." } }
 
+// POST /overtime/ovt_03/decide  {"step":"leader","approved":true}
+{ "error": { "code": "surat_required", "status": 422,
+  "message": "Surat lembur belum dilampirkan. Pimpinan menandatangani suratnya
+              — tanpa itu yang disetujui hanya angka." } }
+
 // POST /attendance/import  →  200, with a question attached
 { "data": { "added": 4, "duplicates": 1, "unknown": [ { "ref": "999", "count": 1 } ] } }
 ```
 
-Events: `hr.payroll.approved`, and in Phase 2 `hr.attendance.imported`
+Events: `hr.payroll.approved`, `hr.overtime.approved` (emitted on the second
+signature, not the first), and in Phase 2 `hr.attendance.imported`
 (so the workshop supervisor's chat gets the day's unreadable list without
 anybody opening the app).
 

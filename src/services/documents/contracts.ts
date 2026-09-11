@@ -16,6 +16,12 @@ export const DOC_KINDS = [
   /** A shop page, a marketplace listing, a quotation somebody sent a link to.
    *  What a request is usually built from before any nota exists (D125). */
   "Reference Link",
+  /** HR evidence. A day off sick is paid **only** with the doctor's letter
+   *  behind it, and overtime reaches leadership only with the surat lembur
+   *  attached (D144, D145) — so both are document kinds like any other, on the
+   *  same road, countable in the same strip. */
+  "Surat Dokter",
+  "Surat Lembur",
   "Others",
 ] as const;
 export type DocKind = (typeof DOC_KINDS)[number];
@@ -38,6 +44,8 @@ export const SUPPORTING_DOC_KINDS: DocKind[] = [
   "Delivery Note",
   "Purchase Order",
   "Reference Link",
+  "Surat Dokter",
+  "Surat Lembur",
   "Others",
 ];
 
@@ -64,7 +72,7 @@ export const LEDGER_DOC_KINDS: DocKind[] = [
   "Receiving Item",
 ];
 
-export type LinkEntity = "transaction" | "pr_line" | "po" | "receipt";
+export type LinkEntity = "transaction" | "pr_line" | "po" | "receipt" | "day_mark" | "overtime";
 
 /** A piece of evidence — a **file or a link**, never both.
  *

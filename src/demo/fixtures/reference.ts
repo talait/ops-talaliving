@@ -23,7 +23,10 @@ export const USERS: DemoUser[] = [
       { module: "project", level: "read" },
       { module: "settings", level: "read" },
     ],
-    authorities: ["approve_goods"],
+    /* The Direktur holds both leadership decisions: goods, and now overtime
+     * (D145). Which person should hold `approve_overtime` is the owner's to
+     * change — it is granted separately precisely so it can move. */
+    authorities: ["approve_goods", "approve_overtime"],
   },
   {
     id: "usr_putri", email: "putri@talaliving.com", full_name: "Putri Handayani", is_active: true,
@@ -97,7 +100,7 @@ export const USERS: DemoUser[] = [
       { module: "it", level: "admin" },
       { module: "settings", level: "admin" },
     ],
-    authorities: ["approve_goods", "approve_funds", "post_ledger", "resolve_inbox"],
+    authorities: ["approve_goods", "approve_funds", "approve_overtime", "post_ledger", "resolve_inbox"],
   },
 ];
 

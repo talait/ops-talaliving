@@ -17,7 +17,7 @@ import type {
 } from "@/services/inventory/contracts";
 import type {
   Employee, AttendanceScan, DayMark, OvertimeSheet, OvertimeLine, PayrollRun,
-  PayrollAdjustment, PayRuleSet,
+  PayrollAdjustment, PayRuleSet, EmployeeDocument, LeaveRequest,
 } from "@/services/hr/contracts";
 import type {
   WorkOrder, ProgressEntry, Product, BomComponent,
@@ -121,6 +121,11 @@ export interface DemoState {
   overtime_sheets: OvertimeSheet[];
   overtime_lines: OvertimeLine[];
   payroll_runs: PayrollRun[];
+  /** Berkas 201: somebody's own file, and what is missing from it (D177). */
+  employee_documents: EmployeeDocument[];
+  /** Asked for, then decided. Approving one writes the timesheet mark (D178). */
+  leave_requests: LeaveRequest[];
+
   /** The rule book, dated. Never edited: a change writes the next version, so
    *  a payslip from March stays recomputable under March's rule (D173). */
   pay_rule_sets: PayRuleSet[];

@@ -12,8 +12,12 @@ import type {
   OvertimeSheet, OvertimeStage, PayrollLine, PayrollView, PayrollRun,
   PayslipDay, AdjustmentKind,
   PayRules, PayRuleSet, OvertimeTier, OvertimePart,
+  EmployeeFileView, EmployeeDocSlot, LeaveBalance, LeaveRequest, LeaveRequestView,
 } from "@/services/hr/contracts";
-import { ADJUSTMENT_LABEL, DAY_MARK_SHORT } from "@/services/hr/contracts";
+import {
+  ADJUSTMENT_LABEL, DAY_MARK_SHORT,
+  EMPLOYEE_DOC_CHECKLIST, EMPLOYEE_DOC_LABEL,
+} from "@/services/hr/contracts";
 
 const HOURS = 3_600_000;
 
@@ -720,5 +724,155 @@ export function payrollView(state: DemoState, run: PayrollRun): PayrollView {
     adjustment_total: lines.reduce((s, l) => s + l.adjustment_total, 0),
     open_days: lines.reduce((s, l) => s + l.days_open, 0),
     pending_overtime_hours: lines.reduce((s, l) => s + l.overtime_pending_hours, 0),
+  };
+}
+
+/* ── Berkas 201 and leave ─────────────────────────────────────────────────── */
+
+/** Somebody's file, slot by slot, with what is missing named (D177).
+ *
+ *  The checklist is the point. A folder answers "what is in here"; a checklist
+ *  answers "what is not", which is the only version of the question anybody
+ *  ever actually needs — before a BPJS registration, before an audit, before
+ *  paying somebody whose contract ran out last month.
+ */
+export function employeeFile(state: DemoState, employee: Employee, today: string): EmployeeFileView {
+  const mine = state.employee_documents.filter((d) => d.employee_id === employee.id);
+
+  const slots: EmployeeDocSlot[] = EMPLOYEE_DOC_CHECKLIST.map((c) => {
+    const documents = mine
+      .filter((d) => d.kind === c.kind)
+      .sort((a, b) => (b.issued_on ?? "").localeCompare(a.issued_on ?? ""));
+    const expiries = documents.map((d) => d.expires_on).filter((x): x is string => !!x);
+    const soonest = expiries.sort()[0] ?? null;
+    return {
+      kind: c.kind,
+      label: EMPLOYEE_DOC_LABEL[c.kind],
+      required: c.required,
+      note: c.note,
+      documents,
+      expires_in_days: soonest ? daysBetween(today, soonest) : null,
+    };
+  });
+
+  const missing = slots.filter((s) => s.required && s.documents.length === 0).map((s) => s.kind);
+  /* Already expired, or expiring inside two months. Sixty days because a PKWT
+     renewal takes a conversation, not an afternoon. */
+  const expiring = slots
+    .filter((s) => s.expires_in_days != null && s.expires_in_days <= 60)
+    .map((s) => ({
+      kind: s.kind,
+      label: s.label,
+      expires_on: s.documents.map((d) => d.expires_on).filter((x): x is string => !!x).sort()[0],
+      days: s.expires_in_days as number,
+    }));
+
+  return {
+    employee_id: employee.id,
+    employee_no: employee.employee_no,
+    full_name: employee.full_name,
+    position: employee.position,
+    unit: employee.unit,
+    joined_on: employee.joined_on,
+    active: employee.active,
+    slots,
+    missing,
+    expiring,
+    complete: missing.length === 0,
+  };
+}
+
+/** Whole days between two `YYYY-MM-DD` strings, walked in UTC so the office day
+ *  is not the browser's (F17, F39). */
+function daysBetween(from: string, to: string): number {
+  const [fy, fm, fd] = from.split("-").map(Number);
+  const [ty, tm, td] = to.split("-").map(Number);
+  return Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)) / 86_400_000);
+}
+
+/** Every date in an inclusive range. */
+export function datesBetween(from: string, to: string): string[] {
+  const out: string[] = [];
+  const [y, m, d] = from.split("-").map(Number);
+  let t = Date.UTC(y, m - 1, d);
+  const end = (() => { const [ey, em, ed] = to.split("-").map(Number); return Date.UTC(ey, em - 1, ed); })();
+  while (t <= end) {
+    out.push(new Date(t).toISOString().slice(0, 10));
+    t += 86_400_000;
+  }
+  return out;
+}
+
+/** What somebody has left, computed from the marks (A3, D178).
+ *
+ *  `taken` counts the days already marked; `booked` counts approved requests
+ *  that have not become the past yet. Both matter: an employee asking on the
+ *  first of the month wants to know what is left **after** the week they have
+ *  already been given.
+ */
+export function leaveBalance(state: DemoState, employee: Employee, year: string): LeaveBalance {
+  const marks = state.day_marks.filter(
+    (m) => m.employee_id === employee.id && m.work_date.startsWith(year),
+  );
+  const leaveDays = marks.filter((m) => m.kind === "leave");
+  const taken = leaveDays.length;
+  const entitlement = employee.paid_leave_days;
+
+  const booked = state.leave_requests
+    .filter((r) => r.employee_id === employee.id && r.status === "APPROVED" && r.kind === "cuti")
+    .flatMap((r) => datesBetween(r.from_date, r.to_date))
+    .filter((d) => d.startsWith(year))
+    /* Only the ones that have not already become marks — otherwise the same
+       day is counted twice, which is how a balance ends up wrong in the
+       employee's favour and nobody notices until December. */
+    .filter((d) => !marks.some((m) => m.work_date === d && m.kind === "leave"))
+    .length;
+
+  const sick = marks.filter((m) => m.kind === "sick");
+  return {
+    employee_id: employee.id,
+    employee_no: employee.employee_no,
+    full_name: employee.full_name,
+    entitlement,
+    taken,
+    booked,
+    remaining: Math.max(entitlement - taken - booked, 0),
+    over: Math.max(taken + booked - entitlement, 0),
+    sick_days: sick.length,
+    sick_without_letter: sick.filter((m) => !suratDokter(state, m)).length,
+    permit_days: marks.filter((m) => m.kind === "permit").length,
+  };
+}
+
+/** A request, with what it would cost before anybody decides (D178). */
+export function leaveRequestView(state: DemoState, r: LeaveRequest): LeaveRequestView {
+  const employee = state.employees.find((e) => e.id === r.employee_id);
+  const dates = datesBetween(r.from_date, r.to_date);
+
+  /* How these days would land if approved. Cuti is paid out of the balance and
+     nothing else is (D144), so the split is known before the decision rather
+     than after the payslip. */
+  let paid = 0;
+  if (employee && r.kind === "cuti") {
+    const bal = leaveBalance(state, employee, r.from_date.slice(0, 4));
+    paid = Math.min(dates.length, bal.remaining);
+  } else if (r.kind === "sakit") {
+    /* Sick is paid only with the letter, and the letter arrives with the day —
+       not with the request. So a request cannot promise it. */
+    paid = 0;
+  }
+
+  return {
+    ...r,
+    employee_no: employee?.employee_no ?? "—",
+    full_name: employee?.full_name ?? "—",
+    decided_by_name: r.decided_by
+      ? state.users.find((u) => u.id === r.decided_by)?.full_name ?? null
+      : null,
+    paid_days: paid,
+    unpaid_days: dates.length - paid,
+    clashes: dates.filter((d) => state.day_marks.some(
+      (m) => m.work_date === d && (m.employee_id === r.employee_id || m.employee_id === null),
+    )),
   };
 }

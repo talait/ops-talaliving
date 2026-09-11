@@ -365,6 +365,178 @@ export interface PayrollRun {
   note: string | null;
 }
 
+/* ── Berkas 201: somebody's own file ──────────────────────────────────────
+ *
+ *  The dossier every Indonesian HR department keeps: KTP, kartu keluarga,
+ *  ijazah, the signed contract, NPWP, BPJS, a photograph. Today it is a folder
+ *  on a laptop and a drawer in the office, and the only way to find out whether
+ *  somebody's contract has expired is to open both (D177).
+ *
+ *  Two things make this worth building rather than a shared drive:
+ *
+ *  - **The system can say what is missing.** A checklist with `required` on it
+ *    turns "Karjo's file" from a folder into a question with an answer — the
+ *    same move as a product's gambar kerja (D150).
+ *  - **Documents expire.** A PKWT contract, a BPJS card, a safety certificate:
+ *    each has a date after which it is no longer true, and nobody notices a
+ *    date inside a scan. A file that knows its own expiry can be asked.
+ */
+export type EmployeeDocKind =
+  | "ktp" | "kartu_keluarga" | "ijazah" | "cv" | "kontrak_kerja"
+  | "npwp" | "bpjs_kesehatan" | "bpjs_tk" | "foto" | "sertifikat" | "sp" | "lainnya";
+
+export const EMPLOYEE_DOC_LABEL: Record<EmployeeDocKind, string> = {
+  ktp: "KTP",
+  kartu_keluarga: "Kartu Keluarga",
+  ijazah: "Ijazah",
+  cv: "CV / riwayat kerja",
+  kontrak_kerja: "Kontrak kerja",
+  npwp: "NPWP",
+  bpjs_kesehatan: "BPJS Kesehatan",
+  bpjs_tk: "BPJS Ketenagakerjaan",
+  foto: "Pas foto",
+  sertifikat: "Sertifikat / pelatihan",
+  sp: "Surat peringatan",
+  lainnya: "Lain-lain",
+};
+
+/** What a complete file is. `required` is the list HRD is asked about; the rest
+ *  are kept when they exist and never nagged for. */
+export const EMPLOYEE_DOC_CHECKLIST: { kind: EmployeeDocKind; required: boolean; note: string }[] = [
+  { kind: "ktp", required: true, note: "Identitas dasar — dipakai di kontrak dan BPJS." },
+  { kind: "kartu_keluarga", required: true, note: "Untuk BPJS Kesehatan dan tunjangan." },
+  { kind: "kontrak_kerja", required: true, note: "Yang ditandatangani. PKWT punya tanggal berakhir." },
+  { kind: "foto", required: true, note: "Untuk ID dan berkas." },
+  { kind: "ijazah", required: false, note: "Kalau posisinya mensyaratkan." },
+  { kind: "cv", required: false, note: "" },
+  { kind: "npwp", required: false, note: "Kalau punya." },
+  { kind: "bpjs_kesehatan", required: false, note: "Nomor kepesertaan." },
+  { kind: "bpjs_tk", required: false, note: "Nomor kepesertaan." },
+  { kind: "sertifikat", required: false, note: "K3, las, forklift — yang ada masa berlakunya." },
+  { kind: "sp", required: false, note: "Surat peringatan yang pernah diterbitkan." },
+];
+
+export interface EmployeeDocument {
+  id: string;
+  employee_id: string;
+  kind: EmployeeDocKind;
+  /** The file itself, on the same road as every other document (ADR-010). A
+   *  document with a number but no scan is still a record — the number is
+   *  often what somebody actually needs. */
+  attachment_id: string | null;
+  /** KTP number, contract number, BPJS membership number. */
+  doc_no: string | null;
+  issued_on: string | null;
+  /** After this it is no longer true. Null where it never expires. */
+  expires_on: string | null;
+  note: string | null;
+  recorded_by: string;
+  recorded_at: string;
+}
+
+export interface EmployeeDocSlot {
+  kind: EmployeeDocKind;
+  label: string;
+  required: boolean;
+  note: string;
+  documents: EmployeeDocument[];
+  /** Days until the soonest expiry, negative when it has already passed. Null
+   *  when nothing in this slot expires. */
+  expires_in_days: number | null;
+}
+
+export interface EmployeeFileView {
+  employee_id: string;
+  employee_no: string;
+  full_name: string;
+  position: string;
+  unit: string;
+  joined_on: string;
+  active: boolean;
+  slots: EmployeeDocSlot[];
+  /** Required kinds with nothing filed. The question this screen exists to
+   *  answer. */
+  missing: EmployeeDocKind[];
+  /** Anything already expired, or expiring inside 60 days. */
+  expiring: { kind: EmployeeDocKind; label: string; expires_on: string; days: number }[];
+  complete: boolean;
+}
+
+/* ── Cuti & izin ──────────────────────────────────────────────────────────
+ *
+ *  A day off has two halves and until now this system only had the second: the
+ *  **mark** on the timesheet saying what happened (D142). What was missing is
+ *  the half that happens first — somebody asks, somebody decides — and with it
+ *  the only number an employee actually wants: how many days they have left
+ *  (D178).
+ *
+ *  Approving a request is what writes the mark. There is no second road: a mark
+ *  typed straight onto the timesheet is still allowed (things happen at six in
+ *  the morning), and it simply has no request behind it, which the screen says.
+ */
+export type LeaveKind = "cuti" | "izin" | "sakit";
+
+export const LEAVE_KIND_LABEL: Record<LeaveKind, string> = {
+  cuti: "Cuti",
+  izin: "Izin",
+  sakit: "Sakit",
+};
+
+export type LeaveStatus = "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED";
+
+export interface LeaveRequest {
+  id: string;
+  request_no: string;
+  employee_id: string;
+  kind: LeaveKind;
+  from_date: string;
+  to_date: string;
+  /** Calendar days in the range. Half days are not modelled: a half day is a
+   *  timesheet mark, not a request (D142). */
+  days: number;
+  reason: string;
+  status: LeaveStatus;
+  requested_by: string;
+  requested_at: string;
+  decided_by: string | null;
+  decided_at: string | null;
+  /** Required on a rejection. A refusal an employee cannot read is one they
+   *  cannot argue with (A7). */
+  decision_note: string | null;
+}
+
+export interface LeaveRequestView extends LeaveRequest {
+  employee_no: string;
+  full_name: string;
+  decided_by_name: string | null;
+  /** How the days would be paid if this were approved today — the balance is
+   *  read at decision time, and a request that would run past the entitlement
+   *  says so **before** the decision, not on the payslip (D178). */
+  paid_days: number;
+  unpaid_days: number;
+  /** Set when the person already has a mark on one of these days. */
+  clashes: string[];
+}
+
+/** What somebody has left. Computed from the marks, never stored — the same
+ *  rule as everything else that can be derived (A3). */
+export interface LeaveBalance {
+  employee_id: string;
+  employee_no: string;
+  full_name: string;
+  /** Per person, deliberately (D144). */
+  entitlement: number;
+  taken: number;
+  /** Approved requests in the future that have not become marks yet. */
+  booked: number;
+  remaining: number;
+  /** Days recorded as cuti beyond the entitlement — taken and not paid. */
+  over: number;
+  sick_days: number;
+  sick_without_letter: number;
+  permit_days: number;
+}
+
 /* ── Pay rules: the policy, as data ───────────────────────────────────────
  *
  *  Four situations exist in this workshop and every one of them is a **policy

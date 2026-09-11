@@ -31,6 +31,19 @@ export const DOC_KINDS = [
    *  a product somebody will have to ask about (D150). */
   "Gambar Kerja",
   "Gambar Jadi",
+  /** Berkas 201 — the personnel file. Each of these is a document like any
+   *  other, on the same road, so a person's file is a strip of evidence rather
+   *  than a folder on somebody's laptop (D177). */
+  "KTP",
+  "Kartu Keluarga",
+  "Ijazah",
+  "CV",
+  "Kontrak Kerja",
+  "NPWP",
+  "BPJS",
+  "Foto",
+  "Sertifikat",
+  "Surat Peringatan",
   "Others",
 ] as const;
 export type DocKind = (typeof DOC_KINDS)[number];
@@ -94,7 +107,9 @@ export type LinkEntity =
   | "transaction" | "pr_line" | "po" | "receipt"
   | "day_mark" | "overtime"
   /** A product's drawings — master data, not evidence of an event (D150). */
-  | "product";
+  | "product"
+  /** Somebody's own file: KTP, ijazah, the contract they signed (D177). */
+  | "employee";
 
 /** A piece of evidence — a **file or a link**, never both.
  *

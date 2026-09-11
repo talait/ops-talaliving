@@ -6,11 +6,14 @@ import type {
   PayrollRun, PayrollView, PayBasis,
   AdjustmentKind, PayrollAdjustmentView,
   PayRules, PayRuleSet, PayRuleSetView,
+  EmployeeDocKind, EmployeeFileView, LeaveBalance, LeaveKind, LeaveRequestView, LeaveStatus,
 } from "@/services/hr/contracts";
+import type { DocKind } from "@/services/documents/contracts";
 import { getState, apply, newId, nextDocNumber, writeAudit, writeOutbox } from "../store";
 import {
   timesheet, timesheetDay, payrollView, overtimeStage, overtimePayable, sheetEvidence,
   activePayRules, payrollLine, payrollLineWith,
+  employeeFile, leaveBalance, leaveRequestView, datesBetween,
 } from "../hr-derive";
 import { latency, actingUser, requireModule, requireAuthority, conflict, replayed, remember } from "./_kit";
 
@@ -944,6 +947,282 @@ export async function attachSuratDokter(
     });
   });
   return ok(SERVICE, { mark_id: mark.id, attachment_id: input.attachment_id });
+}
+
+/* ── Berkas 201 ───────────────────────────────────────────────────────────
+ *
+ *  A file is a checklist, not a folder (D177). The list of what is **missing**
+ *  is the reason this exists, and it is computed rather than tracked: adding a
+ *  required document to the checklist makes every incomplete file say so the
+ *  same day, with nothing to back-fill.
+ */
+export async function listEmployeeFiles(): Promise<Result<EmployeeFileView[]>> {
+  await latency();
+  const state = getState();
+  const today = officeToday();
+  return ok(SERVICE, state.employees
+    .filter((e) => e.active)
+    .map((e) => employeeFile(state, e, today))
+    /* Incomplete first, then whatever expires soonest: the two reasons anybody
+       opens this screen. */
+    .sort((a, b) => {
+      if (a.complete !== b.complete) return a.complete ? 1 : -1;
+      const ax = a.expiring[0]?.days ?? 9999;
+      const bx = b.expiring[0]?.days ?? 9999;
+      if (ax !== bx) return ax - bx;
+      return a.full_name.localeCompare(b.full_name);
+    }));
+}
+
+export async function getEmployeeFile(employeeNo: string): Promise<Result<EmployeeFileView>> {
+  await latency();
+  const state = getState();
+  const emp = state.employees.find((e) => e.employee_no === employeeNo);
+  if (!emp) return notFound(SERVICE, "employee_not_found", `No employee ${employeeNo}.`);
+  return ok(SERVICE, employeeFile(state, emp, officeToday()));
+}
+
+/** Filing a document. A number with no scan is still a record — the number is
+ *  usually what somebody needs — so neither is required, but one of them is. */
+export async function saveEmployeeDocument(
+  input: {
+    employee_no: string; kind: EmployeeDocKind;
+    attachment_id?: string | null; doc_no?: string | null;
+    issued_on?: string | null; expires_on?: string | null; note?: string | null;
+  },
+): Promise<Result<EmployeeFileView>> {
+  await latency();
+  const denied = requireModule(SERVICE, "hrd");
+  if (denied) return denied;
+
+  const state = getState();
+  const emp = state.employees.find((e) => e.employee_no === input.employee_no);
+  if (!emp) return notFound(SERVICE, "employee_not_found", `No employee ${input.employee_no}.`);
+  if (!input.attachment_id && !input.doc_no?.trim()) {
+    return invalid(
+      SERVICE, "nothing_to_file",
+      "Lampirkan berkasnya atau tulis nomornya. Satu baris kosong bukan dokumen.",
+      { field: "doc_no" },
+    );
+  }
+  if (input.expires_on && input.issued_on && input.expires_on < input.issued_on) {
+    return invalid(SERVICE, "expiry_before_issue", "Tanggal berakhir mendahului tanggal terbit.", { field: "expires_on" });
+  }
+
+  const user = actingUser();
+  apply((draft) => {
+    draft.employee_documents.push({
+      id: newId("edc"),
+      employee_id: emp.id,
+      kind: input.kind,
+      attachment_id: input.attachment_id ?? null,
+      doc_no: input.doc_no?.trim() || null,
+      issued_on: input.issued_on || null,
+      expires_on: input.expires_on || null,
+      note: input.note?.trim() || null,
+      recorded_by: user.id,
+      recorded_at: new Date().toISOString(),
+    });
+    if (input.attachment_id) {
+      draft.attachment_links.push({
+        id: newId("lnk"), attachment_id: input.attachment_id,
+        entity: "employee", entity_no: emp.employee_no,
+        kind: EMPLOYEE_DOC_TO_DOC_KIND[input.kind],
+        linked_by: user.id, linked_at: new Date().toISOString(),
+      });
+    }
+    writeAudit(draft, {
+      service: SERVICE, entity: "employee_document", entity_no: emp.employee_no,
+      action: "file", outcome: "ok", reason: null,
+      detail: { kind: input.kind, doc_no: input.doc_no ?? null, expires_on: input.expires_on ?? null, by: user.email },
+    });
+  });
+  return getEmployeeFile(emp.employee_no);
+}
+
+/** Which document kind a personnel record travels under on the evidence road.
+ *  One map, so a KTP is filed as a KTP everywhere it appears (ADR-010). */
+const EMPLOYEE_DOC_TO_DOC_KIND: Record<EmployeeDocKind, DocKind> = {
+  ktp: "KTP",
+  kartu_keluarga: "Kartu Keluarga",
+  ijazah: "Ijazah",
+  cv: "CV",
+  kontrak_kerja: "Kontrak Kerja",
+  npwp: "NPWP",
+  bpjs_kesehatan: "BPJS",
+  bpjs_tk: "BPJS",
+  foto: "Foto",
+  sertifikat: "Sertifikat",
+  sp: "Surat Peringatan",
+  lainnya: "Others",
+};
+
+/* ── Cuti & izin ──────────────────────────────────────────────────────────
+ *
+ *  The half that happens before the timesheet mark: somebody asks, somebody
+ *  decides, and approving is what writes the mark (D178).
+ */
+export async function listLeaveBalances(): Promise<Result<LeaveBalance[]>> {
+  await latency();
+  const state = getState();
+  const year = officeToday().slice(0, 4);
+  return ok(SERVICE, state.employees
+    .filter((e) => e.active)
+    .map((e) => leaveBalance(state, e, year))
+    .sort((a, b) => a.remaining - b.remaining || a.full_name.localeCompare(b.full_name)));
+}
+
+export async function listLeaveRequests(): Promise<Result<LeaveRequestView[]>> {
+  await latency();
+  const state = getState();
+  return ok(SERVICE, [...state.leave_requests]
+    .sort((a, b) => {
+      /* Waiting first — a queue is not a filing cabinet. */
+      if ((a.status === "PENDING") !== (b.status === "PENDING")) return a.status === "PENDING" ? -1 : 1;
+      return b.requested_at.localeCompare(a.requested_at);
+    })
+    .map((r) => leaveRequestView(state, r)));
+}
+
+/** Asking. Never refused for being over the balance — days beyond it are taken
+ *  and recorded, they are simply not paid (D144). The screen says which. */
+export async function requestLeave(
+  input: { employee_no: string; kind: LeaveKind; from_date: string; to_date: string; reason: string },
+  idempotencyKey?: string,
+): Promise<Result<LeaveRequestView>> {
+  await latency();
+  const cached = replayed<LeaveRequestView>(SERVICE, "requestLeave", idempotencyKey);
+  if (cached) return cached;
+
+  const denied = requireModule(SERVICE, "hrd");
+  if (denied) return denied;
+
+  const state = getState();
+  const emp = state.employees.find((e) => e.employee_no === input.employee_no);
+  if (!emp) return notFound(SERVICE, "employee_not_found", `No employee ${input.employee_no}.`);
+  if (input.to_date < input.from_date) {
+    return invalid(SERVICE, "range_invalid", "Tanggal selesai mendahului tanggal mulai.", { field: "to_date" });
+  }
+  if (!input.reason.trim()) {
+    return invalid(SERVICE, "reason_required", "Tulis alasannya — itu yang dibaca saat diputuskan.", { field: "reason" });
+  }
+  const overlap = state.leave_requests.find(
+    (r) => r.employee_id === emp.id
+      && (r.status === "PENDING" || r.status === "APPROVED")
+      && r.from_date <= input.to_date && r.to_date >= input.from_date,
+  );
+  if (overlap) {
+    return conflict(
+      SERVICE, "overlaps_existing",
+      `${overlap.request_no} sudah menutupi ${overlap.from_date} → ${overlap.to_date} untuk orang yang sama.`,
+    );
+  }
+
+  const user = actingUser();
+  let created = "";
+  apply((draft) => {
+    const no = nextDocNumber(draft, "izn");
+    created = no;
+    draft.leave_requests.push({
+      id: newId("lvr"), request_no: no, employee_id: emp.id,
+      kind: input.kind, from_date: input.from_date, to_date: input.to_date,
+      days: datesBetween(input.from_date, input.to_date).length,
+      reason: input.reason.trim(),
+      status: "PENDING",
+      requested_by: user.id, requested_at: new Date().toISOString(),
+      decided_by: null, decided_at: null, decision_note: null,
+    });
+    writeAudit(draft, {
+      service: SERVICE, entity: "leave_request", entity_no: no,
+      action: "request", outcome: "ok", reason: input.reason.trim(),
+      detail: { employee: emp.employee_no, kind: input.kind, from: input.from_date, to: input.to_date, by: user.email },
+    });
+  });
+
+  const view = leaveRequestView(getState(), getState().leave_requests.find((r) => r.request_no === created)!);
+  remember(SERVICE, "requestLeave", idempotencyKey, view);
+  return ok(SERVICE, view);
+}
+
+/** Deciding. Approval **writes the timesheet marks** — that is what makes the
+ *  request more than a note (D178). A refusal needs a sentence.
+ *
+ *  Days that already carry a mark are skipped rather than overwritten: a public
+ *  holiday inside somebody's leave is still a public holiday, and a mark typed
+ *  by a person at six in the morning outranks a batch write.
+ */
+export async function decideLeave(
+  input: { request_no: string; approved: boolean; note?: string | null },
+): Promise<Result<{ request_no: string; status: LeaveStatus; marked: string[]; skipped: string[] }>> {
+  await latency();
+  const denied = requireModule(SERVICE, "hrd");
+  if (denied) return denied;
+
+  const state = getState();
+  const req = state.leave_requests.find((r) => r.request_no === input.request_no);
+  if (!req) return notFound(SERVICE, "request_not_found", `No leave request ${input.request_no}.`);
+  if (req.status !== "PENDING") {
+    return conflict(SERVICE, "already_decided", `${req.request_no} sudah ${req.status.toLowerCase()} — tidak ada yang berubah.`);
+  }
+  if (!input.approved && !input.note?.trim()) {
+    return invalid(
+      SERVICE, "reason_required",
+      "Penolakan harus punya alasan. Yang ditolak tanpa kalimat tidak bisa dibantah orangnya.",
+      { field: "note" },
+    );
+  }
+
+  const emp = state.employees.find((e) => e.id === req.employee_id);
+  const user = actingUser();
+  const marked: string[] = [];
+  const skipped: string[] = [];
+
+  apply((draft) => {
+    const row = draft.leave_requests.find((r) => r.request_no === input.request_no);
+    if (!row || !emp) return;
+    row.status = input.approved ? "APPROVED" : "REJECTED";
+    row.decided_by = user.id;
+    row.decided_at = new Date().toISOString();
+    row.decision_note = input.note?.trim() || null;
+
+    if (input.approved) {
+      const kind: DayMarkKind = row.kind === "cuti" ? "leave" : row.kind === "izin" ? "permit" : "sick";
+      for (const date of datesBetween(row.from_date, row.to_date)) {
+        const clash = draft.day_marks.find(
+          (m) => m.work_date === date && (m.employee_id === emp.id || m.employee_id === null),
+        );
+        if (clash) { skipped.push(date); continue; }
+        draft.day_marks.push({
+          id: newId("dmk"), employee_id: emp.id, work_date: date, kind,
+          reason: `${row.request_no}: ${row.reason}`,
+          marked_by: user.id, marked_at: new Date().toISOString(),
+        });
+        marked.push(date);
+      }
+    }
+
+    writeAudit(draft, {
+      service: SERVICE, entity: "leave_request", entity_no: row.request_no,
+      action: input.approved ? "approve" : "reject",
+      outcome: "ok", reason: row.decision_note,
+      detail: { employee: emp.employee_no, marked, skipped, by: user.email },
+    });
+    writeOutbox(draft, {
+      service: SERVICE, event_type: input.approved ? "hr.leave.approved" : "hr.leave.rejected",
+      payload: { request_no: row.request_no, employee: emp.employee_no, days: row.days },
+    });
+  });
+
+  return ok(SERVICE, {
+    request_no: req.request_no,
+    status: input.approved ? "APPROVED" : "REJECTED",
+    marked, skipped,
+  });
+}
+
+/** The office day, WITA. Not the browser's day (F17). */
+function officeToday(): string {
+  return new Date(Date.now() + 8 * 3_600_000).toISOString().slice(0, 10);
 }
 
 /* ── Pay rules ────────────────────────────────────────────────────────────

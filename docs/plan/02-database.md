@@ -1288,6 +1288,50 @@ slots are computed, never stored.
 | `payroll_adjustments` writable only while the run is `DRAFT` | an approved run is a figure somebody signed; moving money inside it afterwards is a new run, not an edit (D155) |
 | `overtime_lines.form_amount` NULL-able | most nights have no figure on the paper; a nought there would mean *worked for free* rather than *not stated* (D154) |
 
+### Berkas 201 and leave
+
+```mermaid
+erDiagram
+    employees ||--o{ employee_documents : "file"
+    employees ||--o{ leave_requests : "asks"
+    employee_documents {
+        uuid id PK
+        uuid employee_id FK
+        employee_doc_kind_t kind
+        uuid attachment_id FK "null = a number with no scan yet"
+        text doc_no
+        date issued_on
+        date expires_on "null = never expires"
+        text note
+        uuid recorded_by FK
+    }
+    leave_requests {
+        uuid id PK
+        text request_no UK "izn-26-09-08_01"
+        uuid employee_id FK
+        leave_kind_t kind "cuti|izin|sakit"
+        date from_date
+        date to_date
+        text reason
+        leave_status_t status "PENDING|APPROVED|REJECTED|CANCELLED"
+        uuid decided_by FK
+        text decision_note "required on a rejection"
+    }
+```
+
+| Constraint | Why |
+|---|---|
+| `employee_documents` CHECK `attachment_id IS NOT NULL OR doc_no IS NOT NULL` | one line with neither is not a document (D177) |
+| `employee_documents` CHECK `expires_on IS NULL OR expires_on >= issued_on` | |
+| the checklist itself is **code**, not rows | adding a required kind makes every incomplete file say so the same day, with nothing to back-fill |
+| `leave_requests` CHECK `status = 'REJECTED' → decision_note IS NOT NULL` | a refusal an employee cannot read is one they cannot argue with (A7) |
+| no overlapping PENDING/APPROVED range per employee | the same days asked for twice is a mistake, not a second request |
+| approval writes `day_marks`, skipping days that already have one | a public holiday inside somebody's leave is still a public holiday (D178) |
+
+The balance is **not a table**. Entitlement minus days marked minus days
+approved-and-not-yet-taken, computed on read (A3) — a stored balance is the one
+that drifts from the marks behind it.
+
 ### The rule book
 
 ```mermaid

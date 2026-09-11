@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, Users, CalendarCheck, FileBadge, ShieldCheck, Wallet,
+  LayoutDashboard, Users, CalendarCheck, FileBadge, Wallet,
   ShoppingCart, ClipboardList, FileText, PackageCheck, Boxes, TreePine,
   Layers, Landmark, BookOpen, TrendingUp, PiggyBank, Receipt,
   Megaphone, UserRound, Target, HandCoins,
@@ -46,9 +46,8 @@ export const NAV: NavSection[] = [
       { label: "Employees", href: "/hrd/karyawan", icon: Users, permission: "hrd.read", badge: "core" },
       { label: "Attendance", href: "/hrd/absensi", icon: CalendarCheck, permission: "hrd.read" },
       { label: "Overtime", href: "/hrd/lembur", icon: Clock, permission: "hrd.read", badge: "new" },
-      { label: "Employee Files", href: "/hrd/berkas-201", icon: FileBadge, permission: "hrd.read" },
-      { label: "Leave & Permits", href: "/hrd/cuti", icon: CalendarClock, permission: "hrd.read" },
-      { label: "Compliance", href: "/hrd/compliance", icon: ShieldCheck, permission: "hrd.read" },
+      { label: "Employee Files", href: "/hrd/berkas-201", icon: FileBadge, permission: "hrd.read", badge: "new" },
+      { label: "Leave & Permits", href: "/hrd/cuti", icon: CalendarClock, permission: "hrd.read", badge: "new" },
       { label: "Payroll", href: "/hrd/payroll", icon: Wallet, permission: "payroll.read" },
       { label: "Gajian mingguan", href: "/hrd/payroll/minggu", icon: CalendarRange, permission: "payroll.read", badge: "new" },
     ],

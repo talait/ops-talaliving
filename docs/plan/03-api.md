@@ -268,6 +268,11 @@ dies — the same reason `john-lau` set 15 MB under Next's 16 MB.
 | POST | `/day-marks` | `{work_date, kind, reason, employee_no?}` — omit the employee and it covers the whole office. 409 if that day is already marked for that scope |
 | POST | `/day-marks/{id}/surat-dokter` | link an uploaded letter to a day marked `sick`. **This is what makes the day paid** (D144), and it may arrive days later — nothing is recomputed, because nothing was stored |
 | DELETE | `/day-marks/{id}` | the holiday was the Tuesday, not the Monday. Audited like any other act |
+| GET | `/files` · `/files/{employee_no}` | Berkas 201 as a **checklist**: every required kind listed whether or not anything is filed, with what is missing and what expires (D177) |
+| POST | `/files/{employee_no}/documents` | 422 when neither a scan nor a number is given — a number with no scan is still a record |
+| GET | `/leave/balances` | entitlement − marked − approved-not-yet-taken, computed on read |
+| GET | `/leave` · POST `/leave` | asking. 409 on an overlapping request for the same person; never refused for exceeding the entitlement (D144) |
+| POST | `/leave/{request_no}/decide` | approving **writes the day marks** and reports which days were skipped because they already carried one; rejecting without a reason is 422 (D178) |
 | GET | `/overtime` | waiting claims first |
 | POST | `/overtime` | claim hours against a day. 409 if a live claim already exists for it |
 | GET | `/overtime` | every sheet with its lines, its stage and the paper behind it. Anything still waiting comes first |

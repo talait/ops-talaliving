@@ -11,6 +11,9 @@ import type {
   CashComponent, CashOverride, CashSettlement,
 } from "@/services/accounting/contracts";
 import type { Attachment, AttachmentLink } from "@/services/documents/contracts";
+import type {
+  Employee, Attendance, OvertimeClaim, PayrollRun,
+} from "@/services/hr/contracts";
 
 export interface DemoUser extends User {
   modules: ModuleGrant[];
@@ -94,6 +97,14 @@ export interface DemoState {
 
   attachments: Attachment[];
   attachment_links: AttachmentLink[];
+
+  /** HR. Payroll lines are derived on read from attendance and approved
+   *  overtime, never stored — a stored figure is one that can disagree with
+   *  the days behind it (A3). */
+  employees: Employee[];
+  attendance: Attendance[];
+  overtime_claims: OvertimeClaim[];
+  payroll_runs: PayrollRun[];
 
   audit_log: AuditRow[];
   outbox: OutboxRow[];

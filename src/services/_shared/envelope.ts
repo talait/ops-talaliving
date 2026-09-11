@@ -18,6 +18,9 @@ export type ServiceName =
   | "identity"
   | "procurement"
   | "accounting"
+  /** The sixth service (D136). Kept out of `identity` deliberately: one says
+   *  who may open a screen, the other says what somebody is owed. */
+  | "hr"
   | "documents"
   | "events";
 

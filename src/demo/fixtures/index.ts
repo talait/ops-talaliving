@@ -13,6 +13,7 @@ import {
 } from "./ledger";
 import { ATTACHMENTS, ATTACHMENT_LINKS } from "./documents";
 import { CASH_COMPONENTS, CASH_OVERRIDES, CASH_SETTLEMENTS } from "./cash";
+import { EMPLOYEES, ATTENDANCE, OVERTIME_CLAIMS, PAYROLL_RUNS } from "./hr";
 
 export * from "./reference";
 
@@ -32,7 +33,7 @@ export * from "./reference";
  *  changes every count, and their own work is exactly what the snapshot is
  *  for. A version somebody types when they edit the fixtures separates "the
  *  demo data moved" from "somebody used the demo". */
-export const FIXTURE_VERSION = "2026-09-11.4";
+export const FIXTURE_VERSION = "2026-09-11.5";
 
 export function stateSignature(state: DemoState): string {
   return [
@@ -83,6 +84,11 @@ export function initialState(): DemoState {
     cash_components: CASH_COMPONENTS,
     cash_overrides: CASH_OVERRIDES,
     cash_settlements: CASH_SETTLEMENTS,
+
+    employees: EMPLOYEES,
+    attendance: ATTENDANCE,
+    overtime_claims: OVERTIME_CLAIMS,
+    payroll_runs: PAYROLL_RUNS,
 
     attachments: ATTACHMENTS,
     attachment_links: ATTACHMENT_LINKS,

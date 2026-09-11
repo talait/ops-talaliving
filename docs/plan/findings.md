@@ -1605,3 +1605,57 @@ late.** That is a fact that existed all week and had nowhere to appear.
 The general lesson in all three: **a module is finished when it can do the
 thing outside the building.** Create, amend, pay and close are all internal.
 An order that never reaches a vendor is a spreadsheet with better manners.
+
+## F39 — payroll is where every small carelessness becomes somebody's wages
+
+HRD was built in one pass: employees, biometric attendance, overtime, payroll,
+payslips. Three things it taught, and a bug that is worth more than the three.
+
+**The machine produces times, not days.** A fingerprint reader records
+whatever it records. In a fortnight of demo data — shaped like a real export,
+not a clean one — two people have no check-out and one day is missing
+entirely. The tempting fix is to assume: *nobody works past six, call it
+17:00*. That assumption pays for a day nobody can account for, and it does it
+silently, every time. So a day with one stamp is **open**, worth nothing, and
+closed only by a person who types the time and says why (D137).
+
+**The machine cannot tell work from presence.** It knows somebody was in the
+building at 19:40. It does not know whether they were finishing a table or
+waiting for a lift. Deriving overtime from attendance would pay for all three,
+so overtime is claimed and approved, and only approved hours reach a payslip
+(D138).
+
+**A payroll over open days is a number that looks exact and is not** — and the
+people it is wrong about are the ones paid by the day, who are least able to
+argue. So approving a run is refused while any day in its period is open, with
+the count and a link to clear them (D139).
+
+### The bug
+
+The period walk built each date with `d.toISOString().slice(0, 10)`. That
+converts back through UTC, and 2026-09-07 00:00 in WITA is 2026-09-06 16:00Z —
+so every day came out one early and **the last day of every period was
+silently dropped**.
+
+On a monthly salary nobody would ever notice. On a daily rate it is a day's
+wages, every run, for every workshop employee. It surfaced only because one
+line said *4 day(s)* where the fixture plainly had five.
+
+This is the same fault as F17, where timestamps were compared as text: **an
+office day is not a UTC day, and any code that goes near a timezone to produce
+a date will eventually be wrong by one.** The fix is to never go near one —
+walk the dates as strings.
+
+Which is the general lesson worth keeping from this module. Everywhere else in
+this system a wrong number is an argument. Here it is somebody's pay, they
+find out by counting their money, and they are the person with the least power
+to get it corrected. Payroll earns its refusals.
+
+### And what is deliberately not built
+
+BPJS Kesehatan, BPJS Ketenagakerjaan and PPh 21 all apply and none has been
+described to us. Payroll computes **gross** and the payslip says so in
+Indonesian (D140). A deductions block full of zeroes would read as *nothing
+was deducted*; a payslip that states it computes bruto reads as *this part is
+not done yet*. Q30–Q32 hold the questions — which deductions, what an overtime
+hour is worth here, and whether payroll is weekly, monthly or both.

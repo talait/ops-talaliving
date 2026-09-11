@@ -11,3 +11,5 @@ export * as accounting from "./accounting";
 export * as documents from "./documents";
 export { isOk } from "@/services/_shared/envelope";
 export type { Result, ApiError, Outcome } from "@/services/_shared/envelope";
+
+export * as hr from "./hr";

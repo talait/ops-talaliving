@@ -1182,7 +1182,7 @@ does today — proposes, and never posts.
 | `v_transaction_complete` | acct | is the evidence chain complete for this row |
 | `v_allocations_public` | acct | the published seam procurement reads (ADR-004) |
 | `v_pr_line_coverage` | procure | `approved` = coalesce(approved_amount, item_total, 0); `covered` = Σ non-superseded allocations; `remaining`; `settled`. Tolerance from `core.settings` |
-| `v_pr_line_status` | procure | the **one** ladder, resolved in order: DRAFT → REMOVED → COMPLETED → PARTIAL → PAID → WAITING FOR PAYMENT → APPROVED → WAITING FOR APPROVAL. Eight values, down from nine: `HELD` and `REJECTED` collapse into "not checked" and "removed" (D28) |
+| `v_pr_line_status` | procure | the **one** ladder, resolved in order: DRAFT → REMOVED → COMPLETED → PARTIAL → PAID → APPROVED → WAITING FOR APPROVAL. Seven values, down from nine: `HELD` and `REJECTED` collapse into "not checked" and "removed" (D28), and `WAITING FOR PAYMENT` merges into `APPROVED` because it claimed the cash was reserved for that line and it never was (D126) |
 | `v_po_status` | procure | `contract_value`, `paid_to_date`, `outstanding`, `value_received`, **`exposure` = paid − received**, and the two independent axes |
 | `v_po_line_status` | procure | per-line delivery and payment |
 | `v_round_summary` | procure | REQUESTED, paying-account balance, TO TRANSFER, remaining after payment |

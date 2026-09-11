@@ -214,16 +214,11 @@ export function lineStatus(state: DemoState, line: PrLine): LineStatus {
   if (receivedQty(state, line) > 0) return "PARTIAL";
   if (coverage.settled) return "PAID";
 
-  const approved = isApproved(state, line.id);
-  if (approved) {
-    const round = lineInRound(state, line.id);
-    /* TRANSFERRED means money reached the accounting account, not that a
-     * vendor was paid — it never makes a line PAID (A10). */
-    if (round && (round.status === "APPROVED" || round.status === "TRANSFERRED")) {
-      return "WAITING FOR PAYMENT";
-    }
-    return "APPROVED";
-  }
+  /* One value for approved-and-unpaid, whether or not a round has money in it
+     for this line. TRANSFERRED never meant a vendor was paid (A10) — and it
+     never meant the money was reserved either, which is why the second status
+     was removed rather than renamed (D126). */
+  if (isApproved(state, line.id)) return "APPROVED";
   return "WAITING FOR APPROVAL";
 }
 

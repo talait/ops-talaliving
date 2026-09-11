@@ -284,21 +284,13 @@ export default function MeetingBoardPage() {
     {
       key: "status",
       header: "Status",
-      /* Both statuses in this list mean "approved, not paid" — the card says
-         so in its title. The only thing that separates them is whether the
-         line sits in a payment round, so that is what the column shows;
-         printing two different words for one meaning is how a board teaches
-         people to ignore a column (D123). */
+      /* One status for approved-and-unpaid, and no mention of which round the
+         money came from. Cash is fungible: naming a round here would imply the
+         money is being held for this line, and it is not (D126). */
       render: (l) => (
         <div className="whitespace-nowrap">
           <StatusPill kind="line" status={l.status} />
-          <p className="mt-0.5 text-[11px] text-slate-500">
-            {l.round_no === null
-              ? "no money earmarked for it yet"
-              : l.status === "WAITING FOR PAYMENT"
-                ? <>cash is in the account · {l.round_no}</>
-                : <>waiting on funding · {l.round_no}</>}
-          </p>
+          <p className="mt-0.5 text-[11px] text-slate-500">not paid yet</p>
         </div>
       ),
     },

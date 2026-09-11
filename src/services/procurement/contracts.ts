@@ -30,14 +30,23 @@ export const FUND_CATEGORIES = [
 export type PrDocType = "PR" | "FUND";
 export type PrDocStatus = "DRAFT" | "SUBMITTED" | "APPROVED" | "CLOSED" | "CANCELLED";
 
-/** The one ladder (D28). Eight values, resolved in the order given by
- *  `derive.lineStatus`. `HELD` and `REJECTED` are gone: an unchecked line
- *  stays in the queue exactly as HELD did, and an unwanted line is REMOVED. */
+/** The one ladder (D28, D126). Seven values, resolved in the order given by
+ *  `derive.lineStatus`.
+ *
+ *  `HELD` and `REJECTED` went first: an unchecked line stays in the queue
+ *  exactly as HELD did, and an unwanted line is REMOVED.
+ *
+ *  `WAITING FOR PAYMENT` went next, and for a better reason than tidiness.
+ *  It meant *approved, and the cash for it is in the paying account* — which
+ *  was never true. Cash is fungible: money moved in for last week's approvals
+ *  is spent on whatever gets paid first, so an older approval can find its
+ *  funding gone and have to ask for it again. A status that says the money is
+ *  waiting for this line is a promise the system cannot keep, so there is one
+ *  value for both: **APPROVED — approved, not paid yet** (D126). */
 export const LINE_STATUSES = [
   "DRAFT",
   "WAITING FOR APPROVAL",
   "APPROVED",
-  "WAITING FOR PAYMENT",
   "PAID",
   "PARTIAL",
   "COMPLETED",

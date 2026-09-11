@@ -12,7 +12,8 @@ import { itemIdByCode } from "./reference";
  *   pr-26-09-10_02  DRAFT                -> DRAFT
  *   pr-26-09-10_01  submitted, untouched -> WAITING FOR APPROVAL
  *   pr-26-09-08_01  partly decided       -> APPROVED · WAITING FOR APPROVAL · REMOVED
- *   pr-26-09-04_01  in an approved round -> WAITING FOR PAYMENT
+ *   pr-26-09-04_01  in an approved round -> still APPROVED: a funded round
+ *                   reserves nothing for a particular line (D126)
  *   pr-26-08-27_01  paid                 -> PAID · COMPLETED (a service line)
  *   pr-26-08-18_01  paid and received    -> COMPLETED · PARTIAL · PAID (a PO DP)
  */

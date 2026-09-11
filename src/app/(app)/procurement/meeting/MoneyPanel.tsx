@@ -22,6 +22,13 @@ import { useSession } from "@/store/session";
  *  shortfall is discovered by the person trying to make the payments, days
  *  after the room agreed to them — and by then the decision is somebody
  *  else's problem to unwind.
+ *
+ *  **An approval is a claim on the account, never a reservation against it**
+ *  (D126). Cash is fungible: money transferred in for last week's approvals is
+ *  spent by whichever payment is made first, so an older approval can find its
+ *  funding gone and need it asked for again. That is why there is no status
+ *  meaning "the money is waiting for this line" — the system cannot keep that
+ *  promise, so it does not make it.
  */
 export function MoneyPanel({ lines }: { lines: PrLineView[] }) {
   const { can } = useSession();
@@ -50,9 +57,9 @@ export function MoneyPanel({ lines }: { lines: PrLineView[] }) {
 
   const cells: { label: string; value: string; tone?: string; note?: string }[] = [
     {
-      label: "Approved, still to pay",
+      label: "Approved, not paid yet",
       value: formatIDR(toPay),
-      note: "money already committed",
+      note: "a claim on the account, not a reservation",
     },
     {
       label: "Waiting for a decision",
@@ -71,7 +78,7 @@ export function MoneyPanel({ lines }: { lines: PrLineView[] }) {
       note: transfer === null
         ? undefined
         : transfer > 0
-          ? "before what is approved can be paid"
+          ? "what is approved cannot be paid without it"
           : `${formatIDR((balance ?? 0) - toPay)} left after paying it all`,
     },
   ];
@@ -103,6 +110,22 @@ export function MoneyPanel({ lines }: { lines: PrLineView[] }) {
             into the paying account, not{" "}
             <strong className="tabular-nums">{formatIDR(transfer)}</strong> — better seen now
             than by whoever tries to make the payments.
+          </span>
+        </p>
+      )}
+
+      {transfer !== null && transfer > 0 && (
+        /* The correction that removed the second status (D126). Money moved in
+           for last week's approvals is spent by whichever payment is made
+           first — so an approval is a claim on the account, never a reservation
+           against it, and an older one can find its funding gone. */
+        <p className="flex items-start gap-2 border-t border-slate-100 bg-rose-50/60 px-4 py-2.5 text-[13px] text-rose-900">
+          <Landmark className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span>
+            <strong className="tabular-nums">{formatIDR(transfer)}</strong> of what is already
+            approved has no money behind it. Nothing here is reserved: whatever is transferred in
+            is spent by whichever payment is made first, so an approval from last week can lose its
+            funding to one made today and has to be asked for again.
           </span>
         </p>
       )}

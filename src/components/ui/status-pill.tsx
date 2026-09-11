@@ -18,7 +18,6 @@ const LINE: Record<LineStatus, Tone> = {
   DRAFT: "slate",
   "WAITING FOR APPROVAL": "amber",
   APPROVED: "brand",
-  "WAITING FOR PAYMENT": "violet",
   PAID: "green",
   PARTIAL: "amber",
   COMPLETED: "green",

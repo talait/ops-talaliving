@@ -1404,3 +1404,42 @@ five probes beside it.
 **The general shape: a test is a claim with an expiry date.** When a decision
 is reversed, the thing asserting the old decision has to be found and changed
 in the same act, or it becomes furniture.
+
+## F34 — a status that promised something the system cannot deliver
+
+One day after the meeting board was corrected to explain the difference
+between `APPROVED` and `WAITING FOR PAYMENT`, the owner removed the
+difference — and gave a reason that was better than the fix:
+
+> *uang yang sudah dianggarkan bisa jadi dipakai untuk item approval yang baru,
+> sehingga item approved lama tidak ada anggarannya jadi nominal uangnya harus
+> diajukan kembali*
+
+**Cash is fungible.** Money transferred into the paying account for last
+week's approvals is spent by whichever payment is actually made first. So an
+approval from last week can find its funding gone — spent on something
+approved today — and the amount has to be asked for again.
+
+Which makes `WAITING FOR PAYMENT` a lie in a single word. It meant *approved,
+and the cash for it is in the account*, and the cash was never **for** it. The
+ladder is now seven values, and approved-and-unpaid is one of them.
+
+What is worth keeping is the shape of the error. The status was not invented
+here — it is the running system's own vocabulary, carried over verbatim under
+a standing rule not to tidy the business's words. That rule is right, and it
+does not extend to a word that encodes a claim about money that is not true.
+**Carrying vocabulary faithfully is not the same as carrying a model
+faithfully**, and the difference only shows up when somebody asks what a word
+promises.
+
+The correction that preceded it is instructive too. Asked *"aren't these the
+same?"*, the honest answer was "for the decision in the room, yes" — and the
+fix made the screen explain the distinction more clearly. A better answer
+would have been to ask what the distinction was *for*, which is the question
+the owner answered a day later. **Explaining a distinction is not the same as
+justifying it.**
+
+So the board now states the thing the status used to hide: Rp 15.771.000 of
+what is already approved has no money behind it, nothing is reserved, and an
+older approval can lose its funding to a newer one and have to be asked for
+again.

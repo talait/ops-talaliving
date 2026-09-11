@@ -45,7 +45,9 @@ Copied from §7. These strings are data. Do not translate, re-spell, or
   `RECCURING - PAYROLL` · `CASHFLOW` · `OTHERS` · `PRODUCTION` · `OFFICE` ·
   `WAREHOUSE`. (`EJO` exists in data and is unclassified — open question.)
 - **Line status ladder** (view, 8 values, owner 2026-09-11): `DRAFT` ·
-  `WAITING FOR APPROVAL` · `APPROVED` · `WAITING FOR PAYMENT` · `PAID` ·
+  `WAITING FOR APPROVAL` · `APPROVED` · ~~`WAITING FOR PAYMENT`~~ (merged into
+  `APPROVED` on D126 — it claimed the cash was reserved for that line, and it
+  never was) · `PAID` ·
   `PARTIAL` · `COMPLETED` · `REMOVED`.
   `HELD` and `REJECTED` are gone, and nothing is lost by it: an unchecked line
   stays in the queue exactly as `HELD` did, and a line nobody wants is

@@ -186,11 +186,36 @@ export const ITEM_CATEGORIES: ItemCategory[] = [
 ];
 
 export const PROJECTS: Project[] = [
-  { id: "prj_25004", code: "25004", name: "STANDARD", is_active: true },
-  { id: "prj_25007", code: "25007", name: "BABY ISLAND", is_active: true },
-  { id: "prj_25009", code: "25009", name: "VILLA SEMINYAK", is_active: true },
-  { id: "prj_25011", code: "25011", name: "HOTEL UBUD", is_active: true },
-  { id: "prj_25012", code: "25012", name: "OFFICE FITOUT", is_active: false },
+  {
+    id: "prj_25004", code: "25004", name: "STANDARD", is_active: true,
+    client_name: null, location: "Workshop", pic: "Made Suparta",
+    started_on: "2026-01-02", target_date: null, contract_value: null,
+    note: "Produksi stok, bukan pesanan pelanggan.",
+  },
+  {
+    id: "prj_25007", code: "25007", name: "BABY ISLAND", is_active: true,
+    client_name: "PT Baby Island Resort", location: "Nusa Dua", pic: "Evin Jonathan",
+    started_on: "2026-07-14", target_date: "2026-09-20", contract_value: 486_000_000,
+    note: null,
+  },
+  {
+    id: "prj_25009", code: "25009", name: "VILLA SEMINYAK", is_active: true,
+    client_name: "Ibu Laksmi", location: "Seminyak", pic: "Evin Jonathan",
+    started_on: "2026-08-01", target_date: "2026-10-15", contract_value: 275_000_000,
+    note: null,
+  },
+  {
+    id: "prj_25011", code: "25011", name: "HOTEL UBUD", is_active: true,
+    client_name: "Ubud Green Hospitality", location: "Ubud", pic: "Andi Prasetyo",
+    started_on: "2026-09-01", target_date: "2026-12-05", contract_value: 1_240_000_000,
+    note: "Termin 3 kali, DP sudah masuk.",
+  },
+  {
+    id: "prj_25012", code: "25012", name: "OFFICE FITOUT", is_active: false,
+    client_name: "PT Sinar Kreasi", location: "Denpasar", pic: null,
+    started_on: "2026-03-10", target_date: "2026-06-30", contract_value: 98_000_000,
+    note: "Selesai dan diserahterimakan Juni 2026.",
+  },
 ];
 
 /** Twelve vendors. Three are uncurated: recorded, shown, marked, and absent

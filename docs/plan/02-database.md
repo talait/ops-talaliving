@@ -572,6 +572,13 @@ erDiagram
         text code UK "PRN, 5 digits: 25004"
         text name
         boolean is_active
+        text client_name "null = internal work"
+        text location
+        text pic
+        date started_on
+        date target_date
+        bigint contract_value "agreed order value - not an invoice (Q37)"
+        text note
     }
 ```
 
@@ -1366,10 +1373,60 @@ skipped a step, and refusing the report would only mean the work goes
 unrecorded (A6). The demo carries one on purpose — twelve doors, seven
 finished, four sanded.
 
+### Master data: products and bills of material
+
+```mermaid
+erDiagram
+    products ||--o{ bom_components : "made of"
+
+    products {
+        uuid id PK
+        text product_code UK "PRD-MJ-220 - on the drawing and the SPK"
+        text name
+        text category "Meja, Kursi, Lemari - a word, not a hierarchy"
+        text uom
+        text description
+        text dimension "free text: a chair has three numbers, a door two"
+        int lead_time_days "a hint; the work order carries the promise"
+        boolean active
+        text note
+    }
+    bom_components {
+        uuid id PK
+        uuid product_id FK
+        bom_ref_t kind "material|product"
+        text ref_code "procure.items.code, or another product_code"
+        numeric qty "per ONE unit of the parent"
+        text uom
+        numeric waste_percent "susut - kept apart from qty"
+        text note
+    }
+```
+
+**Why products are not `procure.items`** (D149). Those are things we *buy*, and
+half of them are uncurated by design, because a purchase can name something
+nobody has catalogued. A product is the opposite: quoted to a client, put on a
+work order, made. It exists before anything references it and is always
+curated. The two meet in `bom_components`, which points at an item **by code**,
+at the seam — never a foreign key across services (ADR-004).
+
+**Why waste is its own column.** `qty` is what the drawing says goes in;
+`qty × (1 + waste_percent/100)` is what has to be bought. They are different
+numbers and a workshop that conflates them runs out on a Saturday.
+
+| Constraint | Why |
+|---|---|
+| `bom_components` UNIQUE `(product_id, ref_code)` | one line per component — change the quantity, don't add a second row |
+| `bom_components` CHECK `qty > 0`, `waste_percent BETWEEN 0 AND 90` | |
+| `bom_components` CHECK `NOT (kind = 'product' AND ref_code = parent code)` | a product cannot be a component of itself |
+| `ref_code` **not** a foreign key | the workshop knows it needs a steel frame before procurement has a code for one. Unresolved codes are shown, not refused (A6) |
+| `products.product_code` set once | it is on the drawing, the work order and every BOM that references it |
+
 ### Views
 
 | View | Answers |
 |---|---|
+| `v_product_bom` | per product: each component resolved to a name and a price — the catalogue's **standard price**, falling back to the **last price paid**, and the view says which — plus `qty_with_waste`, a subtotal, the material cost per unit, and how many components could not be priced. Computed on read, never stored (A3, D149) |
 | `v_work_order` | per order: `done` per stage, `current_stage` (the furthest with anything finished), `completed` (through the last stage), `percent` — counted as **stages finished across the quantity**, not as the furthest stage reached — `days_left`, `late`, and the warnings in words |
 
 Who may write: `production.update` for the workshop's own reports, and
@@ -1489,10 +1546,11 @@ not have received the right environment variable.
 0015_hr_people.sql           employees + RLS
 0016_hr_attendance.sql       attendance_imports, attendance_scans, day_marks + RLS
 0017_hr_payroll.sql          overtime_claims, payroll_runs + RLS
-0018_prod_orders.sql         process_stages (seed), work_orders + RLS
-0019_prod_progress.sql       progress_entries + RLS
-0020_views.sql               every v_* above
-0021_seams.sql               post_transaction(), allocate_payment(), audit triggers on those two only
+0018_prod_master.sql         products, bom_components + RLS
+0019_prod_orders.sql         process_stages (seed), work_orders + RLS
+0020_prod_progress.sql       progress_entries + RLS
+0021_views.sql               every v_* above
+0022_seams.sql               post_transaction(), allocate_payment(), audit triggers on those two only
 ```
 
 Additive migrations may be applied by the agent after a dry run. **Destructive

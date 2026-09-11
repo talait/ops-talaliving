@@ -9,6 +9,7 @@
 import type { DemoState } from "./state";
 import {
   PROCESS_STAGES, type WorkOrder, type WorkOrderView, type StageProgress,
+  type Product, type ProductView, type BomLineView,
 } from "@/services/production/contracts";
 
 /** Today, as an office day. The board is about deadlines, so "what day is it"
@@ -106,4 +107,113 @@ export function workOrderViews(state: DemoState, today = officeToday()): WorkOrd
       if (a.late !== b.late) return a.late ? -1 : 1;
       return a.due_date.localeCompare(b.due_date);
     });
+}
+
+
+/** A product with its bill of materials priced.
+ *
+ *  Two things this deliberately does not do.
+ *
+ *  It does not **store** a material cost. Prices move, a BOM gets a line added,
+ *  and a stored figure is one that silently stops matching the components under
+ *  it — the same reason payroll is computed on read (A3).
+ *
+ *  It does not **hide** what it cannot price. A component whose code names
+ *  nothing in the catalogue, or an item nobody has ever bought, leaves the
+ *  subtotal null and is counted in `unpriced`. A cost that quietly treats the
+ *  missing ones as zero is worse than no cost at all: it reads as complete
+ *  (D149).
+ */
+export function productView(state: DemoState, product: Product): ProductView {
+  const rows = state.bom_components.filter((b) => b.product_id === product.id);
+
+  const components: BomLineView[] = rows.map((b) => {
+    const qty_with_waste = Math.round(b.qty * (1 + b.waste_percent / 100) * 10_000) / 10_000;
+
+    let ref_name: string | null = null;
+    let unit_price: number | null = null;
+    let price_source: BomLineView["price_source"] = "none";
+
+    if (b.kind === "material") {
+      /* Read at the seam, by public code — never joined (ADR-004). */
+      const item = state.items.find((i) => i.code === b.ref_code);
+      ref_name = item?.name ?? null;
+      if (item?.standard_price != null) {
+        unit_price = item.standard_price;
+        price_source = "standard";
+      } else if (item?.last_price != null) {
+        /* A hint, not a price list — and the screen says which it used. */
+        unit_price = item.last_price;
+        price_source = "last";
+      }
+    } else {
+      const sub = state.products.find((p) => p.product_code === b.ref_code);
+      ref_name = sub?.name ?? null;
+      if (sub) {
+        /* One level deep on purpose: a sub-assembly of a sub-assembly is a
+           thing this business does not have, and guarding against a cycle we
+           cannot observe would cost more than it protects. */
+        const subView = subAssemblyCost(state, sub);
+        if (subView != null) { unit_price = subView; price_source = "standard"; }
+      }
+    }
+
+    return {
+      ...b,
+      ref_name,
+      qty_with_waste,
+      unit_price,
+      price_source,
+      subtotal: unit_price == null ? null : Math.round(unit_price * qty_with_waste),
+    };
+  });
+
+  const priced = components.filter((c) => c.subtotal != null);
+  const unpriced = components.length - priced.length;
+  const broken_refs = components.filter((c) => c.ref_name === null).length;
+
+  const warnings: string[] = [];
+  if (components.length === 0) {
+    warnings.push("Belum ada bill of material — kebutuhan bahan dan biayanya belum bisa dihitung.");
+  }
+  if (broken_refs > 0) {
+    warnings.push(`${broken_refs} komponen menunjuk kode yang tidak ada di katalog.`);
+  }
+  if (unpriced > broken_refs) {
+    warnings.push(`${unpriced - broken_refs} komponen belum punya harga — biaya di bawah belum lengkap.`);
+  }
+  if (components.some((c) => c.price_source === "last")) {
+    warnings.push("Sebagian harga memakai harga pembelian terakhir, bukan harga standar.");
+  }
+
+  return {
+    ...product,
+    components,
+    material_cost: priced.length > 0 ? priced.reduce((a, c) => a + (c.subtotal ?? 0), 0) : null,
+    unpriced,
+    broken_refs,
+    warnings,
+  };
+}
+
+/** The material cost of a sub-assembly, one level down. Null when any part of
+ *  it cannot be priced — half a number is not a number. */
+function subAssemblyCost(state: DemoState, product: Product): number | null {
+  const rows = state.bom_components.filter((b) => b.product_id === product.id);
+  if (rows.length === 0) return null;
+  let total = 0;
+  for (const b of rows) {
+    if (b.kind !== "material") return null;
+    const item = state.items.find((i) => i.code === b.ref_code);
+    const price = item?.standard_price ?? item?.last_price ?? null;
+    if (price == null) return null;
+    total += price * b.qty * (1 + b.waste_percent / 100);
+  }
+  return Math.round(total);
+}
+
+export function productViews(state: DemoState): ProductView[] {
+  return state.products
+    .map((p) => productView(state, p))
+    .sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name));
 }

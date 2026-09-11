@@ -93,7 +93,112 @@ export async function listUom(): Promise<Result<Uom[]>> {
 
 export async function listProjects(): Promise<Result<Project[]>> {
   await latency();
-  return ok(SERVICE, getState().projects);
+  return ok(SERVICE, [...getState().projects].sort((a, b) => b.code.localeCompare(a.code)));
+}
+
+export async function getProject(code: string): Promise<Result<Project>> {
+  await latency();
+  const found = getState().projects.find((p) => p.code === code);
+  if (!found) return notFound(SERVICE, "project_not_found", `No project ${code}.`);
+  return ok(SERVICE, found);
+}
+
+/** Master data for a customer's order.
+ *
+ *  The **code** is set once and never edited: it is on purchase request lines,
+ *  on work orders and on ledger rows, and every one of those references is by
+ *  code at the seam (ADR-004). A code that moves is a set of references that
+ *  break silently, which is the one failure nobody notices until a report is
+ *  wrong (D149).
+ */
+export async function saveProject(
+  input: {
+    code: string;
+    name: string;
+    client_name?: string | null;
+    location?: string | null;
+    pic?: string | null;
+    started_on?: string | null;
+    target_date?: string | null;
+    contract_value?: number | null;
+    is_active?: boolean;
+    note?: string | null;
+  },
+  idempotencyKey?: string,
+): Promise<Result<Project>> {
+  await latency();
+  const cached = replayed<Project>(SERVICE, "saveProject", idempotencyKey);
+  if (cached) return cached;
+
+  const denied = requireModule(SERVICE, "procurement");
+  if (denied) return denied;
+
+  const code = input.code.trim();
+  if (!code) {
+    return invalid(SERVICE, "code_required", "Kode proyek dipakai di PR, SPK dan ledger.", { field: "code" });
+  }
+  if (!input.name.trim()) {
+    return invalid(SERVICE, "name_required", "Proyeknya dikenal dengan nama apa?", { field: "name" });
+  }
+  if (input.target_date && input.started_on && input.target_date < input.started_on) {
+    return invalid(
+      SERVICE, "dates_reversed",
+      "Tanggal target lebih awal dari tanggal mulai.",
+      { field: "target_date" },
+    );
+  }
+
+  const user = actingUser();
+  const existing = getState().projects.find((p) => p.code === code);
+  let saved: Project | null = null;
+  apply((draft) => {
+    if (existing) {
+      const row = draft.projects.find((p) => p.code === code);
+      if (!row) return;
+      const before = { name: row.name, contract_value: row.contract_value, is_active: row.is_active };
+      Object.assign(row, {
+        name: input.name.trim(),
+        client_name: input.client_name?.trim() ?? row.client_name,
+        location: input.location?.trim() ?? row.location,
+        pic: input.pic?.trim() ?? row.pic,
+        started_on: input.started_on ?? row.started_on,
+        target_date: input.target_date ?? row.target_date,
+        contract_value: input.contract_value ?? row.contract_value,
+        is_active: input.is_active ?? row.is_active,
+        note: input.note?.trim() ?? row.note,
+      });
+      saved = row;
+      writeAudit(draft, {
+        service: SERVICE, entity: "project", entity_no: code,
+        action: "update", outcome: "ok", reason: null,
+        detail: { before, after: { name: row.name, contract_value: row.contract_value, is_active: row.is_active }, by: user.email },
+      });
+    } else {
+      const row: Project = {
+        id: newId("prj"), code,
+        name: input.name.trim(),
+        is_active: input.is_active ?? true,
+        client_name: input.client_name?.trim() || null,
+        location: input.location?.trim() || null,
+        pic: input.pic?.trim() || null,
+        started_on: input.started_on ?? null,
+        target_date: input.target_date ?? null,
+        contract_value: input.contract_value ?? null,
+        note: input.note?.trim() || null,
+      };
+      draft.projects.push(row);
+      saved = row;
+      writeAudit(draft, {
+        service: SERVICE, entity: "project", entity_no: code,
+        action: "create", outcome: "ok", reason: null,
+        detail: { name: row.name, client: row.client_name, by: user.email },
+      });
+    }
+  });
+  const view = saved as Project | null;
+  if (!view) return invalid(SERVICE, "not_saved", "Proyek tidak tersimpan.", { field: "code" });
+  remember(SERVICE, "saveProject", idempotencyKey, view);
+  return ok(SERVICE, view);
 }
 
 export async function listCategories(): Promise<Result<ItemCategory[]>> {

@@ -101,7 +101,7 @@ export const NAV: NavSection[] = [
     title: "Projects",
     icon: FolderKanban,
     items: [
-      { label: "Orders", href: "/proyek/order", icon: ClipboardList, permission: "project.read", badge: "core" },
+      { label: "Projects", href: "/proyek/order", icon: FolderKanban, permission: "project.read", badge: "core" },
       { label: "Production", href: "/proyek/produksi", icon: Hammer, permission: "project.read" },
       { label: "Delivery", href: "/proyek/pengiriman", icon: Truck, permission: "project.read" },
       { label: "Installation", href: "/proyek/instalasi", icon: Wrench, permission: "project.read" },
@@ -113,7 +113,7 @@ export const NAV: NavSection[] = [
     icon: Hammer,
     items: [
       { label: "Design", href: "/produksi/desain", icon: PencilRuler, permission: "production.read" },
-      { label: "Bill of Materials", href: "/produksi/bom", icon: ListTree, permission: "production.read", badge: "core" },
+      { label: "Products & BOM", href: "/produksi/bom", icon: ListTree, permission: "production.read", badge: "core" },
       { label: "Planning & Schedule", href: "/produksi/jadwal", icon: CalendarClock, permission: "production.read", badge: "new" },
     ],
   },

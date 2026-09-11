@@ -1885,3 +1885,60 @@ signature that caused it. Writing that rule at the point it is enforced, with
 the reason beside it, is cheaper than discovering it as a 403 in a demo three
 weeks from now — which is exactly how it was discovered here, on the first
 end-to-end run.
+
+---
+
+## F43 — master data is where the honest gaps live
+
+Adding projects, products and bills of material was mostly straightforward
+typing. Three decisions in it were not, and all three are about what to do with
+what the data does **not** know.
+
+### A product is not a catalogue item
+
+The tempting shortcut is one `items` table with a flag. It is wrong in a way
+that shows up immediately: `procure.items` is **half uncurated by design** —
+a purchase can name something nobody has catalogued, and the system records it
+rather than refusing the purchase (D26). A product is the opposite. It is
+quoted, drawn, put on a work order and made; it exists before anything
+references it and is always curated.
+
+Two tables, joined by code at the seam. The bill of material is the join, and
+it is the only place the two ideas touch.
+
+### Waste is not part of the quantity
+
+`qty` is what the drawing says. `qty × (1 + susut)` is what has to be bought.
+Six boards of jati at 12% waste is 6,72 — and the workshop that ordered six
+finds out on a Saturday. Keeping them in one column would have been simpler to
+type and would have quietly produced the wrong purchase requisition forever.
+
+### The cost must be allowed to be incomplete
+
+The display rack's BOM has a steel frame that the catalogue cannot price: it is
+bought as a fabrication from a vendor, not as a stock item. There were three
+options — refuse the component, price it at zero, or show the total as
+incomplete.
+
+Refusing it means the BOM stays in somebody's head. Pricing it at zero produces
+a number that **reads as finished** and is wrong by whatever the frame costs,
+which is the worst of the three because nothing on the screen says so.
+
+So the material cost is computed on read, components without a price are
+counted and named, and the total carries *belum lengkap* wherever they exist.
+The same rule the payroll screen already follows: a figure is allowed to be
+missing, never allowed to be quietly wrong.
+
+One more thing fell out of it. The price comes from the catalogue's **standard
+price** where there is one and from the **last price paid** otherwise — and the
+line says which it used. A last price is a hint, not a price list (D33), and a
+cost built partly out of hints should admit it.
+
+### What is deliberately still missing
+
+Labour. The BOM prices materials and stops, and says so on the screen. An
+invented hourly rate would flow straight into a quoted price, which is the
+furthest possible place for a made-up number to end up (Q38). Versioning is the
+other gap: a BOM is current-state, every change audited, and pinning a revision
+to the work order that used it is a table nobody needs until the first dispute
+about what a chair was supposed to contain (Q36).

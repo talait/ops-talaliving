@@ -14,7 +14,9 @@ import type { Attachment, AttachmentLink } from "@/services/documents/contracts"
 import type {
   Employee, AttendanceScan, DayMark, OvertimeSheet, OvertimeLine, PayrollRun,
 } from "@/services/hr/contracts";
-import type { WorkOrder, ProgressEntry } from "@/services/production/contracts";
+import type {
+  WorkOrder, ProgressEntry, Product, BomComponent,
+} from "@/services/production/contracts";
 
 export interface DemoUser extends User {
   modules: ModuleGrant[];
@@ -118,6 +120,9 @@ export interface DemoState {
   work_orders: WorkOrder[];
   /** Work done, append-only — a correction is a negative entry (A5). */
   production_progress: ProgressEntry[];
+  /** What we sell and make, and what each one is made of (D149). */
+  products: Product[];
+  bom_components: BomComponent[];
 
   audit_log: AuditRow[];
   outbox: OutboxRow[];

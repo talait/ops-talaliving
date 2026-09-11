@@ -164,11 +164,34 @@ export interface Item {
   last_purchased_at: string | null;
 }
 
+/** A project is the customer's order, and it is the dimension every other
+ *  service hangs things on: procurement buys **for** it, production makes
+ *  **for** it, the ledger spends **on** it (D149).
+ *
+ *  It lives here because it already did and because its **code** is what
+ *  crosses every seam — `project_code` on a work order, `project_id` on a
+ *  transaction. Who owns the table matters less than the code being stable,
+ *  which is why the code is fixed once and never edited.
+ */
 export interface Project {
   id: string;
   code: string;
   name: string;
   is_active: boolean;
+  /** Whose order it is. Blank for internal work — `STANDARD` is stock. */
+  client_name: string | null;
+  location: string | null;
+  /** The person who answers for it inside the company. */
+  pic: string | null;
+  started_on: string | null;
+  /** What was promised to the client. Not a production date — a work order
+   *  carries its own, and they are allowed to differ. */
+  target_date: string | null;
+  /** The agreed order value, whole rupiah. **Not an invoice and not a
+   *  quotation**: it is what the project is worth, for reading spend against.
+   *  Null where nothing has been agreed yet (Q37). */
+  contract_value: number | null;
+  note: string | null;
 }
 
 /* ------------------------------------------------------------------ */

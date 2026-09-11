@@ -1,10 +1,13 @@
 /** Implements `/api/v1/production` from `03-api.md`. */
 import { ok, invalid, notFound, type Result } from "@/services/_shared/envelope";
 import {
-  PROCESS_STAGES, type WorkOrder, type WorkOrderView, type ProgressEntry,
+  PROCESS_STAGES,
+  type WorkOrder, type WorkOrderView, type ProgressEntry, type ProductView,
 } from "@/services/production/contracts";
 import { getState, apply, newId, nextDocNumber, writeAudit, writeOutbox } from "../store";
-import { workOrderView, workOrderViews } from "../production-derive";
+import {
+  workOrderView, workOrderViews, productView, productViews,
+} from "../production-derive";
 import {
   latency, actingUser, requireModule, requireAuthority, conflict, replayed, remember,
 } from "./_kit";
@@ -263,4 +266,258 @@ export async function listProgress(woNo: string): Promise<Result<ProgressEntry[]
     .filter((p) => p.wo_id === wo.id)
     .sort((a, b) => b.work_date.localeCompare(a.work_date) || b.recorded_at.localeCompare(a.recorded_at));
   return ok(SERVICE, rows);
+}
+
+/* ------------------------------------------------------------------ */
+/* Master data: products and their bills of material                   */
+/* ------------------------------------------------------------------ */
+
+export async function listProducts(
+  opts: { include_inactive?: boolean } = {},
+): Promise<Result<ProductView[]>> {
+  await latency();
+  const rows = productViews(getState());
+  return ok(SERVICE, opts.include_inactive ? rows : rows.filter((p) => p.active));
+}
+
+export async function getProduct(productCode: string): Promise<Result<ProductView>> {
+  await latency();
+  const state = getState();
+  const p = state.products.find((x) => x.product_code === productCode);
+  if (!p) return notFound(SERVICE, "product_not_found", `No product ${productCode}.`);
+  return ok(SERVICE, productView(state, p));
+}
+
+/** Adding a product, or correcting one.
+ *
+ *  The code is set once and never edited: it is on the drawing, on the work
+ *  order and in every bill of material that references it, and a code that
+ *  moves is a reference that silently breaks (D149).
+ */
+export async function saveProduct(
+  input: {
+    product_code: string;
+    name: string;
+    category: string;
+    uom: string;
+    description?: string | null;
+    dimension?: string | null;
+    lead_time_days?: number | null;
+    active?: boolean;
+    note?: string | null;
+  },
+  idempotencyKey?: string,
+): Promise<Result<ProductView>> {
+  await latency();
+  const cached = replayed<ProductView>(SERVICE, "saveProduct", idempotencyKey);
+  if (cached) return cached;
+
+  const denied = requireModule(SERVICE, "production");
+  if (denied) return denied;
+
+  const code = input.product_code.trim().toUpperCase();
+  if (!code) {
+    return invalid(SERVICE, "code_required", "Kode produk dipakai di gambar dan di SPK.", { field: "product_code" });
+  }
+  if (!input.name.trim()) {
+    return invalid(SERVICE, "name_required", "Namanya apa?", { field: "name" });
+  }
+
+  const user = actingUser();
+  const existing = getState().products.find((p) => p.product_code === code);
+  apply((draft) => {
+    if (existing) {
+      const row = draft.products.find((p) => p.product_code === code);
+      if (!row) return;
+      Object.assign(row, {
+        name: input.name.trim(),
+        category: input.category.trim() || row.category,
+        uom: input.uom.trim() || row.uom,
+        description: input.description?.trim() ?? row.description,
+        dimension: input.dimension?.trim() ?? row.dimension,
+        lead_time_days: input.lead_time_days ?? row.lead_time_days,
+        active: input.active ?? row.active,
+        note: input.note?.trim() ?? row.note,
+      });
+      writeAudit(draft, {
+        service: SERVICE, entity: "product", entity_no: code,
+        action: "update", outcome: "ok", reason: null,
+        detail: { name: row.name, by: user.email },
+      });
+    } else {
+      draft.products.push({
+        id: newId("prd"), product_code: code,
+        name: input.name.trim(),
+        category: input.category.trim() || "Lain-lain",
+        uom: input.uom.trim() || "unit",
+        description: input.description?.trim() || null,
+        dimension: input.dimension?.trim() || null,
+        lead_time_days: input.lead_time_days ?? null,
+        active: input.active ?? true,
+        note: input.note?.trim() || null,
+      });
+      writeAudit(draft, {
+        service: SERVICE, entity: "product", entity_no: code,
+        action: "create", outcome: "ok", reason: null,
+        detail: { name: input.name.trim(), by: user.email },
+      });
+    }
+  });
+  const view = await getProduct(code);
+  if (view.data) remember(SERVICE, "saveProduct", idempotencyKey, view.data);
+  return view;
+}
+
+/** Putting a component on a bill of material, or changing its quantity.
+ *
+ *  The reference is a **public code** — a catalogue item or another product —
+ *  and it is not validated against the catalogue here. A workshop knows it
+ *  needs a steel frame before procurement has an item code for one, and
+ *  refusing the line would mean the BOM stays in somebody's head. The screen
+ *  shows unresolved codes plainly instead (A6, D149).
+ */
+export async function saveBomComponent(
+  input: {
+    product_code: string;
+    component_id?: string | null;
+    kind: "material" | "product";
+    ref_code: string;
+    qty: number;
+    uom: string;
+    waste_percent?: number;
+    note?: string | null;
+  },
+): Promise<Result<ProductView>> {
+  await latency();
+  const denied = requireModule(SERVICE, "production");
+  if (denied) return denied;
+
+  const state = getState();
+  const product = state.products.find((p) => p.product_code === input.product_code);
+  if (!product) return notFound(SERVICE, "product_not_found", `No product ${input.product_code}.`);
+
+  const ref = input.ref_code.trim().toUpperCase();
+  if (!ref) {
+    return invalid(SERVICE, "ref_required", "Komponennya apa?", { field: "ref_code" });
+  }
+  if (!input.qty || input.qty <= 0) {
+    return invalid(SERVICE, "qty_required", "Jumlah per unit harus lebih dari nol.", { field: "qty" });
+  }
+  if (input.kind === "product" && ref === product.product_code) {
+    return invalid(
+      SERVICE, "self_reference",
+      "Sebuah produk tidak bisa menjadi komponen dirinya sendiri.",
+      { field: "ref_code" },
+    );
+  }
+  const dup = state.bom_components.find(
+    (b) => b.product_id === product.id && b.ref_code === ref && b.id !== input.component_id,
+  );
+  if (dup) {
+    return conflict(
+      SERVICE, "already_on_bom",
+      `${ref} sudah ada di BOM ini — ubah jumlahnya, jangan tambah baris kedua.`,
+    );
+  }
+
+  const user = actingUser();
+  apply((draft) => {
+    const row = input.component_id
+      ? draft.bom_components.find((b) => b.id === input.component_id)
+      : null;
+    if (row) {
+      Object.assign(row, {
+        kind: input.kind, ref_code: ref, qty: input.qty,
+        uom: input.uom.trim() || row.uom,
+        waste_percent: input.waste_percent ?? row.waste_percent,
+        note: input.note?.trim() ?? row.note,
+      });
+    } else {
+      draft.bom_components.push({
+        id: newId("bom"), product_id: product.id,
+        kind: input.kind, ref_code: ref, qty: input.qty,
+        uom: input.uom.trim() || "pcs",
+        waste_percent: input.waste_percent ?? 0,
+        note: input.note?.trim() || null,
+      });
+    }
+    writeAudit(draft, {
+      service: SERVICE, entity: "bom", entity_no: product.product_code,
+      action: row ? "update_component" : "add_component", outcome: "ok",
+      reason: input.note?.trim() ?? null,
+      detail: { ref: ref, qty: input.qty, waste: input.waste_percent ?? 0, by: user.email },
+    });
+  });
+  return getProduct(product.product_code);
+}
+
+/** Taking a component off. An act with a name on it like any other — the BOM
+ *  is what a purchase request is built from, so "who removed the hinges" is a
+ *  question somebody will ask. */
+export async function removeBomComponent(
+  input: { product_code: string; component_id: string },
+): Promise<Result<ProductView>> {
+  await latency();
+  const denied = requireModule(SERVICE, "production");
+  if (denied) return denied;
+
+  const state = getState();
+  const product = state.products.find((p) => p.product_code === input.product_code);
+  if (!product) return notFound(SERVICE, "product_not_found", `No product ${input.product_code}.`);
+  const row = state.bom_components.find((b) => b.id === input.component_id);
+  if (!row) return notFound(SERVICE, "component_not_found", "Komponen itu tidak ada.");
+
+  const user = actingUser();
+  apply((draft) => {
+    draft.bom_components = draft.bom_components.filter((b) => b.id !== input.component_id);
+    writeAudit(draft, {
+      service: SERVICE, entity: "bom", entity_no: product.product_code,
+      action: "remove_component", outcome: "ok", reason: null,
+      detail: { ref: row.ref_code, qty: row.qty, by: user.email },
+    });
+  });
+  return getProduct(product.product_code);
+}
+
+/** What one production run of this product needs, in materials.
+ *
+ *  The bridge between the master data and the thing somebody actually does
+ *  with it: *twelve doors — what do I have to buy?* Quantities carry the waste
+ *  already, because the number to buy and the number in the drawing are
+ *  different numbers (D149).
+ */
+export async function materialsFor(
+  input: { product_code: string; qty: number },
+): Promise<Result<{
+  product_code: string;
+  qty: number;
+  lines: { ref_code: string; ref_name: string | null; kind: string; qty: number; uom: string; subtotal: number | null }[];
+  total: number | null;
+  unpriced: number;
+}>> {
+  await latency();
+  const state = getState();
+  const product = state.products.find((p) => p.product_code === input.product_code);
+  if (!product) return notFound(SERVICE, "product_not_found", `No product ${input.product_code}.`);
+  if (!input.qty || input.qty <= 0) {
+    return invalid(SERVICE, "qty_required", "Berapa unit?", { field: "qty" });
+  }
+
+  const view = productView(state, product);
+  const lines = view.components.map((c) => ({
+    ref_code: c.ref_code,
+    ref_name: c.ref_name,
+    kind: c.kind,
+    qty: Math.round(c.qty_with_waste * input.qty * 10_000) / 10_000,
+    uom: c.uom,
+    subtotal: c.subtotal == null ? null : c.subtotal * input.qty,
+  }));
+  const priced = lines.filter((l) => l.subtotal != null);
+  return ok(SERVICE, {
+    product_code: product.product_code,
+    qty: input.qty,
+    lines,
+    total: priced.length > 0 ? priced.reduce((a, l) => a + (l.subtotal ?? 0), 0) : null,
+    unpriced: lines.length - priced.length,
+  });
 }

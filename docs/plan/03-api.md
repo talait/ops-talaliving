@@ -169,6 +169,17 @@ PO and receiving:
 | POST | `/receipts/{receipt_no}/confirm` | `{delivery_note_attachment_id, qc_by?, qty_received?, condition?}` — procurement completing a reported arrival. **Only a confirmed receipt counts as value received.** The audit row carries `hours_after_arrival` |
 | GET | `/receipts/reported` | arrivals waiting for their tanda terima, oldest first — the morning queue |
 
+### Projects — master data
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/projects` | newest code first |
+| GET | `/projects/{code}` | |
+| POST | `/projects` | create or update: `{code, name, client_name?, location?, pic?, started_on?, target_date?, contract_value?, is_active?}`. The **code is never edited** — request lines, work orders and ledger rows all reference it as text at the seam (D149). 422 when the target date is before the start |
+
+`contract_value` is the agreed order value. It is **not** an invoice and not a
+quotation, and nothing in this system produces either yet (Q37).
+
 ## `accounting`
 
 | Method | Path | Notes |
@@ -295,6 +306,12 @@ anybody opening the app).
 | Method | Path | Notes |
 |---|---|---|
 | GET | `/stages` | the seven, seeded and ordered (Q35) |
+| GET | `/products` | `?include_inactive=1`. Each with its components priced and a material cost per unit — computed on read (D149) |
+| GET | `/products/{product_code}` | one product with its bill of material |
+| POST | `/products` | create or update by code. The **code is set once**: it is on the drawing, the work order and every BOM that references it |
+| POST | `/products/{product_code}/components` | add or change a component: `{kind: "material" \| "product", ref_code, qty, uom, waste_percent}`. 409 on a duplicate ref — change the quantity rather than adding a second row. The ref is **not** validated against the catalogue: a workshop knows it needs a steel frame before procurement has a code for one, and the screen shows unresolved codes plainly (A6) |
+| DELETE | `/products/{product_code}/components/{id}` | audited like any other act — the BOM is what a purchase request gets built from |
+| GET | `/products/{product_code}/materials?qty=12` | what a run of that size needs, **waste included**, with a total and a count of what could not be priced |
 | GET | `/work-orders` | `?include_done=1`. **Late first, then by due date** — the board's job is to put the thing somebody has to deal with at the top |
 | GET | `/work-orders/{wo_no}` | the order with per-stage progress, `current_stage`, `percent`, `days_left`, `late`, and the warnings in words |
 | POST | `/work-orders` | `{item_name, qty, uom, due_date, project_code?}`. **422 with no due date**: an order that cannot be late is one nobody can tell is late |

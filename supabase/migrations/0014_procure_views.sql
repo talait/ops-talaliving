@@ -420,6 +420,26 @@ create or replace view procure.v_round_summary as
         from procure.payment_round_lines group by round_id
     ) lc on lc.round_id = r.id;
 
+-- Which lines belong in a payment round: approved, not settled, and not
+-- already sitting in a round that is still live.
+--
+-- A line in a **closed** round that is still owed comes back; a line in a round
+-- that has frozen its numbers stays where it is. That rule is a derivation, so
+-- it lives here rather than inside `sync_round()` — which means the screen can
+-- show what the next round *would* pick up before anybody presses the button.
+create or replace view procure.v_round_eligible as
+  select l.id as line_id, l.line_no_full, cov.remaining
+    from procure.pr_lines l
+    join procure.v_line_coverage cov on cov.line_id = l.id
+    join procure.v_line_approval  ap on ap.line_id = l.id and ap.step = 'GOODS'
+   where l.removed_at is null
+     and ap.approved is true
+     and not cov.settled
+     and not exists (
+       select 1 from procure.payment_round_lines rl
+         join procure.payment_rounds r on r.id = rl.round_id
+        where rl.line_id = l.id and r.status <> 'CLOSED');
+
 -- ── purchase orders: two axes, never collapsed ────────────────────────────
 create or replace view procure.v_po_line_delivery as
   select pl.id as po_line_id, pl.po_id, pl.line_no, pl.description,
@@ -741,6 +761,7 @@ alter view procure.v_pr_line          set (security_invoker = on);
 alter view procure.v_open_lines       set (security_invoker = on);
 alter view procure.v_approval_queue   set (security_invoker = on);
 alter view procure.v_round_summary    set (security_invoker = on);
+alter view procure.v_round_eligible   set (security_invoker = on);
 alter view procure.v_po_line_delivery set (security_invoker = on);
 alter view procure.v_po_status        set (security_invoker = on);
 alter view procure.v_po_journey       set (security_invoker = on);

@@ -164,18 +164,18 @@ read. What is in it:
 | Module | Reads | Writes | Notes |
 |---|---|---|---|
 | `identity` | `me`, `listUsers` | `setModules`, `setAuthorities`, `signIn`, `signOut`, `recordSignIn` | **`actAs` is gone.** Against a real database it is an endpoint that lets anybody become anybody — not a feature with a guard missing, the absence of authentication. It stays in `src/demo`, where there is nothing to impersonate |
-| `procurement` | `listOpenLines`, `listAllLines`, `queue`, `decidedLines`, `listVariances`, `listLinesForWorkOrder`, `lineHistory`, `listVendors`, `listVendorViews`, `listItems`, `listItemViews`, `listUom`, `listCategories`, `listProjects`, `listRounds`, `getRound`, `listVendorJourneys`, `getVendorJourney`, `listReported` | `approveLine`, `removeLine`, `noteLine`, `explainVariance`, `submitPr`, `answerFromChat`, `curateVendor`, `mergeVendor`, `approveRound`, `transferRound`, `approvePo`, `issuePo`, `amendPoLine`, `closePo`, `confirmReceipt` | every refusal is the database's; nothing is computed or reworded in TypeScript |
+| `procurement` | the board (`listOpenLines`, `listAllLines`, `queue`, `decidedLines`, `listVariances`, `listLinesForWorkOrder`, `lineHistory`), the documents (`listPr`, `getPr`, `getPo`, `listPo`, `getPoDetail`), reference (`listVendors`, `listVendorViews`, `listItems`, `listItemViews`, `listUom`, `listCategories`, `listProjects`), money (`listRounds`, `getRound`, `roundEligible`, `listVendorJourneys`, `getVendorJourney`, `listReported`) | deciding (`approveLine`, `noteLine`, `explainVariance`, `answerFromChat`, `requestApproval`), the chain (`createPr`, `quickAddLine`, `addDraftLine`, `updateLine`, `submitPr`, `removeLine`), rounds (`syncRound`, `approveRound`, `transferRound`, `closeRound`), orders (`createPo`, `requestPoApproval`, `approvePo`, `issuePo`, `amendPoLine`, `closePo`, `setExpectedDelivery`, `markPoResent`), receiving (`createReceipt`, `confirmReceipt`), reference (`createVendor`, `curateVendor`, `mergeVendor`, `createItem`, `curateItem`, `updateVendorContact`) | every refusal is the database's; nothing is computed or reworded in TypeScript |
 
-**Not yet ported**, and each one needs a seam before its client function is
-worth writing: `createPr` / `quickAddLine` / `addDraftLine` / `updateLine`
-(document and line creation, including minting `line_no_full` through
-`core.next_doc_number`), `requestApproval` / `answerBatch` (the send side of the
-chat road — the answer side is done), `syncRound` / `closeRound`, `createPo` /
-`requestPoApproval` / `setExpectedDelivery` / `markPoResent`, `createReceipt`,
-`createVendor` / `createItem` / `curateItem` / `updateVendorContact`,
-`saveProject` and the project-line functions, `getPoDetail` / `getPo` /
-`listPo` (these need a `v_po_detail` assembling terms, amendments, payments and
-documents into one object), `whereToBuy`, `lineForPosting`, `listPr` / `getPr`.
+**`procurement` is now ported end to end.** Every function in `02-api.md`'s
+inventory that carries a decision or creates a row has a seam, and every read
+has a view. What remains unported is the small tail that needs another service
+first: `paymentsForVendor` and `lineForPosting` want `acct`'s views, and
+`saveProject` / `listProjectLines` / `saveProjectLine` / `removeProjectLine`
+belong to `project` rather than to procurement's own chain.
+
+`whereToBuy` reads `v_item_sources`, which exists; it needs a search predicate
+rather than a seam, and that is a one-liner on the client when a screen asks
+for it.
 
 ### The one line this cannot change itself
 

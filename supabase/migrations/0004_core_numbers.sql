@@ -41,6 +41,23 @@ begin
   return p_prefix || '-' || to_char(d, 'YY-MM-DD') || '_' || lpad(n::text, width, '0');
 end $$;
 
+-- A document number is meant to be read out on the phone. A **token** is the
+-- opposite: it identifies a request and must be unguessable, because whoever
+-- holds it can answer that request (D69).
+--
+-- Two uuids rather than `gen_random_bytes`, which lives in pgcrypto. Supabase
+-- ships pgcrypto and a bare Postgres does not, and a seam that only works on
+-- one of them is a seam whose behaviour depends on where it is running —
+-- exactly what the local harness exists to rule out. `gen_random_uuid()` has
+-- been core since Postgres 13 and carries 122 bits of entropy; two of them is
+-- past any argument.
+create or replace function core.new_token(p_prefix text default 'tok')
+returns text language sql volatile as $$
+  select p_prefix || '_'
+      || replace(gen_random_uuid()::text, '-', '')
+      || replace(gen_random_uuid()::text, '-', '')
+$$;
+
 -- Every prefix in use, so an unknown one is caught here rather than appearing
 -- in a document number nobody recognises.
 create table core.doc_prefixes (
@@ -58,7 +75,12 @@ insert into core.doc_prefixes (prefix, what) values
   ('pyr',  'payroll run'),
   ('spk',  'work order'),
   ('lbr',  'overtime sheet'),
-  ('kyu',  'timber purchase');
+  ('kyu',  'timber purchase'),
+  -- A receiving report is a document somebody signs and files, so it gets a
+  -- number like every other one. The demo minted `rcv-…` by hand; a prefix
+  -- nobody has registered is a number nobody recognises, which is what this
+  -- table exists to prevent.
+  ('rcv',  'receiving report');
 
 alter table core.doc_numbers   enable row level security;
 alter table core.doc_prefixes  enable row level security;
@@ -66,4 +88,5 @@ create policy prefixes_read on core.doc_prefixes for select to authenticated usi
 -- No policy on doc_numbers: it is written only by the definer function above.
 
 grant select on core.doc_prefixes to authenticated;
-grant execute on function core.next_doc_number(text, timestamptz) to authenticated;
+grant execute on function core.next_doc_number(text, timestamptz), core.new_token(text)
+  to authenticated;

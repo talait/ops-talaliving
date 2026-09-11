@@ -27,11 +27,39 @@ import type {
   Vendor, VendorView, Item, ItemView, Uom, ItemCategory, Project,
   PrLineView, PrApproval, LineNote, LineVariance, ApprovalRequest,
   VendorJourney, RoundSummary, VarianceReason, Channel,
+  PoDetail, UomCode, PrCategory,
 } from "@/services/procurement/contracts";
 import { supabaseBrowser } from "@/lib/supabase/client";
-import { fail, fromSeam, fromRows, ok, type Result } from "./_kit";
+import { fail, fromSeam, fromRows, fromPage, notFound, ok, type Result } from "./_kit";
 
 const SERVICE = "procurement" as const;
+
+/** What a new line looks like going in.
+ *
+ *  Declared here rather than imported, because the demo's copy lives in
+ *  `src/demo/api/procurement.ts` and this module must not depend on the demo —
+ *  the whole point is that either can be swapped out for the other. The shape
+ *  is identical, and it belongs in `src/services/procurement/contracts.ts`
+ *  where both can read it; that move is logged as **C5** in
+ *  `docs/plan/phase-2/01-schema.md` for the design session to apply.
+ */
+export interface NewLineInput {
+  item_id?: string | null;
+  description: string;
+  qty?: number | null;
+  uom?: UomCode | null;
+  unit_price?: number | null;
+  /** Set it outright for a line with no quantity — a service, a delivery
+   *  charge, a lump sum the vendor quoted. Left off, the database derives it
+   *  from qty × price, and leaves it alone when either is missing (D75). */
+  item_total?: number | null;
+  vendor_id?: string | null;
+  category?: PrCategory | null;
+  purpose?: string | null;
+  need_by?: string | null;
+  /** The work order whose BOM produced this line (D151). */
+  source_wo_no?: string | null;
+}
 
 /* ------------------------------------------------------------------ */
 /* The board                                                           */
@@ -341,6 +369,241 @@ export async function submitPr(
   return fromSeam(SERVICE, data, error);
 }
 
+/* ------------------------------------------------------------------ */
+/* Creating                                                            */
+/* ------------------------------------------------------------------ */
+
+/** The whole request in one call.
+ *
+ *  `lines` goes down as a jsonb array rather than as N round trips, because a
+ *  request half-written by a phone that lost signal is a row somebody has to
+ *  find and finish. One transaction, or none of it.
+ *
+ *  `project_code`, never `project_id` — the code is what crosses every seam in
+ *  this system (ADR-004), and it is what the caller already has.
+ */
+export async function createPr(
+  input: { project_code?: string | null; lines: NewLineInput[] },
+  idempotencyKey?: string,
+): Promise<Result<{ doc_no: string; status: string; lines: number }>> {
+  const { data, error } = await supabaseBrowser().rpc("create_pr", {
+    p_lines: input.lines,
+    p_project_code: input.project_code ?? null,
+    p_doc_type: "PR",
+    p_key: idempotencyKey ?? null,
+  });
+  return fromSeam(SERVICE, data, error);
+}
+
+/** One item, asked for and submitted in a single act — for the meeting itself,
+ *  where going through the full create-then-submit form loses the room (D73).
+ *  Both halves happen inside one database transaction, so there is no window in
+ *  which the request exists and nobody has been asked. */
+export async function quickAddLine(
+  input: NewLineInput & { project_code?: string | null },
+  idempotencyKey?: string,
+): Promise<Result<PrLineView>> {
+  const { project_code, ...line } = input;
+  const { data, error } = await supabaseBrowser().rpc("quick_add_line", {
+    p_line: line, p_project_code: project_code ?? null, p_key: idempotencyKey ?? null,
+  });
+  const res = fromSeam<{ line_no: string }>(SERVICE, data, error);
+  if (res.error) return res;
+  return getLine(res.data.line_no);
+}
+
+export async function addDraftLine(
+  docNo: string, input: NewLineInput,
+): Promise<Result<PrLineView>> {
+  const { data, error } = await supabaseBrowser().rpc("add_draft_line", {
+    p_doc_no: docNo, p_line: input,
+  });
+  const res = fromSeam<{ line_no: string }>(SERVICE, data, error);
+  if (res.error) return res;
+  return getLine(res.data.line_no);
+}
+
+/** Editing what was asked for — and the three points past which it is not an
+ *  edit any more: approved, paid, or removed. All three refusals are the
+ *  database's. */
+export async function updateLine(
+  lineNo: string, input: Partial<NewLineInput>,
+): Promise<Result<PrLineView>> {
+  const { data, error } = await supabaseBrowser().rpc("update_line", {
+    p_line_no: lineNo, p_patch: input,
+  });
+  const res = fromSeam<unknown>(SERVICE, data, error);
+  if (res.error) return res;
+  return getLine(lineNo);
+}
+
+/** Ask leadership. The question goes to whoever holds `approve_goods` — not to
+ *  a name in a config file, so if the authority moves the notification follows
+ *  it (D19). A line with nothing behind it is refused before the card is sent,
+ *  and the refusal names which lines (D125). */
+export async function requestApproval(
+  input: { line_nos: string[]; to_email?: string | null; notes?: Record<string, string | null> },
+  idempotencyKey?: string,
+): Promise<Result<{ batch_no: string; token: string; sent_to: string; lines: string[] }>> {
+  const { data, error } = await supabaseBrowser().rpc("request_approval", {
+    p_line_nos: input.line_nos,
+    p_to_email: input.to_email ?? null,
+    p_notes: input.notes ?? {},
+    p_key: idempotencyKey ?? null,
+  });
+  return fromSeam(SERVICE, data, error);
+}
+
+export async function createVendor(
+  input: { name: string }, idempotencyKey?: string,
+): Promise<Result<{ code: string; name: string; is_curated: boolean }>> {
+  const { data, error } = await supabaseBrowser().rpc("create_vendor", {
+    p_name: input.name, p_key: idempotencyKey ?? null,
+  });
+  return fromSeam(SERVICE, data, error);
+}
+
+export async function createItem(
+  input: { name: string; category_code?: string; base_uom?: string; kind?: "goods" | "service" },
+  idempotencyKey?: string,
+): Promise<Result<{ code: string; name: string; is_curated: boolean }>> {
+  const { data, error } = await supabaseBrowser().rpc("create_item", {
+    p_name: input.name,
+    p_category_code: input.category_code ?? "uncurated",
+    p_base_uom: input.base_uom ?? "pcs",
+    p_kind: input.kind ?? "goods",
+    p_key: idempotencyKey ?? null,
+  });
+  return fromSeam(SERVICE, data, error);
+}
+
+export async function curateItem(code: string, curated: boolean): Promise<Result<unknown>> {
+  const { data, error } = await supabaseBrowser().rpc("curate_item", {
+    p_code: code, p_curated: curated,
+  });
+  return fromSeam(SERVICE, data, error);
+}
+
+export async function updateVendorContact(
+  code: string,
+  input: {
+    pic_name?: string | null; pic_phone?: string | null;
+    phone?: string | null; address?: string | null;
+    bank_account?: string | null; bank_account_secondary?: string | null;
+    npwp?: string | null;
+  },
+): Promise<Result<unknown>> {
+  const { data, error } = await supabaseBrowser().rpc("update_vendor_contact", {
+    p_code: code,
+    p_pic_name: input.pic_name ?? null,
+    p_pic_phone: input.pic_phone ?? null,
+    p_phone: input.phone ?? null,
+    p_address: input.address ?? null,
+    p_bank_account: input.bank_account ?? null,
+    p_bank_account_secondary: input.bank_account_secondary ?? null,
+    p_npwp: input.npwp ?? null,
+  });
+  return fromSeam(SERVICE, data, error);
+}
+
+/** Always a DRAFT. An order is a promise made to a supplier in the company's
+ *  name, so leadership confirms it before it is sent — which means creating one
+ *  cannot also send it (D132). */
+export async function createPo(
+  input: {
+    vendor_code: string;
+    lines: { description: string; qty: number; uom: string; unit_price: number }[];
+    dp_percent?: number | null;
+    note?: string | null;
+    expected_delivery?: string | null;
+  },
+  idempotencyKey?: string,
+): Promise<Result<{ po_no: string; status: string; lines: number }>> {
+  const { data, error } = await supabaseBrowser().rpc("create_po", {
+    p_vendor_code: input.vendor_code,
+    p_lines: input.lines,
+    p_dp_percent: input.dp_percent ?? null,
+    p_note: input.note ?? null,
+    p_expected_delivery: input.expected_delivery ?? null,
+    p_key: idempotencyKey ?? null,
+  });
+  return fromSeam(SERVICE, data, error);
+}
+
+export async function requestPoApproval(poNo: string): Promise<Result<unknown>> {
+  const { data, error } = await supabaseBrowser().rpc("request_po_approval", { p_po_no: poNo });
+  return fromSeam(SERVICE, data, error);
+}
+
+export async function setExpectedDelivery(poNo: string, date: string): Promise<Result<unknown>> {
+  const { data, error } = await supabaseBrowser().rpc("set_expected_delivery", {
+    p_po_no: poNo, p_date: date,
+  });
+  return fromSeam(SERVICE, data, error);
+}
+
+export async function markPoResent(poNo: string): Promise<Result<unknown>> {
+  const { data, error } = await supabaseBrowser().rpc("mark_po_resent", { p_po_no: poNo });
+  return fromSeam(SERVICE, data, error);
+}
+
+/** The photograph is always required; the signed tanda terima is what turns the
+ *  report into a confirmation. Sending only the photo is not a failure — it is
+ *  the night shift doing the right thing, and the row lands as REPORTED and
+ *  counts for nothing until somebody signs for it (D131). */
+export async function createReceipt(
+  input: {
+    line_no?: string | null;
+    po_line_id?: string | null;
+    qty_received: number;
+    condition: string;
+    documents: { attachment_id: string; kind: string }[];
+    qc_by?: string | null;
+    note?: string | null;
+  },
+  idempotencyKey?: string,
+): Promise<Result<{ receipt_no: string; status: string; notified: boolean }>> {
+  const { data, error } = await supabaseBrowser().rpc("create_receipt", {
+    p_qty: input.qty_received,
+    p_condition: input.condition,
+    p_documents: input.documents,
+    p_line_no: input.line_no ?? null,
+    p_po_line_id: input.po_line_id ?? null,
+    p_qc_by: input.qc_by ?? null,
+    p_note: input.note ?? null,
+    p_key: idempotencyKey ?? null,
+  });
+  return fromSeam(SERVICE, data, error);
+}
+
+/** Roll everything still owed into the open round, opening one if there is
+ *  none. Nothing to roll is a `noop` — a successful nothing-happened, which is
+ *  a better answer than a 200 that looks like work. */
+export async function syncRound(): Promise<Result<{ round_no: string; added: number }>> {
+  const { data, error } = await supabaseBrowser().rpc("sync_round");
+  return fromSeam(SERVICE, data, error);
+}
+
+/** Closing does not refuse over a line still owed: that line comes back in the
+ *  next round through `syncRound`, which is how it stays somebody's problem
+ *  without anybody carrying it forward by hand. The count comes back so the
+ *  screen can say so. */
+export async function closeRound(
+  roundNo: string, idempotencyKey?: string,
+): Promise<Result<{ round_no: string; status: string; still_owed: number }>> {
+  const { data, error } = await supabaseBrowser().rpc("close_round", {
+    p_round_no: roundNo, p_key: idempotencyKey ?? null,
+  });
+  return fromSeam(SERVICE, data, error);
+}
+
+/** What the next round would pick up, before anybody presses the button. */
+export async function roundEligible(): Promise<Result<{ line_no_full: string; remaining: number }[]>> {
+  const { data, error } = await supabaseBrowser()
+    .from("v_round_eligible").select("line_no_full, remaining");
+  return fromRows(SERVICE, data as { line_no_full: string; remaining: number }[], error);
+}
+
 /** The answer coming back from chat. **Not called from a screen** — it is here
  *  so the webhook handler that verifies Google's signature has one place to land,
  *  and so that `answered_by_email` is visibly a parameter rather than something
@@ -586,6 +849,81 @@ export async function listNotes(lineNo: string): Promise<Result<LineNote[]>> {
     .eq("line_id", (line as { id: string }).id)
     .order("recorded_at", { ascending: true });
   return fromRows<LineNote[]>(SERVICE, data as LineNote[], error);
+}
+
+/* ------------------------------------------------------------------ */
+/* The drawers                                                         */
+/* ------------------------------------------------------------------ */
+
+/** Everything about one order, in one call.
+ *
+ *  `v_po_detail` assembles the lines, their receipts, the terms with their
+ *  BLOCKED guard, the amendments, the payments and the close blockers into a
+ *  single row. A drawer that needs three calls is a drawer that renders in
+ *  three stages — and one of the three eventually fails and leaves it
+ *  half-drawn.
+ */
+export async function getPoDetail(poNo: string): Promise<Result<PoDetail>> {
+  const { data, error } = await supabaseBrowser()
+    .from("v_po_detail").select("*").eq("po_no", poNo).maybeSingle();
+  if (error) return fail(SERVICE, error);
+  if (!data) return notFound(SERVICE, "po_not_found", `Order ${poNo} not found.`);
+  return ok(SERVICE, data as unknown as PoDetail);
+}
+
+export async function listPo(): Promise<Result<PoDetail[]>> {
+  const { data, error } = await supabaseBrowser()
+    .from("v_po_detail").select("*").order("created_at", { ascending: false });
+  return fromRows<PoDetail[]>(SERVICE, data as unknown as PoDetail[], error);
+}
+
+export async function getPo(poNo: string): Promise<Result<PoDetail>> {
+  return getPoDetail(poNo);
+}
+
+/** The other reading of a request: what arrived together, from whom, on what
+ *  day. The board is line-first (D48); this is the document. */
+export async function listPr(
+  opts: { limit?: number; offset?: number } = {},
+): Promise<Result<PrDocumentRow[]>> {
+  const limit = opts.limit ?? 50;
+  const offset = opts.offset ?? 0;
+  const { data, error, count } = await supabaseBrowser()
+    .from("v_pr_document").select("*", { count: "exact" })
+    .order("created_at", { ascending: false })
+    .range(offset, offset + limit - 1);
+  return fromPage<PrDocumentRow>(
+    SERVICE, data as PrDocumentRow[], count, error, limit, offset);
+}
+
+export async function getPr(docNo: string): Promise<Result<PrDocumentRow>> {
+  const { data, error } = await supabaseBrowser()
+    .from("v_pr_document").select("*").eq("doc_no", docNo).maybeSingle();
+  if (error) return fail(SERVICE, error);
+  if (!data) return notFound(SERVICE, "pr_not_found", `Request ${docNo} not found.`);
+  return ok(SERVICE, data as PrDocumentRow);
+}
+
+/** `v_pr_document`, as it comes back. Declared here rather than in `contracts`
+ *  because the design session owns that file — the shape goes through the
+ *  protocol in `docs/plan/phase-2/README.md` when the screens need it. */
+export interface PrDocumentRow {
+  id: string;
+  doc_no: string;
+  doc_type: "PR" | "FUND";
+  status: string;
+  requested_by: string;
+  requested_by_name: string;
+  project_id: string | null;
+  project_code: string | null;
+  project_name: string | null;
+  created_at: string;
+  submitted_at: string | null;
+  line_count: number;
+  requested_total: number;
+  approved_total: number;
+  paid_total: number;
+  open_lines: number;
 }
 
 export async function listPendingRequests(): Promise<Result<ApprovalRequest[]>> {

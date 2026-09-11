@@ -30,7 +30,8 @@
                    Postgres + Auth + Storage + RLS
 ```
 
-Seven services in v1 — the five below plus `hr` (D136) and `production` (D148). Each one is
+Eight services in v1 — the five below plus `hr` (D136), `production` (D148)
+and `inventory` (D153). Each one is
 addressed only through
 `/api/v1/<service>/…`, configured by a per-service base URL, and reachable
 from anything that speaks HTTP.

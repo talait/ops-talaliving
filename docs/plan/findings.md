@@ -2064,3 +2064,60 @@ says so: divergence appears later, when a quantity is edited, a vendor quotes
 differently, or a second request goes in because something ran out. Which is
 the honest description of where an overrun actually comes from, and a system
 that showed a variance at draft time would be inventing one.
+
+---
+
+## F46 — the cheapest invoice was the most expensive wood
+
+The owner asked for timber to be counted from log to board, with total cubic
+metres set against what each purchase cost, per vendor. Building it produced a
+number that is worth the whole module.
+
+### The arithmetic
+
+Two suppliers, same species, same sawyer:
+
+| | Rp / m³ log | Rendemen | **Rp / m³ papan** |
+|---|---|---|---|
+| CV KAYU MANIS SELATAN | **15.507.497** | 44,8% | 34.630.228 |
+| CV SUMBER KAYU JATI | 18.181.818 | 61,4% | **29.554.050** |
+
+Kayu Manis is **Rp 2,7 juta cheaper** per cubic metre of log and **Rp 5,1 juta
+dearer** per cubic metre of wood that can actually go into a table. Every
+figure in the left column is on an invoice. Every figure in the right column
+requires measuring what came out of the saw, and without it the business would
+keep buying the wrong logs while believing it was saving money.
+
+That is the entire justification for an eighth service.
+
+### Three rules the numbers forced
+
+**A partly-sawn load must not set a price.** `kyu-26-08-26_01` has three of its
+five logs cut. Dividing its boards by all five logs reads as 39% yield when the
+sawyer is getting 61%; dividing the whole invoice by those boards prices the
+wood half again too high. So yield and cost-per-board-metre are computed over
+**the logs actually sawn and their share of the invoice**, and the load says in
+words how much is still in the yard.
+
+**Vendors compare within one species.** The first version summed each vendor's
+timber into one row and Kayu Manis came out at Rp 12,9 juta per log metre —
+because their mahoni, at a third of the price of jati, was averaged in with it.
+That made the cheaper *species* look like a cheaper *supplier*. Splitting by
+vendor **and** species fixed it, and it is the same category error the project
+cost report avoids by never subtracting the ledger's project total from a
+materials projection.
+
+**The seller's number is kept, not corrected.** Our measurement of the July
+load came out 0,16 m³ *below* what was invoiced. The instinct is to overwrite
+one with the other. But the difference is the conversation with the vendor, and
+a system that stores a single figure has already lost that argument. Both are
+recorded and the gap is stated.
+
+### And the one that is deliberately not built
+
+The board list is what came **off the saw**, not what is left in the rack.
+Nothing draws it down as production consumes it (Q40), and the screen says so
+in as many words. A stock figure that is never decremented is a lie; one
+decremented by guesswork is a worse lie, because it looks maintained. What is
+missing is not a table — the BOM already knows what a run should take — it is
+somebody in the workshop writing down what was actually pulled off the pile.

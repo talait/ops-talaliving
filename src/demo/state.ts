@@ -11,6 +11,7 @@ import type {
   CashComponent, CashOverride, CashSettlement,
 } from "@/services/accounting/contracts";
 import type { Attachment, AttachmentLink } from "@/services/documents/contracts";
+import type { LogPurchase, LogPiece, SawnBoard } from "@/services/inventory/contracts";
 import type {
   Employee, AttendanceScan, DayMark, OvertimeSheet, OvertimeLine, PayrollRun,
 } from "@/services/hr/contracts";
@@ -125,6 +126,13 @@ export interface DemoState {
   /** What we sell and make, and what each one is made of (D149). */
   products: Product[];
   bom_components: BomComponent[];
+
+  /* --- inventory: timber ------------------------------------------- */
+  /** Logs are bought by the load and used as boards — two quantities with a
+   *  saw between them (D153). */
+  log_purchases: LogPurchase[];
+  log_pieces: LogPiece[];
+  sawn_boards: SawnBoard[];
 
   audit_log: AuditRow[];
   outbox: OutboxRow[];

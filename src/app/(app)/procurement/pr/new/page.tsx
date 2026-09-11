@@ -10,7 +10,7 @@ import { NumberInput } from "@/components/ui/number-input";
 import { MoneyInput } from "@/components/ui/money-input";
 import { useLoad } from "@/components/ui/loaded";
 import { formatIDR, formatNumber } from "@/lib/format";
-import { procurement } from "@/demo/api";
+import { procurement, production } from "@/demo/api";
 import {
   UNITS, PR_CATEGORIES, type UomCode, type PrCategory,
 } from "@/services/procurement/contracts";
@@ -44,6 +44,8 @@ interface DraftLine {
   category: PrCategory;
   purpose: string;
   need_by: string;
+  /** The work order this line is for, when it is for one (D152). */
+  source_wo_no: string;
 }
 
 /* The key is per-form state, not module state.
@@ -58,6 +60,7 @@ const blankLine = (key: string): DraftLine => ({
   key,
   item_id: "", description: "", qty: 1, uom: "pcs",
   unit_price: 0, vendor_id: "", category: "RAW MATERIAL", purpose: "", need_by: "",
+  source_wo_no: "",
 });
 
 export default function NewPurchaseRequestPage() {
@@ -74,6 +77,10 @@ export default function NewPurchaseRequestPage() {
   const [items, reloadItems] = useLoad(() => procurement.listItemViews({ curated: true }), []);
   const [vendors, reloadVendors] = useLoad(() => procurement.listVendors({ curated: true }), []);
   const [projects] = useLoad(() => procurement.listProjects(), []);
+  /* What is actually on the floor right now. A request line can name one, and
+     then it is not "plywood" — it is plywood for the BABY ISLAND tables, which
+     is what makes it countable against a projection later (D152). */
+  const [wos] = useLoad(() => production.listWorkOrders(), []);
 
   const itemOptions: ComboboxOption[] = items.status === "ready"
     ? items.data.map((i) => ({
@@ -132,6 +139,7 @@ export default function NewPurchaseRequestPage() {
         category: l.category,
         purpose: l.purpose.trim() || null,
         need_by: l.need_by || null,
+        source_wo_no: l.source_wo_no || null,
       })),
     });
     if (res.error) { setSaving(false); toast("critical", "Not saved", res.error.message); return; }
@@ -255,6 +263,48 @@ export default function NewPurchaseRequestPage() {
                     The one field that turns a price into a decision. Each item can be
                     for a different job — that is why it lives here and not on the
                     request as a whole.
+                  </p>
+                </div>
+
+                {/* Which job on the floor. Optional, and worth asking for:
+                    a line that names a work order can be counted against that
+                    order's BOM projection later, and one that does not cannot
+                    (D152). */}
+                <div>
+                  <label className="block text-xs text-slate-500" htmlFor={`wo-${l.key}`}>
+                    For which job in production
+                  </label>
+                  <select
+                    id={`wo-${l.key}`}
+                    value={l.source_wo_no}
+                    onChange={(e) => {
+                      const w = wos.status === "ready"
+                        ? wos.data.find((x) => x.wo_no === e.target.value)
+                        : null;
+                      patch(l.key, {
+                        source_wo_no: e.target.value,
+                        /* Fill the purpose if it is still blank: "for the BABY
+                           ISLAND tables" is what an approver reads. */
+                        purpose: l.purpose.trim() || (w
+                          ? `${w.item_name} — ${w.wo_no}${w.project_code ? ` · proyek ${w.project_code}` : ""}`
+                          : l.purpose),
+                      });
+                    }}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-brand-400 focus:outline-none"
+                  >
+                    <option value="">— not tied to a job —</option>
+                    {wos.status === "ready" && wos.data.map((w) => (
+                      <option key={w.wo_no} value={w.wo_no}>
+                        {w.item_name} · {w.wo_no}
+                        {w.project_code ? ` · ${w.project_code}` : ""}
+                        {` · jatuh tempo ${w.due_date}`}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    Only jobs that are open. Naming one is what lets this purchase be
+                    counted against that job&rsquo;s BOM projection at the end — leave it
+                    empty for stock, office and anything not for a specific order.
                   </p>
                 </div>
 

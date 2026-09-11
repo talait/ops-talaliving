@@ -1455,6 +1455,81 @@ authority (D147).
 
 ---
 
+## Schema `inv` — timber
+
+An eighth service (D153), and the narrowest one: it exists because **a cubic
+metre of log is not a cubic metre of wood**, and every figure the business
+needs about timber lives in the gap between them.
+
+```mermaid
+erDiagram
+    log_purchases ||--o{ log_pieces : "delivered"
+    log_purchases ||--o{ sawn_boards : "yielded"
+    log_pieces ||--o{ sawn_boards : "cut from"
+
+    log_purchases {
+        uuid id PK
+        text purchase_no UK "kyu-26-07-12_01"
+        uuid vendor_id FK "procure.vendors, at the seam"
+        text trx_no "the ledger row that paid, by public id"
+        text pr_line_no
+        date received_on
+        text species "Jati, Mahoni - the workshop's own word"
+        bigint total_cost "the invoice. every Rp/m3 divides this"
+        numeric claimed_m3 "what the SELLER said - kept beside ours"
+        log_measure_t measure "round|square - 21 percent apart (Q39)"
+        text note
+    }
+    log_pieces {
+        uuid id PK
+        uuid purchase_id FK
+        text tag "the paint mark on the end"
+        numeric diameter_cm "average of both ends"
+        numeric length_cm
+        date sawn_on "null while it is still in the yard"
+        text note
+    }
+    sawn_boards {
+        uuid id PK
+        uuid purchase_id FK
+        uuid log_id FK "null - a day's sawing is usually one pile"
+        int thickness_mm
+        int width_mm
+        int length_mm
+        int qty
+        date sawn_on
+        text grade "A, B, reject - free text"
+        text note
+    }
+```
+
+| Constraint | Why |
+|---|---|
+| `log_purchases.total_cost` NOT NULL, > 0 | without it there is no price per m³, which is the only reason the record exists |
+| `log_pieces` UNIQUE `(purchase_id, tag)` | the paint mark identifies the stick |
+| `sawn_boards` CHECK every dimension > 0 and `qty` > 0 | |
+| `claimed_m3` never overwritten by our measurement | the difference between the two is the conversation with the vendor; keeping one number loses the argument (D153) |
+
+### Views
+
+| View | Answers |
+|---|---|
+| `v_log_purchase` | per load: `log_m3` (π/4 × d² × L, or d² × L where the purchase says `square`), `sawn_m3`, `unsawn_m3`, `yield_percent`, `cost_per_log_m3`, `cost_per_sawn_m3`, the gap against `claimed_m3`, and the warnings in words |
+| `v_timber_by_vendor` | per vendor **and species**: the same figures summed. `cost_per_sawn_m3` is the column that decides a supplier |
+
+Two rules in those views carry all the weight:
+
+**Yield and `cost_per_sawn_m3` are computed over the logs actually sawn**, and
+over their share of the invoice. A load with three of five logs cut would
+otherwise read as 39% yield when the sawyer is getting 61%, and its wood would
+price half again too high.
+
+**Vendors are compared within one species.** One vendor's mahoni against
+another's jati is two different woods; averaging them per vendor makes whoever
+sells the cheaper species look like the better supplier of the dearer one.
+
+---
+
 ## Evidence: the main road and the exception road
 
 ADR-010 inverts how a document reaches the system, and the schema has to make
@@ -1565,11 +1640,12 @@ not have received the right environment variable.
 0015_hr_people.sql           employees + RLS
 0016_hr_attendance.sql       attendance_imports, attendance_scans, day_marks + RLS
 0017_hr_payroll.sql          overtime_claims, payroll_runs + RLS
-0018_prod_master.sql         products, bom_components + RLS
-0019_prod_orders.sql         process_stages (seed), work_orders + RLS
-0020_prod_progress.sql       progress_entries + RLS
-0021_views.sql               every v_* above
-0022_seams.sql               post_transaction(), allocate_payment(), audit triggers on those two only
+0018_inv_timber.sql          log_purchases, log_pieces, sawn_boards + RLS
+0019_prod_master.sql         products, bom_components + RLS
+0020_prod_orders.sql         process_stages (seed), work_orders + RLS
+0021_prod_progress.sql       progress_entries + RLS
+0022_views.sql               every v_* above
+0023_seams.sql               post_transaction(), allocate_payment(), audit triggers on those two only
 ```
 
 Additive migrations may be applied by the agent after a dry run. **Destructive

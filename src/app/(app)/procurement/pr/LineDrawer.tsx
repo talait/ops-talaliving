@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { useEffect, useRef, useState } from "react";
 import { Paperclip, Trash2, Pencil, Save, Upload, FileText } from "lucide-react";
 import { Badge, Button, Progress } from "@/components/ui/primitives";
@@ -151,6 +153,13 @@ export function LineDrawer({
               header would read "Approved and paid" over a Rp 225.000 overpayment. */}
           {line.variance.material && !line.variance.explanation && (
             <Badge tone="red">difference not explained</Badge>
+          )}
+          {/* Which job on the floor this was bought for. It is what lets the
+              purchase be counted against that job's BOM projection (D152). */}
+          {line.source_wo_no && (
+            <Link href="/produksi/jadwal">
+              <Badge tone="slate">untuk {line.source_wo_no}</Badge>
+            </Link>
           )}
         </div>
 

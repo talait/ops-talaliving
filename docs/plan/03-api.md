@@ -6,7 +6,7 @@
 > status codes, so screens are written once. When Phase 2 arrives, the demo
 > module is replaced by `fetch` and no screen changes.
 
-Seven services — five from D5, plus `hr` (D136) and `production` (D148). Each is independently
+Eight services — five from D5, plus `hr` (D136), `production` (D148) and `inventory` (D153). Each is independently
 addressable, independently documented, and could be moved to its own host by
 changing one environment variable (ADR-001). None of them imports another.
 
@@ -18,9 +18,10 @@ changing one environment variable (ADR-001). None of them imports another.
 /api/v1/events/…          core.outbox subscribe, replay — the third-party seam
 /api/v1/hr/…              hr.*        people, attendance, overtime, payroll
 /api/v1/production/…      prod.*      work orders, stages, progress, deadlines
+/api/v1/inventory/…       inv.*       timber: logs, boards, kubikasi, cost per m³
 ```
 
-## Service contract — the same for all seven
+## Service contract — the same for all eight
 
 ### Envelope
 
@@ -336,6 +337,24 @@ that posting is the consequence of the signature on the sheet and the signature
 is its authority (D147).
 
 Events: `production.work_order.closed`.
+
+## `inventory` — timber
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/timber/purchases` | every load, newest first, with volumes, yield and both prices per m³ |
+| GET | `/timber/purchases/{purchase_no}` | one load: each log measured, each board reported |
+| GET | `/timber/by-vendor` | **per vendor and species**: log m³, board m³, yield, rupiah per log m³ and **per board m³** — the last column is the one that decides (D153) |
+| POST | `/timber/purchases` | a load arriving. **422 with no invoice value**: without it there is no price per m³, which is the only reason the record exists. The seller's claimed m³ is stored beside our own measurement, never instead of it |
+| POST | `/timber/purchases/{no}/logs` | one log: tag, Ø in cm, length in cm. 409 on a duplicate tag |
+| POST | `/timber/purchases/{no}/boards` | boards off the saw: t × w × l in mm, and how many. Naming the log is optional — a day's sawing is usually one pile — and reporting boards off a log also marks that log sawn |
+| POST | `/timber/purchases/{no}/logs/{tag}/sawn` | for the log that split and yielded nothing. It still counts against the yield, which is the point |
+
+Volumes are computed on read: `bulat` is π/4 × d² × L, `persegi` is d² × L, and
+the purchase records which convention produced its number (Q39). Yield and
+rupiah per board m³ use **only the logs actually sawn** and their share of the
+invoice — dividing a whole invoice by the boards off half a load prices the
+wood half again too high.
 
 ## `events` — the seam for a third service
 

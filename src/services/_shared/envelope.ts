@@ -25,6 +25,9 @@ export type ServiceName =
    *  Overtime references it by work-order number at the seam, never by
    *  reaching into its tables (ADR-004). */
   | "production"
+  /** The eighth (D153): timber bought as logs, used as boards, and the gap
+   *  between the two that no invoice shows. */
+  | "inventory"
   | "documents"
   | "events";
 

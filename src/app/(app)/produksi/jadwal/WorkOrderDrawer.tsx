@@ -9,8 +9,9 @@ import { Loaded, useLoad } from "@/components/ui/loaded";
 import { NumberInput } from "@/components/ui/number-input";
 import { formatIDR, formatNumber } from "@/lib/format";
 import { cn } from "@/lib/cn";
-import { procurement, production } from "@/demo/api";
-import { STAGE_NAME, type WorkOrderView } from "@/services/production/contracts";
+import { procurement, production, hr } from "@/demo/api";
+import { Combobox } from "@/components/ui/combobox";
+import { STAGE_NAME, attributionOf, ATTRIBUTION_LABEL, type WorkOrderView } from "@/services/production/contracts";
 import { UNITS, type UomCode } from "@/services/procurement/contracts";
 import { useSession } from "@/store/session";
 import { useToast } from "@/store/toast";
@@ -55,7 +56,12 @@ export function WorkOrderDrawer({
   const [prLines, reloadPr] = useLoad(() => procurement.listLinesForWorkOrder(woNo), [woNo]);
   const [stage, setStage] = useState("");
   const [qty, setQty] = useState(1);
-  const [who, setWho] = useState("");
+  /* Two pieces of state for one question, because the honest answer has two
+     shapes: an employee, or a name that is not one of ours. Picking from the
+     list fills both; typing a name fills only the name and leaves the link for
+     somebody to make on purpose (D264). */
+  const [who, setWho] = useState<{ id: string | null; name: string }>({ id: null, name: "" });
+  const [people] = useLoad(() => hr.listEmployees(), []);
   const [note, setNote] = useState("");
   const [date, setDate] = useState(officeToday());
   const [busy, setBusy] = useState(false);
@@ -127,7 +133,9 @@ export function WorkOrderDrawer({
     setBusy(true);
     const res = await production.recordProgress({
       wo_no: woNo, stage, qty, work_date: date,
-      worked_by: who || null, note: note || null,
+      worked_by: who.name || null,
+      worked_by_employee_id: who.id,
+      note: note || null,
     });
     setBusy(false);
     if (res.error) {
@@ -384,10 +392,32 @@ export function WorkOrderDrawer({
                   />
                 </div>
                 <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                  <input
-                    value={who} onChange={(e) => setWho(e.target.value)}
+                  {/* A picker that still accepts a name it does not know:
+                      *Tim potong* and a subcontractor's crew are real answers,
+                      and a closed list here would make the record lie about who
+                      does the work. Choosing a person links the entry; typing a
+                      name does not, and `/produksi/penautan` is where that gets
+                      resolved later (D264). */}
+                  <Combobox
+                    value={who.id ?? (who.name ? "free" : "")}
+                    onChange={(v) => {
+                      if (v === "free") return;
+                      const emp = people.status === "ready" ? people.data.find((e) => e.id === v) : undefined;
+                      setWho(emp ? { id: emp.id, name: emp.full_name } : { id: null, name: "" });
+                    }}
+                    onCreate={(name) => setWho({ id: null, name })}
+                    createLabel={(q) => `Pakai nama “${q}” — bukan karyawan`}
+                    options={[
+                      ...(people.status === "ready" ? people.data : []).map((e) => ({
+                        value: e.id,
+                        label: e.full_name,
+                        sublabel: `${e.employee_no} · ${e.unit}`,
+                      })),
+                      ...(who.id === null && who.name
+                        ? [{ value: "free", label: who.name, sublabel: "nama saja — belum tertaut" }]
+                        : []),
+                    ]}
                     placeholder="Siapa yang mengerjakan"
-                    className="h-9 rounded-lg border border-slate-200 px-2 text-sm focus:border-brand-400 focus:outline-none"
                   />
                   <input
                     value={note} onChange={(e) => setNote(e.target.value)}
@@ -619,6 +649,14 @@ export function WorkOrderDrawer({
                         </span>
                         <span className="flex-1 text-slate-500">
                           {p.worked_by ?? "—"}
+                          {/* The name is what was written down; the state of its
+                              link is a separate fact and is shown as one. */}
+                          {p.worked_by && attributionOf(p) !== "employee" && (
+                            <span className={cn("ml-1.5 text-[10px]",
+                              attributionOf(p) === "unknown" ? "text-amber-600" : "text-slate-400")}>
+                              ({ATTRIBUTION_LABEL[attributionOf(p)].toLowerCase()})
+                            </span>
+                          )}
                           {p.note && <span className="text-slate-400"> · {p.note}</span>}
                         </span>
                         {p.source === "overtime_sheet" && (

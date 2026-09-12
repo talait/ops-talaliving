@@ -9,14 +9,16 @@
 import { officeDay } from "@/lib/office";
 import type { DemoState } from "./state";
 import {
-  PROCESS_STAGES, STAGE_SOURCES, ROUTE, goodsOnSite,
+  PROCESS_STAGES, STAGE_SOURCES, STAGE_NAME, ROUTE, goodsOnSite,
   type WorkOrder, type WorkOrderView, type StageProgress,
   type Product, type ProductView, type BomLineView, type ProductDrawing,
   type BomRevision, type BomRevisionView, type BomDiff, type BomDiffLine,
   type BomExplosion, type BomExplodedLine,
   type BomComponent,
   type DesignTask, type DesignTaskView, type DesignKind,
+  type WorkAttribution,
 } from "@/services/production/contracts";
+import { attributionOf } from "@/services/production/contracts";
 
 /** Today, as an office day. The board is about deadlines, so "what day is it"
  *  has to be the workshop's day rather than UTC's (F17, F39). One definition
@@ -838,4 +840,185 @@ export function designGaps(state: DemoState): { product_code: string; product_na
     }
   }
   return out;
+}
+
+/* ── Who did the work ──────────────────────────────────────────────────
+ *
+ *  Production records a **name**, because a subcontractor is a legitimate
+ *  answer to *who did it*. W5's fix is a link **beside** that name, never
+ *  instead of it (D264) — and the rule that makes it safe is that the system
+ *  may suggest a match and may never make one. A name matched by software is
+ *  how the wrong review lands on the wrong person.
+ */
+
+/** Case- and spacing-insensitive, for **suggesting** a match. Never for making
+ *  one: the comparison decides what to offer a human, and the human decides. */
+function normalName(s: string): string {
+  return s.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+export interface UnresolvedName {
+  name: string;
+  entries: number;
+  /** Pieces reported under this name — how much is riding on the answer. */
+  qty: number;
+  first_seen: string;
+  last_seen: string;
+  /** Where it appears, so the person resolving it has context. */
+  work_orders: string[];
+  /** Exactly one active employee whose name matches. Null when none does — and
+   *  null **also** when more than one does, which is the case that matters:
+   *  there is a *Andi* in the workshop and an *Andi Prasetyo* in the office,
+   *  and offering either one is worse than offering neither. */
+  suggestion: { employee_id: string; employee_no: string; full_name: string } | null;
+  /** Set when the name matched several people. The screen says so instead of
+   *  quietly showing no suggestion, because *we could not tell which* and *we
+   *  found nobody* are different answers and lead to different actions. */
+  ambiguous: { employee_no: string; full_name: string }[] | null;
+}
+
+/** What share of the period's reported work can be read as a person's.
+ *
+ *  Coverage is a property of **the record, not of the person** — and that is
+ *  the whole reason it exists. Nobody can tell whether an unresolved entry
+ *  belongs to a given person, so a per-person count over a patchy record is a
+ *  fiction: it reads *this person made nothing* when the truth is *nobody wrote
+ *  down who made it*. Same family as F81, one level further out.
+ *
+ *  A name confirmed as a team or a vendor is **resolved**, not missing: it
+ *  counts towards coverage, because somebody looked at it and answered.
+ */
+export function workAttribution(state: DemoState, from: string, to: string): {
+  entries: number;
+  employee: number;
+  not_a_person: number;
+  unknown: number;
+  /** 0–1 over entries that carry a name at all. */
+  coverage: number;
+  unnamed: number;
+} {
+  const rows = state.production_progress.filter((p) => p.work_date >= from && p.work_date <= to);
+  const named = rows.filter((p) => p.worked_by != null && p.worked_by.trim() !== "");
+  const by = (k: WorkAttribution) => named.filter((p) => attributionOf(p) === k).length;
+  const employee = by("employee");
+  const not_a_person = by("not_a_person");
+  const unknown = by("unknown");
+  return {
+    entries: rows.length,
+    employee, not_a_person, unknown,
+    coverage: named.length === 0 ? 0 : (employee + not_a_person) / named.length,
+    unnamed: rows.length - named.length,
+  };
+}
+
+/** The queue for the screen that resolves names, grouped by the name itself.
+ *
+ *  Grouped rather than listed per entry because the question is asked **once
+ *  per name**: *Pranowo* is the same Pranowo on all six entries, and asking six
+ *  times is how a screen gets abandoned halfway with the record half-resolved.
+ */
+export function unresolvedNames(state: DemoState, from: string, to: string): UnresolvedName[] {
+  const rows = state.production_progress.filter(
+    (p) => p.work_date >= from && p.work_date <= to
+      && p.worked_by != null && p.worked_by.trim() !== ""
+      && attributionOf(p) === "unknown",
+  );
+
+  const groups = new Map<string, typeof rows>();
+  for (const r of rows) {
+    const key = normalName(r.worked_by!);
+    groups.set(key, [...(groups.get(key) ?? []), r]);
+  }
+
+  const active = state.employees.filter((e) => e.active);
+  return [...groups.values()].map((list) => {
+    const name = list[0].worked_by!.trim();
+    /* Exact match is not enough, and the case that proves it is the one this
+       whole function exists for. *Andi* exactly equals B-036 Andi in the
+       workshop — and K-011 Andi Prasetyo sits in the office, unmatched by an
+       equality test. Exact matching would therefore offer **one confident
+       suggestion for the most ambiguous name in the register**, which is worse
+       than offering none: a confident wrong answer gets clicked.
+
+       So a candidate is somebody whose full name *is* the name, or whose name
+       begins with it as a whole word — *Andi Prasetyo* is a candidate for
+       *Andi*, and *Sumi* is not one for *Sumiati*. More than one candidate and
+       there is no suggestion at all, exact match or not. */
+    const key = normalName(name);
+    const matches = active.filter((e) => {
+      const full = normalName(e.full_name);
+      return full === key || full.startsWith(`${key} `);
+    });
+    const dates = list.map((r) => r.work_date).sort();
+    const woNos = [...new Set(list.map((r) =>
+      state.work_orders.find((w) => w.id === r.wo_id)?.wo_no ?? r.wo_id))];
+    return {
+      name,
+      entries: list.length,
+      qty: list.reduce((a, r) => a + r.qty, 0),
+      first_seen: dates[0],
+      last_seen: dates[dates.length - 1],
+      work_orders: woNos,
+      suggestion: matches.length === 1
+        ? { employee_id: matches[0].id, employee_no: matches[0].employee_no, full_name: matches[0].full_name }
+        : null,
+      ambiguous: matches.length > 1
+        ? matches.map((e) => ({ employee_no: e.employee_no, full_name: e.full_name }))
+        : null,
+    };
+  }).sort((a, b) => b.entries - a.entries || a.name.localeCompare(b.name));
+}
+
+export interface PersonWork {
+  entries: number;
+  qty: number;
+  /** Stage code → pieces, so *what they actually did* is readable. */
+  by_stage: { stage: string; name: string; qty: number }[];
+  work_orders: { wo_no: string; product_name: string; qty: number }[];
+  first: string;
+  last: string;
+}
+
+/** What one person made in a window, over their **linked** entries only.
+ *
+ *  Returns null where they have none — which is *not attributed*, never zero
+ *  (D264). The screen must say which, and `workAttribution` above is what tells
+ *  it whether the silence means anything.
+ */
+export function personWork(
+  state: DemoState, employeeId: string, from: string, to: string,
+): PersonWork | null {
+  const rows = state.production_progress.filter(
+    (p) => p.worked_by_employee_id === employeeId && p.work_date >= from && p.work_date <= to,
+  );
+  if (rows.length === 0) return null;
+
+  const stages = new Map<string, number>();
+  for (const r of rows) stages.set(r.stage, (stages.get(r.stage) ?? 0) + r.qty);
+  const orders = new Map<string, number>();
+  for (const r of rows) orders.set(r.wo_id, (orders.get(r.wo_id) ?? 0) + r.qty);
+  const dates = rows.map((r) => r.work_date).sort();
+
+  return {
+    entries: rows.length,
+    qty: rows.reduce((a, r) => a + r.qty, 0),
+    by_stage: [...stages.entries()].map(([stage, qty]) => ({
+      stage,
+      /* `STAGE_NAME`, not a lookup in the four: an August entry still carries
+         its old seven-stage code and *AMPLAS* is what that person did. */
+      name: STAGE_NAME(stage),
+      qty,
+    })).sort((a, b) => b.qty - a.qty),
+    work_orders: [...orders.entries()].map(([woId, qty]) => {
+      const wo = state.work_orders.find((w) => w.id === woId);
+      return {
+        wo_no: wo?.wo_no ?? woId,
+        product_name: state.products.find((pr) => pr.product_code === wo?.product_code)?.name
+          ?? wo?.product_code ?? "—",
+        qty,
+      };
+    }).sort((a, b) => b.qty - a.qty),
+    first: dates[0],
+    last: dates[dates.length - 1],
+  };
 }

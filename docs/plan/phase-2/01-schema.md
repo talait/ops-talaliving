@@ -10,17 +10,38 @@ Everything here is derived from `src/services/*/contracts.ts` and
 
 ---
 
+## The names: every schema starts `ops_`
+
+`ops_core`, `ops_procure`, `ops_acct`, `ops_hr`, `ops_prod`, `ops_inv` — and
+until 2026-09-13 they were `core`, `procure`, `acct`, `hr`, `prod`, `inv`.
+
+The Supabase project this ladder goes into **already runs the old system**, and
+the old system already has a `core` schema. `create schema if not exists core`
+succeeds by doing nothing, and every `create table core.…` after it then puts
+this system's tables **inside the live one** — inheriting its grants, policies
+and RLS settings, with no error anywhere. The `search_path = core` on the
+security-definer functions was the sharper edge of the same thing: the function
+that decides who may read what would have been resolving against somebody
+else's tables while looking entirely correct (D265).
+
+The owner's instruction is to leave the old schema alone. The prefix is what
+makes that true **by construction** rather than by care, and `0001` opens with a
+guard that refuses rather than merges if one of the six names is somehow taken
+and already holds tables.
+
+---
+
 ## Conventions, applied to every table without restating them
 
 | Rule | How it looks |
 |---|---|
 | Primary key | `uuid … default gen_random_uuid()` |
-| Public identity | a `*_no` / `code` text column, unique, minted by `core.next_doc_number()` (ADR-005) |
-| Time | `timestamptz`, always. Dates that mean an office day are `date` and computed with `core.office_day()` (F17) |
+| Public identity | a `*_no` / `code` text column, unique, minted by `ops_core.next_doc_number()` (ADR-005) |
+| Time | `timestamptz`, always. Dates that mean an office day are `date` and computed with `ops_core.office_day()` (F17) |
 | Money | `numeric`, whole rupiah. Never `float` |
 | Deletion | none. No `DELETE` policy and no `DELETE` grant. Supersession, VOID, `left_on`, `merged_into`, `unlinked_at` (A2, A5) |
-| Audit | every write seam calls `core.write_audit(…)` and `core.emit(…)` in the same transaction |
-| RLS | on for every table. Read on `module.read`, write on `module.create` / `module.update`, decisions on `core.has_authority(…)` |
+| Audit | every write seam calls `ops_core.write_audit(…)` and `ops_core.emit(…)` in the same transaction |
+| RLS | on for every table. Read on `module.read`, write on `module.create` / `module.update`, decisions on `ops_core.has_authority(…)` |
 | Cross-schema references | by public code as `text`, never a foreign key across a service seam (ADR-004) |
 
 The pattern is written out once, in `0006_procure_reference.sql`. Every later
@@ -61,7 +82,7 @@ saying why.
 | 0024 | `inv_timber` | `log_purchases`, `log_pieces`, `sawn_boards` | two volumes with a saw between them (D153); the seller's claimed m³ is kept **beside** ours, never replacing it; yield only over logs actually sawn (F46) |
 | 0025 | `views` | every `v_*` | see the next section — this is the biggest single migration and the one to write last |
 | 0026 | `seams` | the write functions | `post_transaction()`, `allocate_payment()`, `approve_line()`, `decide_overtime_sheet()`, `open_payroll()`, `record_progress()`, `confirm_receipt()`, `issue_po()`, `import_scans()`, `import_overtime_form()`, `resolve_inbox()` |
-| 0027 | `idempotency` | `core.idempotency_keys` | `(service, endpoint, key) → response`. Held on 409, released on 422/5xx |
+| 0027 | `idempotency` | `ops_core.idempotency_keys` | `(service, endpoint, key) → response`. Held on 409, released on 422/5xx |
 
 ---
 
@@ -92,12 +113,12 @@ Two rules for the port, both learned the hard way in Phase 1:
 
 | Seed | Source of truth | Why it is a seed and not a form |
 |---|---|---|
-| `core.permission_catalog` | `src/lib/roles.ts` | adding a verb should be a reviewable diff, not a row somebody types (D24) |
-| `core.doc_prefixes`, `core.doc_kind_labels` | `src/services/documents/contracts.ts` | the label a screen prints, beside the code the database stores |
-| `acct.accounts` | the five real accounts | PETTY CASH · BNI 325 · BCA 271 · JAGO · BCA 064 (D87) |
-| `acct.transaction_types` | the running system, `EJO` included | carried verbatim and unclassified, never folded into OTHERS (Q10) |
-| `procure.uom` + conversions | `src/demo/fixtures/reference.ts` | including the log→board yield, which is a different kind of number from a factor |
-| `prod.process_stages` | seven stages | data, so reordering is a seed diff (Q35) |
+| `ops_core.permission_catalog` | `src/lib/roles.ts` | adding a verb should be a reviewable diff, not a row somebody types (D24) |
+| `ops_core.doc_prefixes`, `ops_core.doc_kind_labels` | `src/services/documents/contracts.ts` | the label a screen prints, beside the code the database stores |
+| `ops_acct.accounts` | the five real accounts | PETTY CASH · BNI 325 · BCA 271 · JAGO · BCA 064 (D87) |
+| `ops_acct.transaction_types` | the running system, `EJO` included | carried verbatim and unclassified, never folded into OTHERS (Q10) |
+| `ops_procure.uom` + conversions | `src/demo/fixtures/reference.ts` | including the log→board yield, which is a different kind of number from a factor |
+| `ops_prod.process_stages` | seven stages | data, so reordering is a seed diff (Q35) |
 
 ---
 
@@ -109,7 +130,7 @@ The build session appends here; the design session applies them to
 
 | # | Contract today | Schema | Why the schema wins |
 |---|---|---|---|
-| C1 | `DocKind` is a display string: `"Receipt / Invoice / Nota"` | `core.doc_kind_t` is a code: `nota` | a stored value should not change when somebody rewords a label. `core.doc_kind_labels` holds the wording, and the UI reads it from there |
+| C1 | `DocKind` is a display string: `"Receipt / Invoice / Nota"` | `ops_core.doc_kind_t` is a code: `nota` | a stored value should not change when somebody rewords a label. `ops_core.doc_kind_labels` holds the wording, and the UI reads it from there |
 | C2 | ids are readable strings (`emp_04`, `lbr_03`) | `uuid` | the demo's ids are for humans reading fixtures. The swap is mechanical; nothing outside `src/demo` depends on their shape |
-| C3 | `ModuleGrant[]` on the session | `core.user_modules` rows + `v_my_access` | the permission list stays **derived** on read, not stored (A3) |
-| C4 | `AttendanceScan.import_id` optional | `hr.attendance_imports.id`, NOT NULL for `source='import'` | a tap that came from a file should always name the file, or a re-upload cannot be proved to be a no-op (D143) |
+| C3 | `ModuleGrant[]` on the session | `ops_core.user_modules` rows + `v_my_access` | the permission list stays **derived** on read, not stored (A3) |
+| C4 | `AttendanceScan.import_id` optional | `ops_hr.attendance_imports.id`, NOT NULL for `source='import'` | a tap that came from a file should always name the file, or a re-upload cannot be proved to be a no-op (D143) |

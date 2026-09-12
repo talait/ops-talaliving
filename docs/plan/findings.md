@@ -3546,3 +3546,59 @@ and the way to tell is to name the person and the object in their hand. And
 when a trade-off is about a physical quantity, **measure it before writing the
 paragraph**: one script that prints millimetres per module would have settled
 this before the first doc comment was written.
+
+---
+
+## F84 — two seeded rows sharing a primary key, found by the feature that needed one
+
+The production seed had two rows with `id: "prg_23"` and two with
+`id: "prg_24"`: one pair on the pintu work order, another pair added later for
+the four-stage order, written by copying the block above and not renumbering.
+
+It had been there since M47 and nothing had gone wrong, because **nothing in
+the system had ever looked a progress entry up by its id.** Every reader of
+that table filters by work order, sums by stage, or groups by date. A duplicate
+id is invisible to all of them.
+
+W5 is the first feature that needs one: linking a name to a person writes to
+entries individually, and `draft.production_progress.find(p => p.id === t.id)`
+would have found the wrong row half the time — silently, and only on those
+four.
+
+Two things worth keeping.
+
+**An unused key is an unchecked key.** A primary key that nothing dereferences
+is not being validated by anything, and duplicates accumulate in it quietly. It
+had survived a typecheck, a build, and every probe run in six milestones.
+
+**And the thing that found it was reading the file, not running it.** It was
+spotted while working out what to attach the link to — the ids were on screen,
+next to each other, and the pattern was obvious once anybody was looking at ids
+rather than through them.
+
+---
+
+## F85 — the matcher was blind in the exact case it existed to protect
+
+The name-linking screen offers a suggestion when one active employee's name
+matches, and offers nothing when several do — because there is an *Andi* in the
+workshop (B-036) and an *Andi Prasetyo* in the office (K-011), and offering
+either one is worse than offering neither.
+
+The first version compared full names for equality. Run against the seed, the
+row for *Andi* came back with **one confident suggestion: B-036 · Andi**.
+
+Equality is exactly the wrong test here. *Andi* equals *Andi* and does not
+equal *Andi Prasetyo*, so the one name in the register with a genuine collision
+was the one name the code was certain about — and certainty is what gets
+clicked. The ambiguity guard was there, was correct, and never fired.
+
+A candidate is now somebody whose full name **is** the name or **begins with it
+as a whole word**: *Andi Prasetyo* is a candidate for *Andi*, and *Sumi* is not
+one for *Sumiati*. More than one candidate and there is no suggestion at all,
+exact match or not.
+
+The lesson is not about string matching. **A guard that never fires on the
+data it was written for has not been tested, it has been assumed** — and the
+way to find out is to look at what the screen actually says about the row you
+wrote the guard for, which took one probe and no reasoning at all.

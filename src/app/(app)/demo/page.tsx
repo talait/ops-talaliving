@@ -271,6 +271,29 @@ export default function DemoDiagnosticsPage() {
        module, and a 403 from the guard would hide the rule underneath it. */
     await identity.actAs("usr_made");
 
+    /* D264 — one name cannot be both a person and not a person. Refused rather
+       than silently preferring one, because either choice would be the software
+       deciding who did the work. */
+    const bothAnswers = await production.resolveWorkName({
+      name: "Pranowo", employee_id: "emp_w015", not_a_person: true,
+    });
+    results.push({
+      name: "D264 — resolving a name as an employee AND as not-a-person at once",
+      expect: "422 one_answer_only",
+      got: bothAnswers.error ? `${bothAnswers.error.status} ${bothAnswers.error.code}` : "accepted",
+      pass: bothAnswers.error?.status === 422 && bothAnswers.error.code === "one_answer_only",
+    });
+
+    /* And neither is not an answer either: the row stays unresolved, which is
+       a state somebody has to leave on purpose rather than by submitting. */
+    const noAnswer = await production.resolveWorkName({ name: "Pranowo" });
+    results.push({
+      name: "D264 — resolving a name without saying who it is",
+      expect: "422 answer_required",
+      got: noAnswer.error ? `${noAnswer.error.status} ${noAnswer.error.code}` : "accepted",
+      pass: noAnswer.error?.status === 422 && noAnswer.error.code === "answer_required",
+    });
+
     /* D262 — a box cannot be fitted before anybody has seen it. The same rule
        the installation endpoint holds one level up, and the one refusal in the
        whole box flow: everything else about a box warns. */

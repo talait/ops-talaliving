@@ -554,6 +554,26 @@ fill the column is a wrong number in a costing report (D204).
 `inv.log_purchases.nota_attachment_id` links the load to the paper it was
 entered from (D201). Nullable only for loads recorded before that rule.
 
+`prod.production_progress` carries **two** columns for who did the work and
+they are not redundant (D264). `worked_by` is the name as the mandor wrote it,
+kept verbatim for ever, because a record that rewrites itself when somebody is
+later linked answers the wrong question in an argument.
+`worked_by_employee_id` is the link a **person** made afterwards — the system
+suggests and never matches, since matching people by name into a performance
+record is how the wrong review lands on the wrong person.
+`worked_by_not_a_person` is the third state and it is genuinely third: *Tim
+potong* and a vendor's crew are **resolved**, not missing, and they count
+towards coverage exactly as a linked name does.
+
+The two are never read raw. `attributionOf()` derives one of three values from
+them and everything downstream reads that, so the invariant — never both set —
+cannot drift apart in a caller's hands (F75's rule). The API refuses a name
+declared both at once rather than preferring one, because either preference
+would be the software deciding who did the work.
+
+`prod.design_tasks` carries the same pair, on the same terms: a freelance
+drafter is a legitimate answer.
+
 **Schema `dlv`** — the last leg (D209): `deliveries` + `delivery_lines`,
 `packing_boxes` + `box_lines`, `installations` + `installation_lines`, `snags`,
 `handovers`. Four things about it are load-bearing:
@@ -1346,7 +1366,7 @@ erDiagram
         uuid id PK
         text task_no UK "tgs-26-09-13_01"
         text title
-        uuid assignee_id FK "a REAL employee link, unlike worked_by (D260)"
+        uuid assignee_id FK "a REAL employee link; production links beside the name instead (D264)"
         uuid assigned_by FK
         date due_date "required - a task that cannot be late is one nobody can tell is late"
         task_ref_t ref_kind "none|work_order|project|purchase_request"
@@ -1745,6 +1765,8 @@ erDiagram
         numeric qty "may be negative - a correction is an entry"
         date work_date "the office day it happened"
         text worked_by "a name: a subcontractor is a valid answer"
+        uuid worked_by_employee_id FK "the link BESIDE the name, never instead of it (D264)"
+        boolean worked_by_not_a_person "confirmed: a team or a vendor crew. Resolved, not missing"
         progress_source_t source "manual|overtime_sheet"
         text source_ref "the lembur sheet number - the idempotency claim"
         text note

@@ -124,43 +124,56 @@ export const WORK_ORDERS: WorkOrder[] = [
   },
 ];
 
+/** `link` is an employee id, `"team"` for a name somebody has confirmed is not
+ *  one person, or omitted for the ordinary state of this data: **nobody has
+ *  been asked yet** (D264). The three are genuinely three, and the seed carries
+ *  all of them because the screen that resolves them has to have something to
+ *  resolve. */
 const e = (
   id: string, wo_id: string, stage: string, qty: number, work_date: string,
   worked_by: string | null, note: string | null = null,
+  link: string | "team" | null = null,
 ): ProgressEntry => ({
   id, wo_id, stage, qty, work_date, worked_by,
+  worked_by_employee_id: link && link !== "team" ? link : null,
+  worked_by_not_a_person: link === "team",
   source: "manual", source_ref: null, note,
   recorded_by: "usr_made", recorded_at: `${work_date}T17:00:00+08:00`,
 });
 
 export const PRODUCTION_PROGRESS: ProgressEntry[] = [
   /* wo_01 — meja BABY ISLAND. Past its date with one set left in finishing. */
-  e("prg_01", "wo_01", "POTONG", 4, "2026-08-25", "Tim potong"),
-  e("prg_02", "wo_01", "SERUT", 4, "2026-08-26", "Karjo"),
-  e("prg_03", "wo_01", "RAKIT", 4, "2026-08-28", "Trisno"),
-  e("prg_04", "wo_01", "AMPLAS", 4, "2026-08-29", "Sumiati"),
-  e("prg_05", "wo_01", "FINISHING", 3, "2026-09-02", "Sakirin"),
-  e("prg_06", "wo_01", "QC", 3, "2026-09-03", "Made Suparta"),
-  e("prg_07", "wo_01", "PACKING", 3, "2026-09-03", "Tim packing"),
+  e("prg_01", "wo_01", "POTONG", 4, "2026-08-25", "Tim potong", null, "team"),
+  e("prg_02", "wo_01", "SERUT", 4, "2026-08-26", "Karjo", null, "emp_w009"),
+  e("prg_03", "wo_01", "RAKIT", 4, "2026-08-28", "Trisno", null, "emp_w012"),
+  e("prg_04", "wo_01", "AMPLAS", 4, "2026-08-29", "Sumiati", null, "emp_w006"),
+  e("prg_05", "wo_01", "FINISHING", 3, "2026-09-02", "Sakirin", null, "emp_w016"),
+  e("prg_06", "wo_01", "QC", 3, "2026-09-03", "Made Suparta", null, "emp_05"),
+  e("prg_07", "wo_01", "PACKING", 3, "2026-09-03", "Tim packing", null, "team"),
 
   /* wo_02 — kursi. Early stages, plenty of time. */
-  e("prg_08", "wo_02", "POTONG", 24, "2026-08-27", "Tim potong"),
-  e("prg_09", "wo_02", "SERUT", 18, "2026-08-31", "Karjo"),
+  e("prg_08", "wo_02", "POTONG", 24, "2026-08-27", "Tim potong", null, "team"),
+  e("prg_09", "wo_02", "SERUT", 18, "2026-08-31", "Karjo", null, "emp_w009"),
   e("prg_10", "wo_02", "RAKIT", 10, "2026-09-03", "Trisno"),
 
   /* wo_03 — lemari. Behind, and the date is close. */
   e("prg_11", "wo_03", "POTONG", 6, "2026-08-31", "Tim potong"),
-  e("prg_12", "wo_03", "SERUT", 6, "2026-09-01", "Pranowo"),
+  e("prg_12", "wo_03", "SERUT", 6, "2026-09-01", "Pranowo"),   /* nama jelas, tinggal dikonfirmasi */
   e("prg_13", "wo_03", "RAKIT", 2, "2026-09-04", "Trisno"),
+  /* Dua orang bernama Andi: B-036 di bengkel dan K-011 di kantor. Sistem
+     tidak boleh menebak, dan layar penautan menolak memberi saran (D264). */
+  e("prg_13b", "wo_03", "RAKIT", 2, "2026-09-05", "Andi"),
+  /* Bukan karyawan, dan belum ada yang bilang begitu. */
+  e("prg_13c", "wo_03", "AMPLAS", 4, "2026-09-07", "CV Rimba Jaya (subkon)"),
 
   /* wo_05 — nakas, finished all the way through. */
-  e("prg_14", "wo_05", "POTONG", 8, "2026-08-12", "Tim potong"),
-  e("prg_15", "wo_05", "SERUT", 8, "2026-08-13", "Karjo"),
-  e("prg_16", "wo_05", "RAKIT", 8, "2026-08-17", "Trisno"),
-  e("prg_17", "wo_05", "AMPLAS", 8, "2026-08-19", "Sumiati"),
-  e("prg_18", "wo_05", "FINISHING", 8, "2026-08-24", "Sakirin"),
-  e("prg_19", "wo_05", "QC", 8, "2026-08-26", "Made Suparta"),
-  e("prg_20", "wo_05", "PACKING", 8, "2026-08-27", "Tim packing"),
+  e("prg_14", "wo_05", "POTONG", 8, "2026-08-12", "Tim potong", null, "team"),
+  e("prg_15", "wo_05", "SERUT", 8, "2026-08-13", "Karjo", null, "emp_w009"),
+  e("prg_16", "wo_05", "RAKIT", 8, "2026-08-17", "Trisno", null, "emp_w012"),
+  e("prg_17", "wo_05", "AMPLAS", 8, "2026-08-19", "Sumiati", null, "emp_w006"),
+  e("prg_18", "wo_05", "FINISHING", 8, "2026-08-24", "Sakirin", null, "emp_w016"),
+  e("prg_19", "wo_05", "QC", 8, "2026-08-26", "Made Suparta", null, "emp_05"),
+  e("prg_20", "wo_05", "PACKING", 8, "2026-08-27", "Tim packing", null, "team"),
 
   /* wo_06 — pintu. Finishing reported on more pieces than were sanded: either
      a mis-keyed number or work that skipped a stage. The board says so rather
@@ -176,6 +189,10 @@ export const PRODUCTION_PROGRESS: ProgressEntry[] = [
    Ini yang membuat roll-up bisa dilihat kerjanya: entri baru dihitung apa
    adanya, entri lama dilipat dengan minimum (F74). */
 PRODUCTION_PROGRESS.push(
-  e("prg_23", "wo_07", "FINISHING", 5, "2026-09-10", "Sakirin"),
-  e("prg_24", "wo_07", "QC", 3, "2026-09-11", "Made Suparta"),
+  /* prg_26 / prg_27, not prg_23 / prg_24 — those ids were already taken by
+     wo_06 above, and two rows sharing a primary key is a seed that works only
+     for as long as nothing looks an entry up by id. Linking a name to a person
+     is exactly that (F84). */
+  e("prg_26", "wo_07", "FINISHING", 5, "2026-09-10", "Sakirin", null, "emp_w016"),
+  e("prg_27", "wo_07", "QC", 3, "2026-09-11", "Made Suparta", null, "emp_05"),
 );

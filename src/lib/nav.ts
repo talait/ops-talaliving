@@ -4,7 +4,7 @@ import {
   Landmark, BookOpen, TrendingUp, PiggyBank, Receipt,
   Megaphone, UserRound, Target, HandCoins, MessageSquare,
   FolderKanban, Hammer, Truck, Wrench, Stamp, Package,
-  PencilRuler, ListTree, CalendarClock, CalendarRange,
+  PencilRuler, ListTree, CalendarClock, CalendarRange, Link2,
   Cpu, ScrollText, Activity, UserCog, KeyRound, Clock, Scale,
   Settings, FlaskConical, MessagesSquare, Route, ShieldCheck, Gauge, type LucideIcon,
 } from "lucide-react";
@@ -148,6 +148,7 @@ export const NAV: NavSection[] = [
     icon: Hammer,
     items: [
       { label: "Design", labelKey: "design", href: "/produksi/desain", icon: PencilRuler, permission: "production.read", badge: "new" },
+      { label: "Who did the work", labelKey: "workAttribution", href: "/produksi/penautan", icon: Link2, permission: "production.read", badge: "new" },
       { label: "Products & BOM", labelKey: "bom", href: "/produksi/bom", icon: ListTree, permission: "production.read", badge: "core" },
       { label: "Planning & Schedule", labelKey: "schedule", href: "/produksi/jadwal", icon: CalendarClock, permission: "production.read", badge: "new" },
     ],

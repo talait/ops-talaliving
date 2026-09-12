@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Gauge, ListChecks, Plus, Check, Ban, PauseCircle, PlayCircle } from "lucide-react";
 import { Badge, Button, Card, CardHeader, PageHeader } from "@/components/ui/primitives";
 import { Loaded, SourceBadge, useLoad } from "@/components/ui/loaded";
@@ -189,6 +190,41 @@ export default function KpiPage() {
                         </li>
                       ))}
                     </ul>
+                    {/* The deliverable half of what the owner asked for, beside
+                        the scores and never inside them: pieces of different
+                        products do not add up, so this is evidence, not a
+                        figure (D264). */}
+                    <div className="border-t border-slate-100 bg-slate-50/60 px-5 py-2.5 text-[12px]">
+                      <p className="text-[10px] uppercase tracking-wide text-slate-400">Hasil produksi</p>
+                      {r.work ? (
+                        <>
+                          <p className="text-slate-700">
+                            {formatNumber(r.work.qty)} pcs dalam {r.work.entries} entri ·{" "}
+                            {r.work.by_stage.map((st) => `${st.name} ${st.qty}`).join(" · ")}
+                          </p>
+                          <p className="text-[11px] text-slate-500">
+                            {r.work.work_orders.map((w) => `${w.wo_no} ${w.product_name}`).join(" · ")}
+                          </p>
+                          <p className="text-[10px] text-slate-400">
+                            tidak dinilai — satu lemari dan satu nakas tidak bisa dijumlahkan
+                          </p>
+                        </>
+                      ) : (
+                        <p className="text-slate-500">
+                          Belum ada pekerjaan produksi yang tertaut ke orang ini.
+                          {r.work_attribution.unknown > 0 && (
+                            <>
+                              {" "}
+                              <span className="text-amber-700">
+                                {r.work_attribution.unknown} entri periode ini masih atas nama yang belum
+                                ditautkan
+                              </span>{" "}
+                              — kosong di sini belum tentu berarti tidak mengerjakan apa pun.
+                            </>
+                          )}
+                        </p>
+                      )}
+                    </div>
                     <div className="border-t border-slate-100 px-5 py-2 text-[11px] text-slate-500">
                       {r.score_reason && <p className="text-slate-600">{r.score_reason}</p>}
                       <p>
@@ -206,6 +242,23 @@ export default function KpiPage() {
                   </Card>
                 ))}
               </div>
+
+              {rows[0] && rows[0].work_attribution.unknown > 0 && (
+                <p className="mb-4 rounded-lg bg-amber-50 px-3 py-2 text-[12px] text-amber-800">
+                  <strong>
+                    {rows[0].work_attribution.coverage}% entri produksi periode ini sudah jelas siapa yang
+                    mengerjakan
+                  </strong>{" "}
+                  ({rows[0].work_attribution.employee} tertaut ke karyawan,{" "}
+                  {rows[0].work_attribution.not_a_person} ditandai bukan satu orang,{" "}
+                  {rows[0].work_attribution.unknown} belum dijawab). Selama masih ada yang belum dijawab,
+                  kolom hasil produksi yang kosong tidak bisa dibaca sebagai nol.{" "}
+                  <Link href="/produksi/penautan" className="font-medium underline">
+                    Tautkan namanya
+                  </Link>
+                  .
+                </p>
+              )}
 
               {unscored > 0 && (
                 <p className="mb-4 text-[12px] text-slate-500">

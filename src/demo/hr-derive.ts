@@ -9,6 +9,7 @@
 import type { DemoState } from "./state";
 import { settingNumber } from "./settings";
 import { officeToday } from "@/lib/office";
+import { personWork, workAttribution } from "./production-derive";
 import type {
   Employee, TimesheetDay, DayState, ScanSlot, DayPay, DayMark,
   OvertimeSheet, OvertimeStage, PayrollLine, PayrollView, PayrollRun,
@@ -906,9 +907,26 @@ export function kpiView(
   if (blocked > 0) {
     notes.push(`${blocked} tugas tertahan menunggu pihak lain — tidak dihitung sebagai kegagalan orang ini.`);
   }
-  /* The limitation worth printing on every card: production work is recorded
-     against a name, not a person, so none of it reaches this score (F81). */
-  notes.push("Pekerjaan di papan produksi tercatat atas nama, bukan tertaut ke karyawan, jadi belum masuk ke penilaian ini.");
+  /* Production work: shown, attributed, and deliberately not scored (D264).
+     The old note apologised in the abstract — *recorded against a name, not a
+     person* — which was true and useless, because it told nobody what to do
+     about it. Now the card says what this person made, how much of the
+     period's work anybody can read at all, and how many names are waiting for
+     an answer, which is a sentence somebody can act on. */
+  const work = personWork(state, employee.id, from, to);
+  const attribution = workAttribution(state, from, to);
+  const coverage = Math.round(attribution.coverage * 100);
+
+  if (work === null && attribution.unknown > 0) {
+    notes.push(
+      `Tidak ada pekerjaan produksi yang tertaut ke orang ini — dan ${attribution.unknown} entri periode ini masih atas nama yang belum ditautkan, jadi kosong di sini belum tentu berarti tidak mengerjakan apa pun.`,
+    );
+  } else if (work === null) {
+    notes.push("Tidak ada pekerjaan produksi atas nama orang ini pada periode ini.");
+  }
+  if (work !== null) {
+    notes.push("Hasil produksi ditampilkan sebagai bukti, bukan sebagai nilai: satu lemari dan satu nakas tidak bisa dijumlahkan, jadi jumlah potong bukan ukuran kinerja.");
+  }
 
   return {
     employee_id: employee.id,
@@ -926,6 +944,13 @@ export function kpiView(
     overtime_hours: Math.round(days.reduce((a, d) => a + d.overtime_hours, 0) * 10) / 10,
     tasks_open: mine.filter((t) => t.status === "OPEN").length,
     tasks_blocked: mine.filter((t) => t.status === "OPEN" && t.blocked_reason !== null).length,
+    work,
+    work_attribution: {
+      employee: attribution.employee,
+      not_a_person: attribution.not_a_person,
+      unknown: attribution.unknown,
+      coverage,
+    },
     notes,
   };
 }

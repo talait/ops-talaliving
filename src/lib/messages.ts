@@ -65,6 +65,7 @@ export const MESSAGES = {
 
     production: m("Production", "Produksi"),
     design: m("Design", "Desain"),
+    workAttribution: m("Who did the work", "Penautan nama"),
     bom: m("Products & BOM", "Produk & BOM"),
     schedule: m("Planning & schedule", "Perencanaan & jadwal"),
 

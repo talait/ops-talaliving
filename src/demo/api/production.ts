@@ -4,12 +4,14 @@ import {
   PROCESS_STAGES, DESIGN_KIND_LABEL, ROUTE, STAGE_NAME, goodsOnSite,
   type WorkOrder, type WorkOrderView, type ProgressEntry, type ProductView,
   type DesignKind, type DesignTaskView, type RouteCode, type BomExplosion,
+  type WorkAttribution,
 } from "@/services/production/contracts";
 import { getState, apply, newId, nextDocNumber, writeAudit, writeOutbox } from "../store";
 import {
   workOrderView, workOrderViews, productView, productViews,
   currentBomRev, draftBomRev, bomAt, bomDiff, bomRevisions, bomRepinnable, explodeBom, bomWouldCycle,
   designQueue, designTaskView, designGaps, officeToday,
+  unresolvedNames, workAttribution, type UnresolvedName,
 } from "../production-derive";
 import {
   latency, actingUser, requireModule, requireAuthority, conflict, replayed, remember,
@@ -272,6 +274,11 @@ export async function recordProgress(
     qty: number;
     work_date: string;
     worked_by?: string | null;
+    /** Optional, and deliberately so (D264): a subcontractor is a legitimate
+     *  answer to *who did it*, so the link may be absent. What it may not be is
+     *  a guess — the form offers a picker, the picker fills the name, and a
+     *  name typed by hand is left unlinked for somebody to resolve. */
+    worked_by_employee_id?: string | null;
     note?: string | null;
     source?: "manual" | "overtime_sheet";
     source_ref?: string | null;
@@ -332,6 +339,14 @@ export async function recordProgress(
   if (!input.qty) {
     return invalid(SERVICE, "qty_required", "Nothing to report.", { field: "qty" });
   }
+  if (input.worked_by_employee_id
+    && !state.employees.some((emp) => emp.id === input.worked_by_employee_id)) {
+    return invalid(
+      SERVICE, "employee_not_found",
+      "Karyawan yang dipilih tidak ada di data kepegawaian.",
+      { field: "worked_by_employee_id" },
+    );
+  }
   if (input.qty < 0 && !input.note?.trim()) {
     return invalid(
       SERVICE, "reason_required",
@@ -379,6 +394,8 @@ export async function recordProgress(
       id: newId("prg"), wo_id: wo.id, stage: input.stage, qty: input.qty,
       work_date: input.work_date,
       worked_by: input.worked_by?.trim() || null,
+      worked_by_employee_id: input.worked_by_employee_id || null,
+      worked_by_not_a_person: false,
       source: input.source ?? "manual",
       source_ref: input.source_ref ?? null,
       note: input.note?.trim() || null,
@@ -1093,6 +1110,8 @@ export async function createDesignTask(
       product_code: input.product_code, kind: input.kind,
       status: "BELUM",
       assignee: input.assignee?.trim() || null,
+      assignee_employee_id: null,
+      assignee_not_a_person: false,
       due_date: input.due_date || null,
       note: input.note?.trim() || null,
       created_by: user.id, created_at: new Date().toISOString(),
@@ -1326,4 +1345,177 @@ export async function answerDesignQuestion(
     });
   });
   return getDesignTask(input.task_no);
+}
+
+/* ── Resolving who did the work ────────────────────────────────────────
+ *
+ *  The link is added beside the name, never instead of it, and **a person
+ *  makes it** — the system may offer a suggestion and may never apply one
+ *  (D264). Everything here is written around that: the endpoint takes a name
+ *  and an answer, applies it to every unresolved entry carrying that name, and
+ *  leaves `worked_by` exactly as the mandor wrote it.
+ */
+
+export async function listUnresolvedNames(
+  range: { from: string; to: string },
+): Promise<Result<{ names: UnresolvedName[]; attribution: ReturnType<typeof workAttribution> }>> {
+  await latency();
+  const state = getState();
+  return ok(SERVICE, {
+    names: unresolvedNames(state, range.from, range.to),
+    attribution: workAttribution(state, range.from, range.to),
+  });
+}
+
+/** One answer for one name, applied to every unresolved entry carrying it.
+ *
+ *  Asked once per name rather than once per entry, because *Pranowo* is the
+ *  same Pranowo on all six and a screen that asks six times is one somebody
+ *  abandons halfway, leaving the record half-resolved — which is worse than
+ *  leaving it alone, because a partial record looks like a complete one.
+ *
+ *  Already-resolved entries are **not** touched. A link somebody made on
+ *  purpose is not overwritten by a later bulk answer.
+ */
+export async function resolveWorkName(
+  input: {
+    name: string;
+    /** Exactly one of these. */
+    employee_id?: string | null;
+    not_a_person?: boolean;
+    from?: string;
+    to?: string;
+    idempotency_key?: string;
+  },
+): Promise<Result<{ name: string; updated: number; attribution: WorkAttribution }>> {
+  await latency();
+  const denied = requireModule(SERVICE, "production");
+  if (denied) return denied;
+  const dup = replayed<{ name: string; updated: number; attribution: WorkAttribution }>(
+    SERVICE, "resolveWorkName", input.idempotency_key);
+  if (dup) return dup;
+
+  const state = getState();
+  const name = input.name?.trim();
+  if (!name) {
+    return invalid(SERVICE, "name_required", "Nama mana yang mau ditautkan?", { field: "name" });
+  }
+
+  /* The invariant behind `attributionOf`, enforced where it can be: a name
+     cannot be both a person and not a person. Refused rather than silently
+     preferring one, because either choice would be the software deciding. */
+  if (input.employee_id && input.not_a_person) {
+    return invalid(
+      SERVICE, "one_answer_only",
+      "Satu nama tidak bisa sekaligus seorang karyawan dan bukan satu orang. Pilih salah satu.",
+      { field: "employee_id" },
+    );
+  }
+  if (!input.employee_id && !input.not_a_person) {
+    return invalid(
+      SERVICE, "answer_required",
+      "Pilih karyawannya, atau tandai bahwa nama ini bukan satu orang — tim atau subkon.",
+      { field: "employee_id" },
+    );
+  }
+
+  const employee = input.employee_id
+    ? state.employees.find((e) => e.id === input.employee_id)
+    : undefined;
+  if (input.employee_id && !employee) {
+    return notFound(SERVICE, "employee_not_found", "Karyawan itu tidak ada di data kepegawaian.");
+  }
+  if (employee && !employee.active) {
+    /* Not a refusal: somebody who has left did the work, and that is history,
+       not an error. It is only worth saying out loud. */
+    return conflict(
+      SERVICE, "employee_inactive",
+      `${employee.full_name} sudah tidak aktif. Kalau memang dia yang mengerjakannya, catat lewat data kepegawaian dulu supaya riwayatnya utuh.`,
+      { employee_no: employee.employee_no },
+    );
+  }
+
+  const key = name.toLowerCase().replace(/\s+/g, " ");
+  const targets = state.production_progress.filter((p) =>
+    p.worked_by != null
+    && p.worked_by.trim().toLowerCase().replace(/\s+/g, " ") === key
+    && p.worked_by_employee_id === null
+    && !p.worked_by_not_a_person
+    && (!input.from || p.work_date >= input.from)
+    && (!input.to || p.work_date <= input.to));
+
+  if (targets.length === 0) {
+    return noop(SERVICE, {
+      name,
+      updated: 0,
+      attribution: (input.not_a_person ? "not_a_person" : "employee") as WorkAttribution,
+    });
+  }
+
+  const user = actingUser();
+  apply((draft) => {
+    for (const t of targets) {
+      const row = draft.production_progress.find((p) => p.id === t.id)!;
+      row.worked_by_employee_id = employee?.id ?? null;
+      row.worked_by_not_a_person = !!input.not_a_person;
+    }
+    writeAudit(draft, {
+      service: SERVICE, entity: "progress_name", entity_no: name,
+      action: "resolve", outcome: "ok", reason: null,
+      detail: {
+        entries: targets.length,
+        employee_no: employee?.employee_no ?? null,
+        not_a_person: !!input.not_a_person,
+        by: user.email,
+      },
+    });
+  });
+
+  const result = ok(SERVICE, {
+    name,
+    updated: targets.length,
+    attribution: (input.not_a_person ? "not_a_person" : "employee") as WorkAttribution,
+  });
+  remember(SERVICE, "resolveWorkName", input.idempotency_key, result.data);
+  return result;
+}
+
+/** Undoing one. A link made in error is a link somebody has to be able to take
+ *  back — and it returns the entries to `unknown`, not to *not a person*,
+ *  because *we were wrong* is not the same answer as *it is a team*. */
+export async function unresolveWorkName(
+  input: { name: string; from?: string; to?: string },
+): Promise<Result<{ name: string; updated: number }>> {
+  await latency();
+  const denied = requireModule(SERVICE, "production");
+  if (denied) return denied;
+
+  const state = getState();
+  const name = input.name?.trim();
+  if (!name) {
+    return invalid(SERVICE, "name_required", "Nama mana?", { field: "name" });
+  }
+  const key = name.toLowerCase().replace(/\s+/g, " ");
+  const targets = state.production_progress.filter((p) =>
+    p.worked_by != null
+    && p.worked_by.trim().toLowerCase().replace(/\s+/g, " ") === key
+    && (p.worked_by_employee_id !== null || p.worked_by_not_a_person)
+    && (!input.from || p.work_date >= input.from)
+    && (!input.to || p.work_date <= input.to));
+  if (targets.length === 0) return noop(SERVICE, { name, updated: 0 });
+
+  const user = actingUser();
+  apply((draft) => {
+    for (const t of targets) {
+      const row = draft.production_progress.find((p) => p.id === t.id)!;
+      row.worked_by_employee_id = null;
+      row.worked_by_not_a_person = false;
+    }
+    writeAudit(draft, {
+      service: SERVICE, entity: "progress_name", entity_no: name,
+      action: "unresolve", outcome: "ok", reason: null,
+      detail: { entries: targets.length, by: user.email },
+    });
+  });
+  return ok(SERVICE, { name, updated: targets.length });
 }

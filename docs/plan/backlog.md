@@ -72,7 +72,7 @@ and I numbered them while agreeing what to do first.
 | Q48 | **Does a subcontracted piece ever come back needing more than finishing?** The `SUBCON` route is Finishing → QC → Packing | Raised 2026-09-13 (D254). Taken straight from *kita tinggal finishing dan packing*. If some vendors deliver raw and some deliver finished, that is a third route, not a flag on this one — and adding one is a data edit |
 | Q46 | **Does a company half day earn the full tunjangan?** Today it does — the person was here, and only HRD's separate decision takes it away | Raised 2026-09-13 (D250). Follows from the owner's correction rather than from anything he said about half days specifically, so it is marked as a reading, not a ruling |
 
-| W5 | **Link production work to people.** `ProgressEntry.worked_by` and `DesignTask.assignee` are free text, on purpose — a subcontractor is a legitimate answer — so neither can feed a performance score without matching people by name | Raised 2026-09-13 (D260, F81). The fix is an optional `employee_id` **beside** the name, not instead of it: the name stays because it is what was written down, and the link is what makes the work countable. Until then every KPI card says the production board is not in the score, which is the honest half |
+| W5 | ~~**Link production work to people.**~~ — **built 2026-09-13 (M53)**, D264. An optional `employee_id` beside the name, resolved once per name by a person; the software suggests and never matches. Production work is now shown on the KPI card as the *deliverable* half and still deliberately not scored, because a piece is not a unit |
 
 ## Asked for, not yet scheduled
 

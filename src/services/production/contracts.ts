@@ -217,9 +217,26 @@ export interface ProgressEntry {
   qty: number;
   /** The office day the work happened, not the day it was typed. */
   work_date: string;
-  /** Who did it — a name, not an employee link: production does not own
-   *  people, and a subcontractor is a legitimate answer here. */
+  /** Who did it, **as it was written down**. Kept verbatim and for ever: it is
+   *  what the mandor actually wrote, and a record that rewrites itself when
+   *  somebody is later linked answers the wrong question in an argument. */
   worked_by: string | null;
+  /** The link, added **beside** the name and never instead of it (D264).
+   *
+   *  Null does not mean *not an employee*. It means nobody has said yet, and
+   *  that is a different fact from `worked_by_not_a_person` — which is a person
+   *  having looked at the name and confirmed it is a team or a vendor's crew.
+   *  The system never matches a name to an employee on its own; it may only
+   *  suggest, and a human confirms (D264).
+   *
+   *  **Invariant:** never set together with `worked_by_not_a_person`. The API
+   *  refuses the contradiction, and everything downstream reads the derived
+   *  `attribution` rather than these two fields, so the pair cannot drift
+   *  apart in a caller's hands (F75's rule). */
+  worked_by_employee_id: string | null;
+  /** Confirmed by a person: this name is **not one of our employees** — *Tim
+   *  potong*, a subcontractor, a vendor's crew. Resolved, not missing. */
+  worked_by_not_a_person: boolean;
   /** Where this came from. `overtime_sheet` entries are posted when a lembur
    *  sheet is approved, carrying the sheet number so the two can be told apart
    *  and so a re-post is a no-op (D147). */
@@ -229,6 +246,28 @@ export interface ProgressEntry {
   recorded_by: string;
   recorded_at: string;
 }
+
+/** How a name on a piece of work resolves to a person — **derived from the
+ *  pair above, never stored**, so nothing downstream can read one half of the
+ *  invariant and miss the other (D264).
+ *
+ *  Three states and they are genuinely three. `unknown` is not a worse
+ *  `not_a_person`: it is the state of every entry written before anybody was
+ *  asked, and the only one that is somebody's to resolve. */
+export type WorkAttribution = "employee" | "not_a_person" | "unknown";
+
+export function attributionOf(
+  row: { worked_by_employee_id: string | null; worked_by_not_a_person: boolean },
+): WorkAttribution {
+  if (row.worked_by_employee_id) return "employee";
+  return row.worked_by_not_a_person ? "not_a_person" : "unknown";
+}
+
+export const ATTRIBUTION_LABEL: Record<WorkAttribution, string> = {
+  employee: "Tertaut ke karyawan",
+  not_a_person: "Bukan satu orang",
+  unknown: "Belum ditautkan",
+};
 
 export interface StageProgress {
   stage: string;
@@ -609,9 +648,15 @@ export interface DesignTask {
   product_code: string;
   kind: DesignKind;
   status: DesignStatus;
-  /** Who is drawing it. Null is honest — an unassigned task is the queue's
-   *  most useful row. */
+  /** Who is drawing it, as it was written down. Null is honest — an unassigned
+   *  task is the queue's most useful row. */
   assignee: string | null;
+  /** The link beside the name, on the same terms as `ProgressEntry` (D264): a
+   *  freelance drafter is a legitimate answer, so the link is optional and
+   *  never replaces what was typed. */
+  assignee_employee_id: string | null;
+  /** Confirmed: this name is not one of our employees. */
+  assignee_not_a_person: boolean;
   /** When it is needed by. Set by hand, or left null and taken from the job. */
   due_date: string | null;
   note: string | null;

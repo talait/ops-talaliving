@@ -392,6 +392,41 @@ export interface KpiView {
   overtime_hours: number;
   tasks_open: number;
   tasks_blocked: number;
+  /** What this person actually **made** in the period, over the production
+   *  entries somebody has linked to them (D264). Null where none are — which
+   *  is *not attributed*, never zero.
+   *
+   *  Deliberately **not scored**, and for a different reason from the one that
+   *  kept it out before. The old reason was that production work was recorded
+   *  against a name and matching names is how the wrong review lands on the
+   *  wrong person; W5 fixes that. The reason it stays unscored is arithmetic:
+   *  **a piece is not a unit.** Eight nakas and four wardrobes do not add up,
+   *  and dividing them by anything produces a number that looks like a
+   *  performance figure and is not one. So it is shown as evidence — the
+   *  *deliverable* half of what the owner asked for — beside the scores, and
+   *  the card says why it is not in them. */
+  work: {
+    entries: number;
+    qty: number;
+    by_stage: { stage: string; name: string; qty: number }[];
+    work_orders: { wo_no: string; product_name: string; qty: number }[];
+    first: string;
+    last: string;
+  } | null;
+  /** How much of the period's reported work can be read as **anybody's**.
+   *
+   *  Coverage is a property of the record, not of the person, and it is what
+   *  makes the blank above legible: with 90% of entries resolved, no work
+   *  against a name means that person reported none; with 40%, it means
+   *  nothing at all. Without this figure the empty card is a silent accusation
+   *  (D264). */
+  work_attribution: {
+    employee: number;
+    not_a_person: number;
+    unknown: number;
+    /** 0–100. */
+    coverage: number;
+  };
   /** Said plainly under the score, including what it could not see. */
   notes: string[];
 }

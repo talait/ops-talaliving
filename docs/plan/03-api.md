@@ -19,6 +19,7 @@ changing one environment variable (ADR-001). None of them imports another.
 /api/v1/hr/…              hr.*        people, attendance, overtime, payroll
 /api/v1/production/…      prod.*      work orders, stages, progress, deadlines
 /api/v1/inventory/…       inv.*       timber: logs, boards, kubikasi, cost per m³
+/api/v1/delivery/…        dlv.*       consignments, site visits, snags, handover
 ```
 
 ## Service contract — the same for all eight
@@ -503,3 +504,25 @@ Each service ships with:
 4. **the integrity job** (ADR-004) in CI against seeded data
 
 A milestone is not DONE until its rule tests are green.
+
+
+---
+
+## `delivery`
+
+The last leg (D209). Procurement owns what the client ordered and production
+owns what came off the floor; this owns what happened to it afterwards.
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/fulfilment` | the board: per project, per order line — **ordered · made · left the yard · arrived · installed**, with the gaps. `made` is **null, not zero**, where no work order exists for that line (F60); `delivered` and `arrived` are different figures and both are shown, because goods on a truck have left the yard and are not on site (F62) |
+| GET | `/fulfilment/{project_code}` | one project |
+| GET | `/deliveries`, `/installations`, `/snags` | filterable by project; snags by open |
+| POST | `/deliveries` | a consignment. **409 `not_enough_made`** when a line asks for more than has been finished and not already shipped, naming made, delivered and available (D210) |
+| POST | `/deliveries/{no}/arrive` | **422** without a named receiver and the signed surat jalan — the same two halves receiving requires (D101). **409** on one already arrived or cancelled |
+| POST | `/installations` | a visit and what was fitted. **409 `not_enough_on_site`** against `arrived − installed`, never against what merely left the yard |
+| POST | `/snags`, `/snags/{no}/close` | raised by whoever saw it, client included; **422** without a description, a raiser, or — on closing — what was actually done |
+| POST | `/handovers` | the BAST. **422 `bast_required`** without the signed document (D211) — the one refusal here that is about a claim rather than about money. **409** when the project is already handed over, or when nothing has been recorded as delivered or installed at all. Open snags do **not** block it; their count and numbers are **frozen onto the record** (D212) |
+
+`project` module at `write` for every POST above. Building these screens found
+that nobody in the seed held it (F61).

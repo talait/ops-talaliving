@@ -2623,3 +2623,97 @@ within a minute of existing. The same pass found a CONFIRMED inbox row whose
 document was attached to nothing at all, which is a posting with no evidence
 travelling with it — D85 forbidden, correct in the running flow, and untrue
 only in the seed.
+
+---
+
+## F60 — no work order at all, counted as none made
+
+The handover board's job is four numbers per line: ordered, made, delivered,
+installed. The first version of `madeFor` ended like this:
+
+```ts
+const orders = state.work_orders.filter(/* this project, this product */);
+if (orders.length === 0) return 0;
+```
+
+Two sentences, and they say different things:
+
+- *the floor has an order for this and has finished none of it* — **zero**;
+- *nothing in production has ever heard of this line* — **not zero**.
+
+In a column of numbers they are the same character. The conversations they
+require are completely different: the first is "where is it up to", the second
+is "who is building this, and does anybody know they are?" HOTEL UBUD, a
+fourteen-table restaurant order with no SPK behind it, read `0` — indis-
+tinguishable from a job that started yesterday.
+
+It now returns null and the column prints `?`, which is the fourth time this
+project has caught the same shape. It is worth naming as a rule rather than a
+recurrence: **a lookup that finds nothing must not return the identity element
+of whatever the caller was going to do with it.** Zero for a sum, empty string
+for a name, `false` for a flag — each is a real answer that happens to be
+reachable by accident, and each one reads as knowledge.
+
+The fix carried a second rule with it. A missing SPK on a **handed-over**
+project raises no warning: the job is finished, nobody can act on it, and a
+permanent alert on a closed record is exactly the mistake F51 made with a
+closed project's target date. Missing is worth saying while it can still be
+answered.
+
+---
+
+## F61 — three screens nobody could open
+
+The screens were built, the refusals were written, the fixtures were seeded.
+Then the first probe of every guarded call came back identically:
+
+```
+overShip   403 module_required: Your account has no access to the project module.
+overFit    403 module_required: …
+noBast     403 module_required: …
+```
+
+Not one of the refusals under test had been reached. **Nobody in the seed held
+the `project` module at anything but read** — leadership had `project: read`
+and that was the entire grant list. The person who actually drives the truck
+and reports what was fitted is the warehouse head, who had inventory,
+production and procurement and nothing else.
+
+The screens rendered perfectly throughout, because reading was never gated. It
+was only the acting that was impossible, and the acting is the part nobody
+looks at until they try it.
+
+This is the same shape as F55 in a different costume — *a guard is untested
+while exactly one kind of person passes it* — and its converse: **a screen is
+untested while nobody has tried to use it as the person whose job it is.**
+Rendering as an administrator proves the markup. It proves nothing about
+whether the work is possible.
+
+---
+
+## F62 — two set of tables on a lorry, listed as standing in the house
+
+*Di lokasi, belum terpasang* showed two dining tables at BABY ISLAND. The
+consignment carrying them had left four days earlier and had never been marked
+arrived — it was, as far as anybody knew, still on the road.
+
+One function was doing two jobs. `deliveredFor` counted every consignment that
+was not cancelled, and two different figures were being read off it:
+
+- **what has left the yard**, which `ready_to_ship` subtracts — a table on a
+  lorry cannot be loaded onto a second lorry;
+- **what is at the site**, which `on_site` subtracts from — and a table on a
+  lorry is emphatically not there.
+
+Collapsing them put goods in transit onto the installation queue, and the
+refusal that is supposed to stop a crew being sent to fit something that has
+not arrived would have waved it through, because its own arithmetic agreed.
+
+Two functions now, `deliveredFor` and `arrivedFor`, and the board carries both
+columns — *berangkat* and *sampai* — with the gap tinted, because the gap is
+the interesting part: goods that left and were never signed for are either on
+a road or in a house nobody wrote down.
+
+The general form is worth keeping: **when one number is being used to answer
+two questions, it is answering at least one of them wrongly.** The tell here
+was that the two usages subtracted it from different things.

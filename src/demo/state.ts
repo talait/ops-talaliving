@@ -28,6 +28,9 @@ import type {
   WorkOrder, ProgressEntry, Product, BomComponent,
   DesignTask, DesignRevision, DesignQuestion,
 } from "@/services/production/contracts";
+import type {
+  Delivery, DeliveryLine, Installation, InstallationLine, Snag, Handover,
+} from "@/services/delivery/contracts";
 
 export interface DemoUser extends User {
   modules: ModuleGrant[];
@@ -169,6 +172,15 @@ export interface DemoState {
    *  saw between them (D153). */
   log_purchases: LogPurchase[];
   log_pieces: LogPiece[];
+  /* The last leg: what left the yard, what was fitted, what was found wrong,
+     and the one record that says a job is finished (D209). */
+  deliveries: Delivery[];
+  delivery_lines: DeliveryLine[];
+  installations: Installation[];
+  installation_lines: InstallationLine[];
+  snags: Snag[];
+  handovers: Handover[];
+
   sawn_boards: SawnBoard[];
   /* What happened to the boards after the saw — issues, returns, scrap,
      opname. The `sawn` side is derived from `sawn_boards` rather than copied

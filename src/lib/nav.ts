@@ -118,9 +118,11 @@ export const NAV: NavSection[] = [
     items: [
       { label: "Projects", href: "/proyek/order", icon: FolderKanban, permission: "project.read", badge: "core" },
       { label: "Cost vs projection", href: "/proyek/produksi", icon: Scale, permission: "project.read", badge: "new" },
-      { label: "Delivery", href: "/proyek/pengiriman", icon: Truck, permission: "project.read" },
-      { label: "Installation", href: "/proyek/instalasi", icon: Wrench, permission: "project.read" },
-      { label: "Handover", href: "/proyek/serah-terima", icon: Stamp, permission: "project.handover" },
+      { label: "Delivery", href: "/proyek/pengiriman", icon: Truck, permission: "project.read", badge: "new" },
+      { label: "Installation", href: "/proyek/instalasi", icon: Wrench, permission: "project.read", badge: "new" },
+      /* Readable by anyone on the project; signing needs `project.handover`,
+       * which the screen gates separately (D211). */
+      { label: "Handover", href: "/proyek/serah-terima", icon: Stamp, permission: "project.read", badge: "new" },
     ],
   },
   {

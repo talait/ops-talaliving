@@ -78,6 +78,13 @@ export const USERS: DemoUser[] = [
       { module: "inventory", level: "write" },
       { module: "production", level: "write" },
       { module: "procurement", level: "read" },
+      /* The last leg is his too (D209). He is already the workshop's own hand
+       * on the production board; delivery, installation and the handover
+       * record are the same person reporting what happened, one step further
+       * down the line. Building those screens found that **nobody in the seed
+       * could use them at all** — the only `project` grant was leadership's,
+       * at read (F61). */
+      { module: "project", level: "write" },
     ],
     authorities: [],
   },

@@ -554,6 +554,22 @@ fill the column is a wrong number in a costing report (D204).
 `inv.log_purchases.nota_attachment_id` links the load to the paper it was
 entered from (D201). Nullable only for loads recorded before that rule.
 
+**Schema `dlv`** — the last leg (D209): `deliveries` + `delivery_lines`,
+`installations` + `installation_lines`, `snags`, `handovers`. Three things
+about it are load-bearing:
+
+- **nothing stores a quantity delivered or installed.** Both are sums over the
+  line tables, filtered by the parent's status — and `delivered` (left the
+  yard) and `arrived` (signed for) are **different filters over the same rows**
+  (F62);
+- `handovers.open_snags_at_handover` and `open_snag_nos` are **stored, not
+  derived**, for the same reason `activity_daily` is (D188): the snags will be
+  closed, and a derived count would rewrite a signature-with-notes into a clean
+  one (D212);
+- `handovers.bast_attachment_id` is **NOT NULL**. It is the only evidence
+  column in this schema that is, because it is the only one backing a claim
+  about what somebody else agreed to (D211).
+
 `core.audit_log` has no retention at all. It is the evidence behind every
 figure the system prints, and a purged audit row is a past number nobody can
 explain.

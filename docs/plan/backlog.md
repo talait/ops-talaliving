@@ -36,9 +36,9 @@ record that it is empty and the menu is what makes it look full.
 | Route | What it should hold | Status |
 |---|---|---|
 | `/it/audit` · `/it/aktivitas` · `/it/pengguna` · `/it/peran` | ~~the two trails, the grants, the catalogue~~ | **built 2026-09-12 (M34)** — they were placeholders for thirty-one milestones and nothing in the build could say so (F54) |
-| `/proyek/pengiriman` | delivery of finished goods to the site | open |
-| `/proyek/instalasi` | installation on site, and what it found | open |
-| `/proyek/serah-terima` | handover, and what the client signed | open |
+| ~~`/proyek/pengiriman`~~ | ~~delivery of finished goods to the site~~ | **built 2026-09-13 (M40)** — D209–D212 |
+| ~~`/proyek/instalasi`~~ | ~~installation on site, and what it found~~ | **built 2026-09-13 (M40)** — D209–D212 |
+| ~~`/proyek/serah-terima`~~ | ~~handover, and what the client signed~~ | **built 2026-09-13 (M40)** — D209–D212 |
 | `/pengaturan` | the settings that are today constants in `src/lib/` | open |
 | `/accounting/payslip` | nothing — it duplicates `/hrd/payroll`. Decide whether accounting reads payslips at all, then build or remove | open |
 

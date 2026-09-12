@@ -14,6 +14,7 @@ export const ATTACHMENTS: Attachment[] = [
   { id: "att_02", storage_path: "demo/2026-08/bukti-transfer-amplas.jpg", url: null, filename: "bukti-transfer-amplas.jpg", sha256: "3b71ee90aa12", mime: "image/jpeg", bytes: 415_882, uploaded_by: "usr_putri", uploaded_at: "2026-08-20T16:08:00+08:00", source: "web", duplicate_suspect: false },
   { id: "att_03", storage_path: "demo/2026-08/foto-terima-amplas.jpg", url: null, filename: "foto-terima-amplas.jpg", sha256: "cc4410ab7731", mime: "image/jpeg", bytes: 1_204_776, uploaded_by: "usr_made", uploaded_at: "2026-08-25T13:35:00+08:00", source: "chat", duplicate_suspect: false },
   { id: "att_04", storage_path: "demo/2026-08/invoice-makmur-sentosa-gabungan.pdf", url: null, filename: "invoice-makmur-sentosa-gabungan.pdf", sha256: "77de0192bb45", mime: "application/pdf", bytes: 288_401, uploaded_by: "usr_anggun", uploaded_at: "2026-08-31T10:00:00+08:00", source: "web", duplicate_suspect: false },
+  { id: "att_43", storage_path: "demo/2026-08/nota-plywood-sentosa.jpg", url: null, filename: "nota-plywood-sentosa.jpg", sha256: "5f20aa71c9b4", mime: "image/jpeg", bytes: 466_210, uploaded_by: "usr_anggun", uploaded_at: "2026-08-28T15:44:00+08:00", source: "web", duplicate_suspect: false },
   { id: "att_05", storage_path: "demo/2026-08/bukti-transfer-plywood.jpg", url: null, filename: "bukti-transfer-plywood.jpg", sha256: "1a09fe33cd80", mime: "image/jpeg", bytes: 392_004, uploaded_by: "usr_anggun", uploaded_at: "2026-08-29T16:25:00+08:00", source: "web", duplicate_suspect: false },
   { id: "att_06", storage_path: "demo/2026-08/kwitansi-potong-rumput.jpg", url: null, filename: "kwitansi-potong-rumput.jpg", sha256: "5502ab11ff73", mime: "image/jpeg", bytes: 221_559, uploaded_by: "usr_anggun", uploaded_at: "2026-08-29T16:30:00+08:00", source: "web", duplicate_suspect: false },
   { id: "att_07", storage_path: "demo/2026-08/bukti-dp-indoveneer.jpg", url: null, filename: "bukti-dp-indoveneer.jpg", sha256: "8811cc02de44", mime: "image/jpeg", bytes: 508_220, uploaded_by: "usr_putri", uploaded_at: "2026-08-21T16:15:00+08:00", source: "web", duplicate_suspect: false },
@@ -90,6 +91,16 @@ export const ATTACHMENT_LINKS: AttachmentLink[] = [
   { id: "lnk_06", attachment_id: "att_04", entity: "transaction", entity_no: "trx-26-09-07_001", kind: "Receipt / Invoice / Nota", linked_by: "usr_anggun", linked_at: "2026-09-07T15:12:00+08:00" },
 
   { id: "lnk_07", attachment_id: "att_05", entity: "transaction", entity_no: "trx-26-08-29_002", kind: "Payment Proof", linked_by: "usr_anggun", linked_at: "2026-08-29T16:26:00+08:00" },
+  /* The vendor's nota stands behind **both** halves of that purchase — the
+     cash deposit and the transfer that cleared the balance. One document, two
+     ledger rows, which `attachment_links` has always allowed and no screen
+     ever showed (D206).
+     Note which document is shared and which is not: the *transfer proof*
+     (att_05) proves only the bank row, because it is evidence of one payment.
+     A transfer proof attached to a cash payment would be a document claiming
+     something it cannot say. */
+  { id: "lnk_40", attachment_id: "att_43", entity: "transaction", entity_no: "trx-26-08-28_002", kind: "Receipt / Invoice / Nota", linked_by: "usr_anggun", linked_at: "2026-08-28T15:45:00+08:00" },
+  { id: "lnk_41", attachment_id: "att_43", entity: "transaction", entity_no: "trx-26-08-29_002", kind: "Receipt / Invoice / Nota", linked_by: "usr_anggun", linked_at: "2026-08-29T16:28:00+08:00" },
   { id: "lnk_08", attachment_id: "att_06", entity: "transaction", entity_no: "trx-26-08-29_003", kind: "Payment Proof", linked_by: "usr_anggun", linked_at: "2026-08-29T16:31:00+08:00" },
   { id: "lnk_09", attachment_id: "att_07", entity: "transaction", entity_no: "trx-26-08-21_002", kind: "Payment Proof", linked_by: "usr_putri", linked_at: "2026-08-21T16:16:00+08:00" },
   { id: "lnk_10", attachment_id: "att_08", entity: "receipt", entity_no: "rcv-26-09-02_01", kind: "Receiving Item", linked_by: "usr_made", linked_at: "2026-09-02T09:46:00+08:00" },
@@ -100,6 +111,11 @@ export const ATTACHMENT_LINKS: AttachmentLink[] = [
      the ledger reads it from — the round points at the same file. */
   { id: "lnk_20", attachment_id: "att_18", entity: "transaction", entity_no: "trx-26-07-01_001", kind: "Payment Proof", linked_by: "usr_putri", linked_at: "2026-07-01T16:06:00+08:00" },
   { id: "lnk_21", attachment_id: "att_19", entity: "transaction", entity_no: "trx-26-07-24_001", kind: "Payment Proof", linked_by: "usr_putri", linked_at: "2026-07-24T16:06:00+08:00" },
+  /* The nota behind the steel racking. It was missing, which made a CONFIRMED
+     inbox row read *belum menopang baris mana pun* — a posting with no
+     evidence travelling with it, which is exactly what D85 forbids and what
+     the runtime flow does attach. The seed was the only place it was untrue. */
+  { id: "lnk_42", attachment_id: "att_14", entity: "transaction", entity_no: "trx-26-09-07_001", kind: "Receipt / Invoice / Nota", linked_by: "usr_anggun", linked_at: "2026-09-02T18:40:00+08:00" },
   { id: "lnk_22", attachment_id: "att_20", entity: "transaction", entity_no: "trx-26-07-31_001", kind: "Payment Proof", linked_by: "usr_putri", linked_at: "2026-07-31T16:06:00+08:00" },
   { id: "lnk_23", attachment_id: "att_21", entity: "transaction", entity_no: "trx-26-08-10_001", kind: "Payment Proof", linked_by: "usr_putri", linked_at: "2026-08-10T16:06:00+08:00" },
   { id: "lnk_24", attachment_id: "att_22", entity: "transaction", entity_no: "trx-26-08-19_002", kind: "Payment Proof", linked_by: "usr_putri", linked_at: "2026-08-19T16:06:00+08:00" },

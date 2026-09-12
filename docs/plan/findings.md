@@ -2569,3 +2569,57 @@ The log nota — whole logs, no boards — was reported as timber with *tidak ad
 baris berbentuk ukuran papan* listed against it. Both true, and together they
 make the reader look like it is arguing with itself. A nota of logs is not
 missing its board rows. It is a nota of logs.
+
+---
+
+## F59 — three shapes the data allowed and no screen ever showed
+
+The ask read like a UI job: put a preview on the document. The preview took an
+hour. The sentence after it took the rest of the day, and it was not a UI job
+at all — *ingat kalau 1 dokumen bisa jadi beberapa transaksi, 1 bukti transfer
+bisa cover beberapa pembelian item, bahkan 1 transaksi dibayar 2x tunai dan
+transfer itu mungkin terjadi.*
+
+The first instinct was to check whether the model supported those. It does, all
+three, and has since M1:
+
+- `attachment_links` is many-to-many, so one document behind four ledger rows
+  has always been representable;
+- allocations are per transaction per target, so one transfer settling four
+  purchases is four rows;
+- and the third — one purchase paid part cash, part transfer — is two ledger
+  rows on two accounts, both allocating to the same request line, which is
+  exactly what a ledger should hold.
+
+**That is the finding, and it is the uncomfortable kind.** A shape the data
+permits and no screen displays is not a feature waiting to be used. It is a
+mistake waiting to be made twice, because the person deciding cannot see that
+it already happened once. The verification queue is the screen where somebody
+turns a photograph into money, and it was showing a filename.
+
+Three smaller things fell out of building it, each worth more than the code.
+
+**The check belongs on the other end.** The first version showed the coverage
+of the document being verified — and for every pending document that panel is
+empty, because a document in the queue is attached to nothing. It rendered
+beautifully and decided nothing. What decides whether *link* is the right road
+is the state of the **row being linked to**: what paper it already carries,
+what it already pays, how much of it points at nothing. Useless to useful was
+not more information, it was the same question asked from the other side.
+
+**A split payment shown by halves is worse than not shown.** The first pass
+listed only the payments belonging to the document in hand. A line paid Rp 2 m
+in cash and Rp 9,5 m by transfer, opened from the transfer's side, read
+*Rp 9.500.000 of Rp 11.500.000* — a settled purchase reported as short. The
+payment list has to be complete, with the ones from elsewhere marked as such.
+
+**Seeding the case is what proved the case.** Writing the split into the
+fixtures meant changing one transaction from Rp 11,5 m to Rp 9,5 m, and the
+first attempt did not: the bank row kept the full amount while the cash row
+paid Rp 2 m of the same purchase, so Rp 13,5 m had been paid for an Rp 11,5 m
+purchase and the screen said so — *Rp 2.000.000 dari baris ini belum diarahkan
+ke pembelian mana pun*. The new panel caught the error in its own demo data
+within a minute of existing. The same pass found a CONFIRMED inbox row whose
+document was attached to nothing at all, which is a posting with no evidence
+travelling with it — D85 forbidden, correct in the running flow, and untrue
+only in the seed.

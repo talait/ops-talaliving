@@ -13,7 +13,7 @@ that only shows what is left teaches nobody anything.
 |---|---|---|---|
 | B1 | ~~Clicking into the instruction box opens the line drawer behind it and takes the focus with it~~ | `/procurement/meeting` | **fixed** 2026-09-11 — the cell stops the row's click (F36) |
 | B2 | The evidence chips — *photo of the goods*, *tanda terima*, *on file* — read as labels and cannot be opened. They should reach the file they describe | `/procurement/tracker/[vendor]` | open |
-| B3 | An image has to be opened through a button before it can be seen. Every picture in the queue should show its own preview | `/accounting/verifikasi` | open |
+| B3 | ~~An image has to be opened through a button before it can be seen. Every picture in the queue should show its own preview~~ | `/accounting/verifikasi` | **fixed** 2026-09-12 (M39) — a preview on the selected document and on every decided one, swapping in place rather than opening a modal. What it draws is a stand-in that says so on its face (D208); Phase 2 puts the file in the same slot |
 | B4 | **Already decided** grows without limit and pushes the queue off the screen. It should carry a window of the last few days and paginate | `/accounting/verifikasi` | **half done (M26)** — both lists now page, twelve at a time, and the queue pages too (D157). The date window is still open: paging keeps the screen usable, it does not answer *how far back is worth showing* |
 
 ## Scheduled — the owner's answers of 2026-09-11

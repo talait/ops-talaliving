@@ -42,9 +42,14 @@ const TRX_SEEDS: TrxSeed[] = [
   ["trx-26-08-27_001", "2026-08-27", "acc_bni325", "IN", 60_000_000, "CASHFLOW", null, null, "Top-up BNI 325 for payroll — from BCA 064", "COMPLETED"],
   ["trx-26-08-27_002", "2026-08-27", "acc_bca064", "OUT", 60_000_000, "CASHFLOW", null, null, "Transfer to BNI 325 — payroll top-up", "COMPLETED"],
   ["trx-26-08-28_001", "2026-08-28", "acc_bni325", "OUT", 28_400_000, "RECCURING - PAYROLL", null, null, "Weekly payroll W35", "COMPLETED"],
+  /* The deposit, paid in cash at the counter. The balance went by transfer the
+     next day (trx-26-08-29_002) — one purchase, two ledger rows, on two
+     different accounts, which is what the ledger should hold and what no
+     screen could show until now (D206). */
+  ["trx-26-08-28_002", "2026-08-28", "acc_petty", "OUT", 2_000_000, "SUPPLIERS", "vnd_03", "prj_25004", "PLYWOOD 18MM — uang muka tunai di toko", "COMPLETED"],
   ["trx-26-08-29_001", "2026-08-29", "acc_bca271", "IN", 12_100_000, "CASHFLOW", null, null, "Round funding pay-26-08-31_01, from BCA 064", "COMPLETED"],
   ["trx-26-08-29_005", "2026-08-29", "acc_bca064", "OUT", 12_100_000, "CASHFLOW", null, null, "Transfer to BCA 271 — round funding", "COMPLETED"],
-  ["trx-26-08-29_002", "2026-08-29", "acc_bca271", "OUT", 11_500_000, "SUPPLIERS", "vnd_03", "prj_25004", "PLYWOOD 18MM, 40 lembar", "POSTED"],
+  ["trx-26-08-29_002", "2026-08-29", "acc_bca271", "OUT", 9_500_000, "SUPPLIERS", "vnd_03", "prj_25004", "PLYWOOD 18MM, 40 lembar — pelunasan setelah uang muka tunai", "POSTED"],
   ["trx-26-08-29_003", "2026-08-29", "acc_petty", "OUT", 350_000, "OTHERS", "vnd_10", "prj_25004", "Grounds mowing, workshop", "COMPLETED"],
   ["trx-26-08-29_004", "2026-08-29", "acc_bca271", "OUT", 0, "SUPPLIERS", "vnd_03", null, "PLYWOOD 18MM — entered twice", "VOID"],
   ["trx-26-08-31_001", "2026-08-31", "acc_bni325", "OUT", 890_000, "OFFICE", "vnd_03", null, "Stationery and copier paper", "COMPLETED"],
@@ -122,7 +127,11 @@ export const PAYMENT_ALLOCATIONS: PaymentAllocation[] = [
   { id: "alc_01", trx_id: trxIdByNo("trx-26-08-20_003"), pr_line_no: "pr-26-08-18_01-L01", po_no: null, amount: 4_050_000, method: "transfer", superseded_by: null, allocated_by: "usr_putri", allocated_at: "2026-08-20T16:10:00+08:00" },
   { id: "alc_02", trx_id: trxIdByNo("trx-26-08-21_001"), pr_line_no: "pr-26-08-18_01-L02", po_no: null, amount: 5_550_000, method: "transfer", superseded_by: null, allocated_by: "usr_putri", allocated_at: "2026-08-21T16:10:00+08:00" },
   { id: "alc_03", trx_id: trxIdByNo("trx-26-08-21_002"), pr_line_no: "pr-26-08-18_01-L03", po_no: "po-26-08-14_01", amount: 19_668_000, method: "transfer", superseded_by: null, allocated_by: "usr_putri", allocated_at: "2026-08-21T16:12:00+08:00" },
-  { id: "alc_04", trx_id: trxIdByNo("trx-26-08-29_002"), pr_line_no: "pr-26-08-27_01-L01", po_no: null, amount: 11_500_000, method: "transfer", superseded_by: null, allocated_by: "usr_anggun", allocated_at: "2026-08-29T16:20:00+08:00" },
+  /* One request line, two payments. Neither allocation is wrong and neither
+     is the whole story — together they settle the line, and a screen that
+     showed only one of them would call a paid purchase half paid (D206). */
+  { id: "alc_04", trx_id: trxIdByNo("trx-26-08-29_002"), pr_line_no: "pr-26-08-27_01-L01", po_no: null, amount: 9_500_000, method: "transfer", superseded_by: null, allocated_by: "usr_anggun", allocated_at: "2026-08-29T16:20:00+08:00" },
+  { id: "alc_04b", trx_id: trxIdByNo("trx-26-08-28_002"), pr_line_no: "pr-26-08-27_01-L01", po_no: null, amount: 2_000_000, method: "cash", superseded_by: null, allocated_by: "usr_anggun", allocated_at: "2026-08-28T15:40:00+08:00" },
   /* Cash out of petty cash against a line nobody had approved. The allocation
    * is real, so the coverage is real, so the board shows it — which is the
    * point (A6: warn, never hide). */
@@ -145,6 +154,19 @@ export const PAYMENT_ALLOCATIONS: PaymentAllocation[] = [
  * resolved to a note, one that produced a transaction. If this list grows,
  * people are routing around the normal road. */
 export const EVIDENCE_INBOX: EvidenceInboxRow[] = [
+  /* Decided, and the most instructive row in the queue's history: one nota
+     that ended up standing behind **two** ledger rows, because the plywood was
+     paid in two goes — cash at the counter, the balance transferred the next
+     day (D206). Opening it in *Already decided* is the only place in the app
+     where one document, two transactions and one split-paid request line are
+     all visible at once. */
+  {
+    id: "inb_06", ref_id: "upl_26-08-28_01~x0", origin: "web", status: "ATTACHED",
+    attachment_id: "att_43", reported_by: "usr_anggun", reported_at: "2026-08-28T15:44:00+08:00",
+    extracted: { vendor_name: "TOKO BANGUNAN MAKMUR SENTOSA", document_date: "2026-08-28", amount_idr: 11_500_000, doc_type: "Receipt / Invoice / Nota", confidence: 91, note: "PLYWOOD 18MM 122x244, 40 lembar. Uang muka tunai, sisanya transfer." },
+    produced_trx_id: null, produced_pr_line_no: "pr-26-08-27_01-L01", similar_trx_nos: [],
+    money_direction: "OUT",
+  },
   /* The other direction: leadership transferred money INTO BCA 271 and
    * dropped the proof in chat. Nobody has booked it yet, so the round it was
    * meant to fund cannot be marked funded — which is the point (D80, D81). */

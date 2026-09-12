@@ -31,6 +31,7 @@ import type {
   CashPlan, CashRow, CashCell, CashCellState, CashMonth, CashUnplanned, CashDue,
   CashComponent, CashEvent, CashMonthDetail, CashDayRow, Transaction as TrxRow,
   BankStatement, BankStatementView, StatementLineView,
+  DocumentCoverage, CoverageTransaction, CoverageLine, CoveragePayment, TransactionCoverage,
 } from "@/services/accounting/contracts";
 import type { DocKind } from "@/services/documents/contracts";
 import { REQUEST_SUPPORT_KINDS } from "@/services/documents/contracts";
@@ -1888,4 +1889,179 @@ export function repViews(state: DemoState): RepView[] {
         .filter((x): x is string => !!x))],
     };
   });
+}
+
+/** Everything one document is holding up, and whether the arithmetic closes.
+ *
+ *  Three shapes, one computation (D206):
+ *
+ *  - a document linked to several transactions — `attachment_links` has always
+ *    been many-to-many, this is the first screen to read it that way;
+ *  - one transaction allocated across several request lines — one transfer,
+ *    four purchases;
+ *  - one request line paid by several transactions — the cash half and the
+ *    transfer half of the same purchase, which the ledger correctly holds as
+ *    two rows on two accounts.
+ *
+ *  The figure that matters is the **gap**, and it is null rather than zero
+ *  when nobody has read what the document is worth. A gap measured against an
+ *  unknown is the whole amount wearing a different name.
+ */
+export function documentCoverage(
+  state: DemoState,
+  attachmentId: string,
+  documentAmount: number | null,
+): DocumentCoverage {
+  const links = state.attachment_links.filter((l) => l.attachment_id === attachmentId);
+
+  const trxNos = [...new Set(links.filter((l) => l.entity === "transaction").map((l) => l.entity_no))];
+  const transactions: CoverageTransaction[] = trxNos
+    .map((no) => state.transactions.find((t) => t.trx_no === no))
+    .filter((t): t is Transaction => !!t)
+    .map((t) => ({
+      trx_no: t.trx_no,
+      trx_date: t.trx_date,
+      account_code: state.accounts.find((a) => a.id === t.account_id)?.code ?? "—",
+      account_name: state.accounts.find((a) => a.id === t.account_id)?.name ?? "—",
+      direction: t.direction,
+      amount_idr: t.status === "VOID" ? 0 : t.amount_idr,
+      status: t.status,
+      description: t.description,
+      /* Other papers behind the same row. A nota and its transfer proof is the
+         ordinary case, not a duplicate. */
+      other_documents: state.attachment_links.filter(
+        (l) => l.entity === "transaction" && l.entity_no === t.trx_no && l.attachment_id !== attachmentId,
+      ).length,
+    }));
+
+  const trxIds = new Set(
+    transactions.map((t) => state.transactions.find((x) => x.trx_no === t.trx_no)!.id),
+  );
+
+  /* Every request line those transactions reach — and then, for each line,
+     **every** transaction paying it, including ones this document knows
+     nothing about. That last part is the split payment: showing only our own
+     half would make a fully paid line look half paid. */
+  const lineNos = [...new Set(
+    state.payment_allocations
+      .filter((a) => a.superseded_by === null && a.pr_line_no && trxIds.has(a.trx_id))
+      .map((a) => a.pr_line_no as string),
+  )];
+
+  const lines: CoverageLine[] = lineNos.map((lineNo) => {
+    const line = state.pr_lines.find((l) => l.line_no_full === lineNo);
+    const cov = line ? lineCoverage(state, line) : null;
+    const payments: CoveragePayment[] = state.payment_allocations
+      .filter((a) => a.superseded_by === null && a.pr_line_no === lineNo)
+      .map((a) => {
+        const trx = state.transactions.find((t) => t.id === a.trx_id);
+        return {
+          trx_no: trx?.trx_no ?? "—",
+          account_code: state.accounts.find((x) => x.id === trx?.account_id)?.code ?? "—",
+          method: a.method,
+          amount: a.amount,
+          from_this_document: trxIds.has(a.trx_id),
+        };
+      })
+      .sort((a, b) => a.trx_no.localeCompare(b.trx_no));
+
+    return {
+      line_no_full: lineNo,
+      description: line?.description ?? lineNo,
+      approved: cov?.approved ?? 0,
+      covered: cov?.covered ?? 0,
+      remaining: cov?.remaining ?? 0,
+      settled: cov?.settled ?? false,
+      payments,
+    };
+  });
+
+  const covered_total = transactions.reduce((sum, t) => sum + t.amount_idr, 0);
+
+  return {
+    attachment_id: attachmentId,
+    document_amount: documentAmount,
+    transactions,
+    lines,
+    covered_total,
+    gap: documentAmount == null ? null : documentAmount - covered_total,
+    shared: transactions.length > 1,
+  };
+}
+
+/** The same three questions, asked of the ledger row rather than the paper.
+ *
+ *  A document in the verification queue is attached to nothing, so its own
+ *  coverage is empty and decides nothing. What decides whether *link* is the
+ *  right road is what the row being linked to already carries (D207): the
+ *  paper already on it, what it already pays, and how much of it is pointed at
+ *  nothing yet.
+ */
+export function transactionCoverage(state: DemoState, trxNo: string): TransactionCoverage | null {
+  const trx = state.transactions.find((t) => t.trx_no === trxNo);
+  if (!trx) return null;
+
+  const documents = state.attachment_links
+    .filter((l) => l.entity === "transaction" && l.entity_no === trxNo)
+    .map((l) => ({
+      attachment_id: l.attachment_id,
+      filename: state.attachments.find((a) => a.id === l.attachment_id)?.filename ?? l.attachment_id,
+      kind: l.kind as string,
+    }));
+
+  const allocs = state.payment_allocations.filter(
+    (a) => a.superseded_by === null && a.trx_id === trx.id,
+  );
+
+  const allocations = allocs.map((a) => ({
+    target: (a.pr_line_no ?? a.po_no ?? "—") as string,
+    kind: (a.pr_line_no ? "line" : "po") as "line" | "po",
+    amount: a.amount,
+    method: a.method,
+  }));
+
+  const allocated_total = allocs.reduce((sum, a) => sum + a.amount, 0);
+
+  /* For each request line this row touches, **every** payment against it —
+     including the halves paid from other rows. Showing only this row's share
+     would make a settled line look half paid. */
+  const lines: CoverageLine[] = [...new Set(allocs.map((a) => a.pr_line_no).filter((x): x is string => !!x))]
+    .map((lineNo) => {
+      const line = state.pr_lines.find((l) => l.line_no_full === lineNo);
+      const cov = line ? lineCoverage(state, line) : null;
+      return {
+        line_no_full: lineNo,
+        description: line?.description ?? lineNo,
+        approved: cov?.approved ?? 0,
+        covered: cov?.covered ?? 0,
+        remaining: cov?.remaining ?? 0,
+        settled: cov?.settled ?? false,
+        payments: state.payment_allocations
+          .filter((a) => a.superseded_by === null && a.pr_line_no === lineNo)
+          .map((a) => {
+            const t = state.transactions.find((x) => x.id === a.trx_id);
+            return {
+              trx_no: t?.trx_no ?? "—",
+              account_code: state.accounts.find((x) => x.id === t?.account_id)?.code ?? "—",
+              method: a.method,
+              amount: a.amount,
+              from_this_document: a.trx_id === trx.id,
+            };
+          })
+          .sort((a, b) => a.trx_no.localeCompare(b.trx_no)),
+      };
+    });
+
+  return {
+    trx_no: trx.trx_no,
+    amount_idr: trx.status === "VOID" ? 0 : trx.amount_idr,
+    status: trx.status,
+    account_code: state.accounts.find((a) => a.id === trx.account_id)?.code ?? "—",
+    description: trx.description,
+    documents,
+    allocations,
+    allocated_total,
+    unallocated: (trx.status === "VOID" ? 0 : trx.amount_idr) - allocated_total,
+    lines,
+  };
 }

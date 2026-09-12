@@ -131,6 +131,115 @@ export interface PaymentAllocation {
   allocated_at: string;
 }
 
+/* ── What one document is holding up ──────────────────────────────────────
+ *
+ *  Verification is not one document, one row. Three shapes are ordinary here
+ *  and all three break the assumption (owner):
+ *
+ *  1. **One document, several transactions.** A nota covering a delivery that
+ *     was paid in two goes. Already possible — `attachment_links` is
+ *     many-to-many from the start — but never *shown*, which is the same as
+ *     not existing to the person deciding.
+ *
+ *  2. **One transfer proof, several purchases.** One screenshot of a transfer
+ *     settling four request lines at once. The arithmetic that matters is the
+ *     gap: the transfer says Rp 5.000.000 and the rows under it add to
+ *     Rp 4.200.000, and the Rp 800.000 has to be somewhere.
+ *
+ *  3. **One purchase paid twice — part cash, part transfer.** Two ledger rows
+ *     on two different accounts, both allocating to the same request line.
+ *     The ledger is right to hold two rows; what was missing is a screen that
+ *     shows them as one payment (D206).
+ *
+ *  None of these needed a model change. All three needed to be visible before
+ *  somebody books the same nota a second time.
+ */
+
+/** One ledger row a document stands as evidence for. */
+export interface CoverageTransaction {
+  trx_no: string;
+  trx_date: string;
+  account_code: string;
+  account_name: string;
+  direction: Direction;
+  amount_idr: number;
+  status: TrxStatus;
+  description: string;
+  /** How many other documents also stand behind this row. More than one is
+   *  normal — a nota and its transfer proof. */
+  other_documents: number;
+}
+
+/** One payment against one request line, from one transaction. Several of
+ *  these on one line **is** the split payment. */
+export interface CoveragePayment {
+  trx_no: string;
+  account_code: string;
+  method: AllocMethod;
+  amount: number;
+  /** True when this transaction is one of the ones the document covers — the
+   *  other half of a split may have been paid against a document filed
+   *  elsewhere, and saying so is the point. */
+  from_this_document: boolean;
+}
+
+/** One request line the document reaches, through the transactions on it. */
+export interface CoverageLine {
+  line_no_full: string;
+  description: string;
+  approved: number;
+  covered: number;
+  remaining: number;
+  settled: boolean;
+  payments: CoveragePayment[];
+}
+
+export interface DocumentCoverage {
+  attachment_id: string;
+  /** What the document itself says it is worth, when anybody has read it.
+   *  Null is a real answer and the screen says so rather than assuming zero. */
+  document_amount: number | null;
+  transactions: CoverageTransaction[];
+  lines: CoverageLine[];
+  /** The ledger rows this document stands behind, added up. */
+  covered_total: number;
+  /** `document_amount − covered_total`. **Null when the document's own value
+   *  was never read** — a gap computed against an unknown is not a gap, it is
+   *  the whole amount dressed as one. */
+  gap: number | null;
+  /** More than one ledger row leans on this one piece of paper. Not a problem;
+   *  a thing to know before booking it again. */
+  shared: boolean;
+}
+
+/** The same three questions asked from the other end — of a ledger row you
+ *  are about to attach a document to.
+ *
+ *  This is where the check actually bites. A document sitting in the queue is
+ *  attached to nothing yet, so its own coverage is empty and tells nobody
+ *  anything. What decides whether *link* is the right road is the state of the
+ *  **row being linked to**: what paper it already has, what it already pays,
+ *  and whether it is already fully proven (D207).
+ */
+export interface TransactionCoverage {
+  trx_no: string;
+  amount_idr: number;
+  status: TrxStatus;
+  account_code: string;
+  description: string;
+  /** Paper already standing behind this row. Two is ordinary — a nota and a
+   *  transfer proof — and a third is worth a second look. */
+  documents: { attachment_id: string; filename: string; kind: string }[];
+  /** Every request line and order this row was allocated to, with the method.
+   *  One transfer across four purchases is this list with four entries. */
+  allocations: { target: string; kind: "line" | "po"; amount: number; method: AllocMethod }[];
+  /** Allocated out of `amount_idr`; the remainder is money on this row that is
+   *  not yet pointed at anything. */
+  allocated_total: number;
+  unallocated: number;
+  lines: CoverageLine[];
+}
+
 export interface EvidenceInboxRow {
   id: string;
   ref_id: string;

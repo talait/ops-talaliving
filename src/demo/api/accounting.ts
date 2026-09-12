@@ -7,7 +7,7 @@ import type {
   CashPlan, CashDue, CashComponent, CashOverride, CashSettlement,
   CashFrequency, CashMonthDetail,
   Direction, PaymentAllocation, EvidenceInboxRow, InboxHealth, AllocMethod,
-  BankStatementView,
+  BankStatementView, DocumentCoverage, TransactionCoverage,
 } from "@/services/accounting/contracts";
 import { LOCALE } from "@/lib/format";
 import { getState, apply, newId, nextDocNumber, writeAudit, writeOutbox } from "../store";
@@ -15,7 +15,7 @@ import type { AuditRow } from "../state";
 import {
   accountBalances, transactionView, allocatedTotal, inboxHealth, lineCoverage,
   lineStatus, fundings, fundingView, cashPlan, cashDue, cashMonthDetail,
-  bankStatementView, bankStatementViews,
+  bankStatementView, bankStatementViews, documentCoverage, transactionCoverage,
 } from "../derive";
 import { latency, actingUser, requireAuthority, requireModule, conflict, replayed, remember, paged } from "./_kit";
 import { PRIMARY_DOC_KINDS, type DocKind } from "@/services/documents/contracts";
@@ -1448,4 +1448,29 @@ export async function ignoreStatementLine(
     });
   });
   return getStatement(input.statement_no);
+}
+
+/** What one document is holding up — every ledger row it stands behind, every
+ *  request line those rows reach, and every payment against each of those
+ *  lines including the ones this document knows nothing about (D206).
+ *
+ *  A read, and a read that is worth making before every one of the five roads:
+ *  the commonest mistake this queue can produce is booking a nota that is
+ *  already booked, and the only thing that prevents it is seeing what the
+ *  paper already covers.
+ */
+export async function coverageForDocument(
+  attachmentId: string,
+  documentAmount: number | null = null,
+): Promise<Result<DocumentCoverage>> {
+  await latency();
+  return ok(SERVICE, documentCoverage(getState(), attachmentId, documentAmount));
+}
+
+/** What a ledger row already carries, before a document is attached to it. */
+export async function coverageForTransaction(trxNo: string): Promise<Result<TransactionCoverage>> {
+  await latency();
+  const c = transactionCoverage(getState(), trxNo);
+  if (!c) return notFound(SERVICE, "transaction_not_found", `Tidak ada transaksi ${trxNo}.`);
+  return ok(SERVICE, c);
 }

@@ -101,7 +101,6 @@ export const NAV: NavSection[] = [
       { label: "Payment Calendar", href: "/accounting/calendar", icon: PiggyBank, permission: "accounting.read", badge: "new" },
       { label: "Documents", href: "/accounting/documents", icon: FileBadge, permission: "accounting.read" },
       { label: "Purchase Verification", href: "/accounting/verifikasi", icon: Receipt, permission: "accounting.read", badge: "core" },
-      { label: "Payslips", href: "/accounting/payslip", icon: HandCoins, permission: "payroll.read" },
     ],
   },
   {

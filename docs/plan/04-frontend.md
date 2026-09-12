@@ -154,7 +154,7 @@ Every new route is one line in `nav.ts`.
 | ✚ `/accounting/documents` | **built (M9), then parked** (D93, restated in D105). Every file with what it is attached to, filtered by type, month and text. The owner does not need it; it stays as it is and gets no more work. The number that mattered — files attached to nothing — is the exception inbox's job | M9 |
 | ✚ `/accounting/bukti` | evidence browser by entity, month, type; and the inbox health number | M9 |
 | ✚ `/accounting/catatan` | `Others` documents — a different notepad that does not touch the company ledger (owner, 2026-08-27) | M10 |
-| ▸ `/accounting/budget`, `/accounting/payslip` | untouched placeholders | — |
+| ✖ `/accounting/budget`, `/accounting/payslip` | **both gone.** The cashflow calendar answers what a budget page was for; payslips are HRD's and accounting does not read them (owner, D213) | M41 |
 
 Every other module keeps its honest "not built yet" placeholder. A page that
 looks nearly finished generates false bug reports; a page that says it is not

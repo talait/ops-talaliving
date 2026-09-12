@@ -26,12 +26,17 @@ export const PAY_RULE_SETS: PayRuleSet[] = [
       restday_tiers: [{ after_hours: 0, multiplier: 1 }],
       flat_multiplier: 1,
       monthly_divisor: 173,
+      hourly_basis: "statutory",
+      effective_days_per_year: 288,
+      hourly_includes_allowance: false,
       week_pattern: "6day",
       overtime_rounding_minutes: 0,
       undertime_mode: "off",
       undertime_grace_minutes: 15,
-      late_after_minutes: 8 * 60,
+      day_starts_minutes: 8 * 60,
+      late_grace_minutes: 0,
       late_mode: "manual",
+      late_forfeits_allowance: false,
     },
     created_by: "usr_shared",
     created_at: "2026-01-01T08:00:00+08:00",
@@ -55,14 +60,63 @@ export const PAY_RULE_SETS: PayRuleSet[] = [
       ],
       flat_multiplier: 1,
       monthly_divisor: 173,
+      hourly_basis: "statutory",
+      effective_days_per_year: 288,
+      hourly_includes_allowance: false,
       week_pattern: "6day",
       overtime_rounding_minutes: 0,
       undertime_mode: "off",
       undertime_grace_minutes: 15,
-      late_after_minutes: 8 * 60,
+      day_starts_minutes: 8 * 60,
+      late_grace_minutes: 0,
       late_mode: "manual",
+      late_forfeits_allowance: false,
     },
     created_by: "usr_shared",
     created_at: "2026-06-28T16:30:00+08:00",
+  },
+  {
+    id: "prs_03", version: 3,
+    effective_from: "2026-09-01",
+    note: "Jawaban pemilik atas Q41 dan pembagi per jam: upah dibaca sebagai pokok + tunjangan, satu jam dihitung dari setahun gaji ÷ hari kerja efektif ÷ jam sehari, dan terlambat punya toleransi 15 menit.",
+    rules: {
+      overtime_mode: "statutory",
+      workday_tiers: [
+        { after_hours: 0, multiplier: 1.5 },
+        { after_hours: 1, multiplier: 2 },
+      ],
+      restday_tiers: [
+        { after_hours: 0, multiplier: 2 },
+        { after_hours: 7, multiplier: 3 },
+        { after_hours: 8, multiplier: 4 },
+      ],
+      flat_multiplier: 1,
+      /* Tetap ada, tetap 173, dan tetap dipakai tangga lembur nasional sebagai
+         pembanding — bukan lagi jawaban atas *satu jam di sini berapa* (D249). */
+      monthly_divisor: 173,
+      hourly_basis: "company",
+      /* Enam hari kerja: 52 × 6 = 312, dikurangi tanggal merah dan cuti
+         bersama. 288 adalah 24 hari sebulan — konvensi enam-hari yang lazim
+         dipakai di sini, bukan hitungan yang dikarang layar ini. Pemilik yang
+         menetapkan angkanya; layar aturan menampilkan aritmatikanya. */
+      effective_days_per_year: 288,
+      /* Pemilik: *pakai pokok+allowance untuk perhitungan semua* (D250). */
+      hourly_includes_allowance: true,
+      week_pattern: "6day",
+      overtime_rounding_minutes: 0,
+      undertime_mode: "off",
+      undertime_grace_minutes: 15,
+      day_starts_minutes: 8 * 60,
+      /* Pemilik: *terlambat baru dipotong setelah 15 menit* (D251). */
+      late_grace_minutes: 15,
+      /* Masih manual: aturannya sudah ada, keputusan menyalakannya belum
+         (D174). Layar aturan menghitung dampaknya per orang lebih dulu. */
+      late_mode: "manual",
+      /* Pemilik, mengoreksi jawabannya sendiri: *potongannya jam saja,
+         allowance masih diberikan jika hadir* (D250). */
+      late_forfeits_allowance: false,
+    },
+    created_by: "usr_shared",
+    created_at: "2026-09-12T10:00:00+08:00",
   },
 ];

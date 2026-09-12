@@ -3032,3 +3032,127 @@ Worth pairing with F65: there the overflow test measured every screen and
 missed three faults because it asked *does this fit* rather than *does this
 still mean what the screen means*. Here a filter test would pass on both rows
 for the same reason. Neither list is wrong; the **set** of lists is.
+
+## F70 — one field called `late_after_minutes`, holding 480
+
+The owner's answer to Q41 set a fifteen-minute grace period. Writing it down
+meant finding where it goes, and the rule book already had a field that looked
+like exactly the right one:
+
+```ts
+late_after_minutes: 8 * 60,   // 480
+```
+
+Read as English, that field says *somebody is late after 480 minutes*. Read
+against the code, it says *somebody is late after 08:00* — `mins` on the other
+side of the comparison is minutes since midnight, not minutes since the day
+started.
+
+```ts
+return s + Math.max(mins - rules.late_after_minutes, 0);
+```
+
+So the field had never been a grace period at all. It was a start time wearing
+a grace period's name, and the owner's fifteen minutes had **nowhere to live**:
+setting it to 15 would have made everybody late from 00:15.
+
+The fix is two fields, `day_starts_minutes` and `late_grace_minutes`, and the
+general rule is the one this project keeps rediscovering: **when one number
+answers two questions it is answering at least one of them wrongly** (F62).
+What is new here is the tell. The name was a *description of the arithmetic*
+(`after_minutes`) rather than of the thing (`day_starts`), and a name like that
+cannot be wrong, which is precisely why it hid a conflation for thirty
+milestones. `late_after_minutes` is true of both meanings. `day_starts_minutes`
+is true of only one.
+
+There is a second finding sitting behind it, unresolved and written down rather
+than guessed at. With the day starting at 08:00 and the grace at 15 minutes,
+**nobody in the system is late.** The workshop taps in at 06:49, 06:55, 07:02 —
+they are an hour early against an office rule, because the fingerprint reader is
+a workshop device and 08:00 is when the office starts. One business, two
+schedules, one start time. That is a question for the owner, not a number to
+invent, and it is in the backlog as such.
+
+## F71 — the worked example that stopped running the rules
+
+The rule-book screen carries worked examples, on the principle that a multiplier
+is an abstraction until it is rupiah. The overtime one opened:
+
+```ts
+const hourly = 17_500; // upah harian Rp 140.000 ÷ 8 jam
+```
+
+Correct on the day it was written, and correct for thirty milestones, because
+Rp 140.000 a day was a real seeded rate. Then the pay split (D250) turned that
+rate into a pokok of Rp 125.000 plus a tunjangan of Rp 15.000 — the same money,
+now in two parts — and the example silently became a claim about a person who
+no longer exists, computed from a constant that no rule on the screen can move.
+
+Nobody would have noticed. The number was still Rp 17.500. It is *still*
+Rp 17.500 today, because the allowance is included by default and 125 + 15 is
+140. The example was right by coincidence, and it would have stayed right until
+the day somebody unticked *tunjangan ikut dihitung* and watched the example not
+move.
+
+**A worked example that does not run the rules is a screenshot.** It now derives
+its hourly from `rules.hourly_includes_allowance` like everything else, and
+prints which composition it used. This is the third time the app's own worked
+example has been the thing that was wrong — F64 (John Lau refusing his own
+subject), F66 (his English chips failing his Indonesian router), and now this —
+and the pattern across all three is worth stating: **the examples are written
+once and the rules keep moving**, so an example that holds its own copy of a
+figure is a copy that will drift. Derive, or delete.
+
+## F72 — the pay split that quietly cut five salaries
+
+The tunjangan is earned per day present. Presence comes from the timesheet. So
+the first version counted the days the timesheet says somebody was here, for
+everybody, which is what the owner described and what the code already had a
+helper for.
+
+The payroll run came out with five office staff on **Rp 0 tunjangan, 0 hari
+hadir** — Evin, Putri, Anggun, Andi, Made — every one of them Rp 600.000 a month
+worse off than the day before, from a change whose stated property was that it
+moved nobody's money.
+
+The fingerprint reader is a workshop device. The office does not use it. **No
+taps is not evidence of absence**, and treating it as such is the same class of
+error as F60's lookup returning zero: the absence of a record is not a record of
+absence.
+
+What is satisfying about the fix is that the system already contained it. Twenty
+lines above, `base_pay` makes exactly this split, with exactly this reasoning
+already written in a comment:
+
+> Monthly staff are paid the month whatever the machine says; a daily or hourly
+> person is paid for what they were here for. That difference is the only place
+> `pay_basis` is used, and it is why it exists.
+
+The allowance follows the same rule for the same reason — a monthly person earns
+it on the days the business works, a daily one on the days the timesheet
+counted — and loses it the way the owner said anybody loses it: HRD deciding,
+with a reason. So the comment is no longer the only place `pay_basis` is used,
+and the sentence it contains turns out to have been a general rule about this
+business rather than a note about one variable.
+
+## F73 — bruto and diterima, computed twice
+
+```ts
+gross: base_pay + allowance_pay + overtime_pay - under.amount - late_deduction,
+net:   base_pay + overtime_pay - under.amount + adjustment_total,
+```
+
+Two longhand sums of the same components, four lines apart, in one object
+literal. Adding the tunjangan to the first left the second behind, and the
+payroll run rendered a line with **no adjustments at all** showing a bruto of
+Rp 24.525.000 and a *diterima* of Rp 24.400.000.
+
+Net is gross plus what a person decided. It was never anything else. Written as
+`gross + adjustment_total`, the two cannot disagree; written out twice, they
+disagreed the first time anything was added to either.
+
+This is the cheapest finding in the file and the one most likely to recur,
+because the duplication is invisible at the point of editing: the two lines do
+not look like the same formula, they look like two correct formulas. The tell is
+that every component of the shorter one appears in the longer one. Where that is
+true, one of them is a definition and the other should be a reference.

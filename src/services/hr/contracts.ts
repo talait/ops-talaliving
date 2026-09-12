@@ -28,8 +28,18 @@ export interface Employee {
   /** Which part of the business — used to group a payroll run, nothing more. */
   unit: string;
   pay_basis: PayBasis;
-  /** Per month, per day or per hour, matching `pay_basis`. Whole rupiah. */
+  /** **Pokok only**, per month, per day or per hour, matching `pay_basis`.
+   *  Whole rupiah. */
   base_rate: number;
+  /** **Tunjangan, per day the person was actually here** — the same unit for
+   *  everybody regardless of `pay_basis`, because that is how the owner
+   *  described it: *allowance dibayar per hari* (D250).
+   *
+   *  Zero is the honest default and means exactly what it says: this person's
+   *  pay has not been split yet. Nothing about their figures changes while it
+   *  is zero, which is the property that let this field be added to a system
+   *  already paying people. */
+  allowance_rate: number;
   /** Standard hours in a working day. Overtime is what goes past it. */
   daily_hours: number;
   joined_on: string;
@@ -664,7 +674,66 @@ export type UndertimeMode =
   /** Short by more than half a day costs half a day; less costs nothing. */
   | "half_day_step";
 
+/** What lateness costs.
+ *
+ *  The owner stated the rule at last (Q41, D251): past the grace period the
+ *  deduction is **hours, at the hourly rate** — *potongannya jam saja*. It
+ *  still ships `manual`, for D174's reason rather than for want of a rule: a
+ *  deduction that starts appearing on payslips because software was updated is
+ *  one nobody agreed to. The rule-book screen prices `pro_rata` against a real
+ *  week first, per person, and somebody turns it on having seen it. */
 export type LateMode = "manual" | "pro_rata";
+
+/** Which divisor turns a wage into an hour of it. */
+export type HourlyBasis =
+  /** The owner's own arithmetic (D249): a year of pay ÷ the days this business
+   *  actually works ÷ the hours in its day. */
+  | "company"
+  /** The Kepmenaker figure, 1/173 of a month. Correct for the statutory
+   *  overtime ladder and **not** an answer to *what is an hour worth here*,
+   *  because this office does not work a 40-hour week. */
+  | "statutory";
+
+/** HRD deciding that one person does not get one day's tunjangan, and saying
+ *  why (D250).
+ *
+ *  Its own record rather than a flag on the day mark, because the owner asked
+ *  for it that way and the reason is sound: a day mark says **what the day
+ *  was** — sakit, cuti, setengah hari, tanggal merah — and this says what
+ *  somebody **decided about the money**. WFH is the case that proves it: the
+ *  day was worked, the timesheet is right, nothing about it is exceptional,
+ *  and the allowance is still not paid because the allowance is for coming in.
+ *  Folding that into the mark would make the timesheet lie about the day in
+ *  order to get the pay right.
+ *
+ *  Append-only, like everything else here: restoring writes `restored_by`
+ *  rather than deleting the row, so *why was this not paid* stays answerable
+ *  after somebody changes their mind (A5).
+ */
+export interface AllowanceWithholding {
+  id: string;
+  employee_id: string;
+  work_date: string;
+  /** Required. A deduction with no sentence beside it is one nobody can argue
+   *  with three months later (D155). */
+  reason: string;
+  by: string;
+  at: string;
+  restored_by: string | null;
+  restored_at: string | null;
+  restored_reason: string | null;
+}
+
+export interface AllowanceWithholdingView extends AllowanceWithholding {
+  employee_no: string;
+  full_name: string;
+  by_name: string;
+  restored_by_name: string | null;
+  /** What this one day of tunjangan was worth when it was withheld. Computed
+   *  on read from the person's current rate, and labelled as such — it is
+   *  context for the decision, not a stored amount. */
+  amount: number;
+}
 
 /** The rule book, as it stands on one date. */
 export interface PayRules {
@@ -676,8 +745,26 @@ export interface PayRules {
   /** Used when `overtime_mode` is `flat`. */
   flat_multiplier: number;
   /** A monthly salary divided by this is an hour of it. 173 is the figure the
-   *  regulation uses (40 hours × 52 weeks ÷ 12). */
+   *  regulation uses (40 hours × 52 weeks ÷ 12). Used only when `hourly_basis`
+   *  is `statutory`; kept regardless, because it is what the overtime ladder
+   *  is written against and the two figures are worth seeing side by side. */
   monthly_divisor: number;
+  /** Which of the two the payslip actually uses (D249). */
+  hourly_basis: HourlyBasis;
+  /** Days this business actually works in a year — the denominator in the
+   *  owner's own formula, and a number nobody can derive for somebody else.
+   *  Six days a week is 312 before a single national holiday comes off it, and
+   *  what comes off it here is this company's own calendar. */
+  effective_days_per_year: number;
+  /** Whether the tunjangan counts towards an hour of somebody's time.
+   *
+   *  **True**, on the owner's instruction: *pakai pokok+allowance untuk
+   *  perhitungan semua*. The flag exists because of the sentence that followed
+   *  it — the business may one day price overtime off pokok alone — and the
+   *  owner was explicit that this is **a note, not a decision** (D250). So it
+   *  is a switch that is on, with the note beside it, rather than a second
+   *  scheme half-built against a change nobody has made. */
+  hourly_includes_allowance: boolean;
   /** Which days count as the weekly rest day: `6day` means Sunday only,
    *  `5day` means Saturday and Sunday. */
   week_pattern: "6day" | "5day";
@@ -687,11 +774,30 @@ export interface PayRules {
   undertime_mode: UndertimeMode;
   /** Minutes short before undertime counts at all. */
   undertime_grace_minutes: number;
-  /** Minutes past the start of the office day before somebody is late. */
-  late_after_minutes: number;
+  /** When the office day starts, in minutes from midnight. 480 is 08:00.
+   *
+   *  This and the grace period below were **one field** until D251, called
+   *  `late_after_minutes` and holding 480 — which read as *late after 480
+   *  minutes* and meant *late after 08:00*. One number answering two questions
+   *  again (F62), and the one it was not answering is the one the owner
+   *  actually set: fifteen minutes. */
+  day_starts_minutes: number;
+  /** Minutes after the start of the day before lateness counts at all. The
+   *  owner's figure is 15 (Q41, D251) and it is a rule rather than a constant
+   *  precisely because he said *atau bisa di custom*. */
+  late_grace_minutes: number;
   /** `manual` means the minutes are shown and the rupiah is typed by a person
-   *  with a reason (D155, Q41). */
+   *  with a reason (D155). `pro_rata` prices them by the hour (D251). */
   late_mode: LateMode;
+  /** Whether being late also costs the day's tunjangan.
+   *
+   *  **False**, and this one is a correction the owner made to himself. The
+   *  first answer was that the allowance is lost when somebody is more than
+   *  fifteen minutes late; the second was sharper — *potongannya jam saja,
+   *  allowance masih diberikan jika hadir*. Being late costs hours. Losing the
+   *  allowance is a **separate decision, made by HRD, with its own reason**
+   *  (D250), not a second penalty riding on the same event. */
+  late_forfeits_allowance: boolean;
 }
 
 /** One dated version of the rule book. Never edited — a change writes the next
@@ -737,6 +843,8 @@ export interface PayrollLine {
   position: string;
   pay_basis: PayBasis;
   base_rate: number;
+  /** Per day here, whatever the basis of the pokok is (D250). */
+  allowance_rate: number;
   /** Days present, and of those, how many are still open. */
   days_worked: number;
   days_open: number;
@@ -751,7 +859,32 @@ export interface PayrollLine {
   /** Approved only — claimed-but-unapproved hours are listed apart. */
   overtime_hours: number;
   overtime_pending_hours: number;
+  /** **Pokok only.** The allowance is its own figure and its own line on the
+   *  slip: a total that silently contains both is one nobody can check against
+   *  what they were told they earn (D250). */
   base_pay: number;
+  /** Days that earned the tunjangan — present days, less whatever HRD
+   *  withheld. */
+  allowance_days: number;
+  allowance_pay: number;
+  /** Days HRD took it off, what that came to, and every reason. Listed on the
+   *  slip rather than netted into one number: *kenapa tunjangan saya kurang
+   *  dua hari* is the question this exists to answer. */
+  allowance_withheld_days: number;
+  allowance_withheld_amount: number;
+  allowance_withheld: { work_date: string; reason: string; by_name: string }[];
+  /** What one ordinary hour of this person is worth, which rule produced it,
+   *  and what the other rule would have produced. Both are carried because
+   *  they differ — 1/173 of a month is not a year of pay over the days this
+   *  business works — and a payslip that showed only the one in force would
+   *  make the choice invisible (D249). */
+  hourly: number;
+  hourly_basis: HourlyBasis;
+  company_hourly: number;
+  statutory_hourly: number;
+  /** What the hourly rate was computed over: a year of pay under the active
+   *  rules, allowance included or not. */
+  annual_pay: number;
   overtime_pay: number;
   /** The overtime sum, tier by tier — what makes the figure arguable (D173). */
   overtime_parts: OvertimePart[];
@@ -767,10 +900,16 @@ export interface PayrollLine {
   /** `gross + adjustment_total`. Still before any statutory deduction, which
    *  this system does not compute (D140). */
   net: number;
-  /** Minutes late across the period, from the taps. Evidence for a
-   *  `late` adjustment, never itself a deduction: what a minute costs is a
-   *  policy nobody has stated (Q41). */
+  /** Minutes late across the period, from the taps — **past the grace period**,
+   *  not past the start of the day. */
   late_minutes: number;
+  /** Days with any lateness at all, and what the `pro_rata` rule would take
+   *  off for them. `late_deduction` is **zero while `late_mode` is manual**,
+   *  which is the shipped default: the figure is computed so the rule-book
+   *  screen can price it before anybody turns it on, and so a payslip can show
+   *  what is *not* being deducted (D174, D251). */
+  late_days: number;
+  late_deduction: number;
   /** Every day of the period, for the weekly recap on the payslip (D156). */
   days: PayslipDay[];
   /** Anything a person cannot resolve from the figures alone. */

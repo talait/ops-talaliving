@@ -24,6 +24,7 @@ import type {
 import type {
   Employee, AttendanceScan, DayMark, OvertimeSheet, OvertimeLine, PayrollRun,
   PayrollAdjustment, PayRuleSet, EmployeeDocument, LeaveRequest,
+  AllowanceWithholding,
 } from "@/services/hr/contracts";
 import type {
   WorkOrder, ProgressEntry, Product, BomComponent,
@@ -145,6 +146,9 @@ export interface DemoState {
   pay_rule_sets: PayRuleSet[];
   /** Added or taken off a payslip by a person, with a reason (D155). */
   payroll_adjustments: PayrollAdjustment[];
+  /** One person, one day, no tunjangan — HRD's decision, kept apart from what
+   *  the day itself was (D250). */
+  allowance_withholdings: AllowanceWithholding[];
 
   /* --- production ------------------------------------------------- */
   /** What is being made, in what quantity, by when (D148). */

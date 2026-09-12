@@ -12,7 +12,8 @@ import type {
   Employee, TimesheetDay, DayState, ScanSlot, DayPay, DayMark,
   OvertimeSheet, OvertimeStage, PayrollLine, PayrollView, PayrollRun,
   PayslipDay, AdjustmentKind,
-  PayRules, PayRuleSet, OvertimeTier, OvertimePart,
+  PayRules, PayRuleSet, OvertimeTier, OvertimePart, HourlyBasis,
+  AllowanceWithholding, AllowanceWithholdingView,
   EmployeeFileView, EmployeeDocSlot, EmployeeDocument, EmployeeDocumentView,
   LeaveBalance, LeaveRequest, LeaveRequestView,
 } from "@/services/hr/contracts";
@@ -391,7 +392,8 @@ export function payrollLine(
      rules — the monthly divisor is 173 because the regulation says so, not
      because the code does. */
   const rules = rulesOverride ?? activePayRules(state, from).rules;
-  const hourly = hourlyRate(employee, rules);
+  const rate = hourlyRate(employee, rules);
+  const hourly = rate.hourly;
   const overtime_parts = overtimeParts(state, employee, from, to, rules, hourly);
   const overtime_pay = overtime_parts.reduce((s, p) => s + p.amount, 0);
 
@@ -446,15 +448,76 @@ export function payrollLine(
     }));
   const adjustment_total = adjustments.reduce((s, a) => s + a.amount, 0);
 
-  /* Minutes late across the period. **Evidence, not a deduction**: what a
-     minute of lateness costs has never been stated, so the figure is shown and
-     the rupiah is typed by a person (Q41). */
-  const late_minutes = days.reduce((s, d) => {
+  /* Minutes late across the period, **past the grace the owner set** — fifteen
+     of them by default (Q41, D251). The start of the day and the grace after it
+     are two rules now; they were one number holding 480, which read as *late
+     after 480 minutes* and meant *late after 08:00* (F70). */
+  const lateBy = (d: (typeof days)[number]): number => {
     const inAt = d.slots.in;
-    if (!inAt || d.mark) return s;
+    if (!inAt || d.mark) return 0;
     const mins = Number(inAt.slice(11, 13)) * 60 + Number(inAt.slice(14, 16));
-    return s + Math.max(mins - rules.late_after_minutes, 0);
-  }, 0);
+    return Math.max(mins - rules.day_starts_minutes - rules.late_grace_minutes, 0);
+  };
+  const late_minutes = days.reduce((s, d) => s + lateBy(d), 0);
+  const late_days = days.filter((d) => lateBy(d) > 0).length;
+
+  /* What the hours would cost — *potongannya jam saja* (D251). Computed
+     whatever the mode, and **applied only when the mode says so**: the figure
+     exists so the rule book can price it before anybody switches it on, and so
+     a payslip can show what is not being deducted rather than leaving the
+     minutes looking free (D174). */
+  const late_priced = Math.round((late_minutes / 60) * hourly);
+  const late_deduction = rules.late_mode === "pro_rata" ? late_priced : 0;
+
+  /* Tunjangan: one day's worth for every day the person was actually here,
+     less the days HRD took it off with a reason (D250). Marked days — sakit,
+     cuti, tanggal merah — earn no allowance: it is paid for coming in, and
+     paying it for a day somebody was at home would make it part of the salary
+     under another name. */
+  const withheldRows = withholdingsFor(state, employee.id, from, to);
+  const withheldDates = new Set(withheldRows.map((w) => w.work_date));
+
+  /* Which days earn it, and the split by `pay_basis` is the **same** split
+     `base_pay` already makes twenty lines up, for the same stated reason: a
+     monthly person is paid the month whatever the machine says, and a daily
+     one is paid for what they were here for.
+     
+     Making the allowance depend on taps for everybody looked right and paid
+     five office staff Rp 600.000 a month less than the day before, because the
+     fingerprint reader is a workshop device and they do not use it (F72). No
+     taps is not evidence of absence. So a monthly person earns it on the days
+     the business works, and loses it the way the owner said they should — HRD
+     deciding, with a reason.
+
+     A **half day is present**. The person came in; the owner's correction was
+     explicit that presence is what earns it and that losing it is HRD's
+     separate call (D250). Sakit, cuti and tanggal merah are not presence. */
+  const earnsAllowance = (d: (typeof days)[number]): boolean =>
+    d.mark ? d.mark.kind === "half_day" : d.day_value > 0;
+  const presentDays = employee.pay_basis === "monthly"
+    ? days.filter((d) => (d.mark
+      ? d.mark.kind === "half_day"
+      : !isRestDay(state, rules, d.work_date)))
+    : days.filter(earnsAllowance);
+  const allowance_days = presentDays.filter((d) => !withheldDates.has(d.work_date)).length;
+  const allowance_withheld_days = presentDays.filter((d) => withheldDates.has(d.work_date)).length;
+  const allowance_pay = Math.round(allowance_days * employee.allowance_rate);
+  const allowance_withheld_amount = Math.round(allowance_withheld_days * employee.allowance_rate);
+  const nameOf = (id: string) => state.users.find((u) => u.id === id)?.full_name ?? id;
+  const allowance_withheld = withheldRows
+    .filter((w) => presentDays.some((d) => d.work_date === w.work_date))
+    .map((w) => ({ work_date: w.work_date, reason: w.reason, by_name: nameOf(w.by) }));
+
+  if (employee.allowance_rate > 0 && allowance_withheld_days > 0) {
+    warnings.push(
+      `${allowance_withheld_days} hari tanpa tunjangan — keputusan HRD, alasannya tercetak di slip`,
+    );
+  }
+  if (late_minutes > 0 && rules.late_mode === "manual") {
+    warnings.push(
+      `${late_minutes} menit terlambat di luar toleransi — belum dipotong; Rp ${late_priced.toLocaleString("id-ID")} kalau aturannya dinyalakan`,
+    );
+  }
 
   const payslipDays: PayslipDay[] = days.map((d) => ({
     work_date: d.work_date,
@@ -468,6 +531,22 @@ export function payrollLine(
     open: d.state === "review",
   }));
 
+  const gross = base_pay + allowance_pay + overtime_pay - under.amount - late_deduction;
+
+  /* A hand-typed lateness deduction with no lateness behind it.
+   *
+   *  Not blocked — HRD may know something the machine does not, and the machine
+   *  misses taps constantly (F40). But the slip must not print **TERLAMBAT —**
+   *  above a line that takes money off for being late: that is one page
+   *  contradicting itself, and the person holding it is right either way (F48's
+   *  rule, in a new place). */
+  const lateAdjustment = adjustments.find((a) => a.kind === "late" && a.amount < 0);
+  if (lateAdjustment && late_minutes === 0) {
+    warnings.push(
+      "Potongan keterlambatan dicatat tangan, tapi absensi periode ini tidak menunjukkan keterlambatan di luar toleransi — salah satunya perlu dibetulkan",
+    );
+  }
+
   if (adjustment_total < 0) {
     warnings.push(`${adjustments.filter((a) => a.amount < 0).length} potongan dicatat tangan — lihat rinciannya di slip`);
   }
@@ -479,6 +558,7 @@ export function payrollLine(
     position: employee.position,
     pay_basis: employee.pay_basis,
     base_rate: employee.base_rate,
+    allowance_rate: employee.allowance_rate,
     days_worked: worked_days,
     days_open: open.length,
     days_present: Math.round(days_present * 100) / 100,
@@ -489,6 +569,16 @@ export function payrollLine(
     overtime_hours: approvedOt,
     overtime_pending_hours: pendingOt,
     base_pay,
+    allowance_days,
+    allowance_pay,
+    allowance_withheld_days,
+    allowance_withheld_amount,
+    allowance_withheld,
+    hourly,
+    hourly_basis: rate.basis,
+    company_hourly: rate.company,
+    statutory_hourly: rate.statutory,
+    annual_pay: rate.annual,
     overtime_pay,
     overtime_parts,
     undertime_hours: under.hours,
@@ -496,11 +586,19 @@ export function payrollLine(
     /* Undertime is part of the gross, not an adjustment: it is arithmetic over
        recorded hours under a stated rule, while an adjustment is one person's
        decision about another (D155). */
-    gross: base_pay + overtime_pay - under.amount,
+    gross,
     adjustments,
     adjustment_total,
-    net: base_pay + overtime_pay - under.amount + adjustment_total,
+    /* **Derived from `gross`, never re-added.** These were two longhand sums of
+       the same components, and adding the tunjangan to one of them left the
+       other behind: the run showed a bruto of Rp 24.525.000 and a *diterima*
+       of Rp 24.400.000 on a line with no adjustments at all (F73). Net is
+       gross plus what a person decided, and there is now one place that
+       says so. */
+    net: gross + adjustment_total,
     late_minutes,
+    late_days,
+    late_deduction,
     days: payslipDays,
     warnings,
   };
@@ -586,14 +684,88 @@ function payableLinesOf(state: DemoState, employee: Employee, from: string, to: 
     .map((x) => ({ line: x.line, sheet: x.sheet! }));
 }
 
-/** What one ordinary hour of this person is worth, under the active rules. */
-export function hourlyRate(employee: Employee, rules: PayRules): number {
-  if (employee.pay_basis === "hourly") return employee.base_rate;
-  if (employee.pay_basis === "daily") return Math.round(employee.base_rate / employee.daily_hours);
-  /* A month divided by the regulation's own figure. Written as a rule rather
-     than as `/ 21 / 8`, which was this code's previous guess at the same
-     thing. */
-  return Math.round(employee.base_rate / rules.monthly_divisor);
+export interface HourlyRate {
+  /** The one the payslip uses. */
+  hourly: number;
+  basis: HourlyBasis;
+  /** A year of pay ÷ the days this business works ÷ the hours in its day — the
+   *  owner's own arithmetic (D249). */
+  company: number;
+  /** 1/173 of a month. The statute's figure for the overtime ladder. */
+  statutory: number;
+  /** What the year came to, under the active rules. */
+  annual: number;
+  /** Pokok + tunjangan, or pokok alone (D250). */
+  includes_allowance: boolean;
+}
+
+/** What one ordinary hour of this person is worth — **both answers**, and which
+ *  one is in force.
+ *
+ *  Two arithmetics that used to be one number:
+ *
+ *  - **company** is `setahun gaji ÷ hari kerja efektif ÷ jam sehari`, which is
+ *    how the owner works it out, and takes the tunjangan with it where the
+ *    rules say to (*pakai pokok+allowance untuk perhitungan semua*).
+ *  - **statutory** is a month over 173 — 40 hours × 52 weeks ÷ 12. It is right
+ *    for the overtime ladder, which is written against it, and wrong as an
+ *    answer to *what is an hour worth here*, because this office does not work
+ *    a 40-hour week (D249).
+ *
+ *  Both are returned always. The figure in force is a rule, and a payslip that
+ *  carried only it would hide the choice behind it — which is the thing the
+ *  owner asked about in the first place: *dari mana pembagian 173 itu?*
+ */
+export function hourlyRate(employee: Employee, rules: PayRules): HourlyRate {
+  const days = Math.max(rules.effective_days_per_year, 1);
+  const hoursPerDay = Math.max(employee.daily_hours, 1);
+  const withAllowance = rules.hourly_includes_allowance;
+  const allowancePerDay = withAllowance ? employee.allowance_rate : 0;
+
+  /* A year of this person's pay, however their pokok is quoted. The allowance
+     is per day here (D250), so it enters the year multiplied by the days the
+     business works and never by twelve. */
+  const annual = employee.pay_basis === "monthly"
+    ? employee.base_rate * 12 + allowancePerDay * days
+    : employee.pay_basis === "daily"
+      ? (employee.base_rate + allowancePerDay) * days
+      : employee.base_rate * hoursPerDay * days + allowancePerDay * days;
+
+  const company = Math.round(annual / days / hoursPerDay);
+
+  /* The statutory divisor only means anything against a **monthly** wage.
+     For somebody paid by the day or the hour there is no month to divide, so
+     the two answers are the same answer — said here rather than left as a
+     coincidence a reader has to work out. */
+  const statutory = employee.pay_basis === "monthly"
+    ? Math.round((employee.base_rate + (allowancePerDay * days) / 12) / Math.max(rules.monthly_divisor, 1))
+    : company;
+
+  return {
+    hourly: rules.hourly_basis === "statutory" ? statutory : company,
+    basis: rules.hourly_basis,
+    company,
+    statutory,
+    annual: Math.round(annual),
+    includes_allowance: withAllowance,
+  };
+}
+
+/** Days in the period HRD has taken the tunjangan off, for one person.
+ *
+ *  A restored row is not one of them — it stays in the data and out of the
+ *  arithmetic, which is what `restored_by` is for (A5). */
+export function withholdingsFor(
+  state: DemoState,
+  employeeId: string,
+  from: string,
+  to: string,
+): AllowanceWithholding[] {
+  return state.allowance_withholdings
+    .filter((w) => w.employee_id === employeeId
+      && w.restored_by === null
+      && w.work_date >= from && w.work_date <= to)
+    .sort((a, b) => a.work_date.localeCompare(b.work_date));
 }
 
 /** Overtime, night by night and tier by tier.

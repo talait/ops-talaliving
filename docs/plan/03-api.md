@@ -303,7 +303,7 @@ dies — the same reason `john-lau` set 15 MB under Next's 16 MB.
 |---|---|---|
 | GET | `/employees` | `?include_left=1` to see people who have gone. Sorted by `employee_no` |
 | GET | `/employees/{employee_no}` | |
-| POST | `/employees` | create or update by `employee_no`. A rate change puts the figure **before and after** on the audit row — "when did his rate go up, and who said so" is the question a payroll dispute turns on |
+| POST | `/employees` | create or update by `employee_no`. Carries **pokok** (`base_rate`) and **tunjangan harian** (`allowance_rate`) as separate fields (D250); `allowance_rate` omitted means **unchanged**, never zero, so a save that forgot the field cannot quietly stop paying somebody's allowance. A change to either puts the figure **before and after** on the audit row — "when did his rate go up, and who said so" is the question a payroll dispute turns on |
 | GET | `/timesheet?from=&to=&unit=` | the grid: every person × every office day, plus `needs_review` and `marked` counts |
 | GET | `/timesheet/{employee_no}/{work_date}` | one day: every tap, the slot the rule gave it, the issues |
 | POST | `/attendance/import` | `{filename, rows[]}` from the reader's export. Returns `{import_id, added, duplicates, unknown[]}`. **Never creates a person** — an unrecognised machine number comes back with its tap count (D143). Idempotent on `(employee, at)`, so re-uploading a file adds nothing |
@@ -311,6 +311,9 @@ dies — the same reason `john-lau` set 15 MB under Next's 16 MB.
 | POST | `/day-marks` | `{work_date, kind, reason, employee_no?}` — omit the employee and it covers the whole office. 409 if that day is already marked for that scope |
 | POST | `/day-marks/{id}/surat-dokter` | link an uploaded letter to a day marked `sick`. **This is what makes the day paid** (D144), and it may arrive days later — nothing is recomputed, because nothing was stored |
 | DELETE | `/day-marks/{id}` | the holiday was the Tuesday, not the Monday. Audited like any other act |
+| GET | `/allowance-withholdings` | `?employee_no=&from=&to=`. Restored rows included — the list is the record |
+| POST | `/allowance-withholdings` | `{employee_no, work_date, reason}` — HRD saying one person does not get one day's tunjangan (D250). **422 without a reason.** **409 inside an APPROVED run**: that figure has been signed, and the correction is an adjustment on the next run. Deliberately **not** a day mark: a mark says what the day *was*, and WFH is a worked day with a right timesheet and no allowance |
+| POST | `/allowance-withholdings/{id}/restore` | puts it back. The row **stays**, with `restored_by` and its own reason — restoring is a second decision, not an erasure, so *why was this not paid* survives somebody changing their mind (A5). `noop` when it is already restored |
 | GET | `/files` · `/files/{employee_no}` | Berkas 201 as a **checklist**: every required kind listed whether or not anything is filed, with what is missing and what expires (D177) |
 | POST | `/files/{employee_no}/documents` | 422 when neither a scan nor a number is given — a number with no scan is still a record. **422 `extracted_without_file`** when the number claims to have been read from a scan that is not attached (D199) |
 | POST | `/files/documents/{id}/reveal` | the real identity number, for one document, for one person, once. `hrd` module. **Writes an audit row** — actor, whose document, which kind, never the number (D197). The list never carries the number at all, so this is the only road to it (D196); there is no batch form, deliberately — *reveal every KTP* is not a request this API knows how to make |
@@ -337,7 +340,7 @@ make the reveal log record a click.
 | POST | `/payroll` | open a run for a period. 409 if a run already covers those dates |
 | POST | `/payroll/{run_no}/approve` | requires `approve_funds`. **422 while any day in the period is still unread** (D139) |
 | GET | `/payroll/period?from=&to=` | the same figures for **any** period, run or no run — the week slider reads this (D158). `opened:false` and an empty `run_no` where nothing has been opened |
-| GET | `/pay-rules` | every dated version, newest first, with the one in force marked. **`payroll` at `read`** — HRD reads the book |
+| GET | `/pay-rules` | every dated version, newest first, with the one in force marked. **`payroll` at `read`** — HRD reads the book. Since M46 a version also carries `hourly_basis` (company or statutory), `effective_days_per_year`, `hourly_includes_allowance`, `day_starts_minutes`, `late_grace_minutes` and `late_forfeits_allowance` (D249–D251) |
 | POST | `/pay-rules` | writes the **next** version. **`it` at `write`, not `payroll`** — HRD reads the rules, IT changes them (owner, D193), so the people whose pay these rules compute are not the people who can change them alone. 422 in the past or before the latest version; 409 inside an existing run's period (D173) |
 | POST | `/pay-rules/preview` | applies a proposed book to a real period and returns only the lines that move. Nothing is saved (D175) |
 | GET | `/payroll/{run_no}/adjustments` | what was added or taken off by hand, each with its reason (D155) |

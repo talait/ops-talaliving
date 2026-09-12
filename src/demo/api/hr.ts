@@ -1,5 +1,5 @@
 /** Implements `/api/v1/hr` from `03-api.md`. */
-import { ok, invalid, notFound, type Result } from "@/services/_shared/envelope";
+import { ok, invalid, notFound, noop, type Result } from "@/services/_shared/envelope";
 import type {
   Employee, AttendanceScan, TimesheetDay, DayMark, DayMarkKind,
   OvertimeSheet, OvertimeLine, OvertimeSheetView, OvertimeKind,
@@ -7,9 +7,11 @@ import type {
   AdjustmentKind, PayrollAdjustmentView,
   PayRules, PayRuleSet, PayRuleSetView,
   EmployeeDocKind, EmployeeFileView, DocNoSource, LeaveBalance, LeaveKind, LeaveRequestView, LeaveStatus,
+  AllowanceWithholding, AllowanceWithholdingView,
 } from "@/services/hr/contracts";
 import { SENSITIVE_DOC_KINDS } from "@/services/hr/contracts";
 import type { DocKind } from "@/services/documents/contracts";
+import type { DemoState } from "../state";
 import { getState, apply, newId, nextDocNumber, writeAudit, writeOutbox } from "../store";
 import {
   timesheet, timesheetDay, payrollView, overtimeStage, overtimePayable, sheetEvidence,
@@ -73,6 +75,10 @@ export async function saveEmployee(
     unit: string;
     pay_basis: PayBasis;
     base_rate: number;
+    /** Tunjangan harian. Optional, and **absent means unchanged** rather than
+     *  zero: a save that forgot this field must not quietly stop paying
+     *  somebody's allowance (D250). */
+    allowance_rate?: number;
     daily_hours?: number;
     paid_leave_days?: number;
     joined_on?: string;
@@ -96,6 +102,9 @@ export async function saveEmployee(
   if (!input.base_rate || input.base_rate <= 0) {
     return invalid(SERVICE, "rate_required", "A rate of zero is not a rate. Put what they are actually paid.", { field: "base_rate" });
   }
+  if (input.allowance_rate != null && input.allowance_rate < 0) {
+    return invalid(SERVICE, "allowance_negative", "Tunjangan tidak bisa negatif. Potongan ditulis sebagai potongan, dengan alasannya.", { field: "allowance_rate" });
+  }
 
   const state = getState();
   const existing = state.employees.find((e) => e.employee_no === input.employee_no.trim());
@@ -106,13 +115,14 @@ export async function saveEmployee(
     if (existing) {
       const row = draft.employees.find((e) => e.employee_no === existing.employee_no);
       if (!row) return;
-      const before = { base_rate: row.base_rate, pay_basis: row.pay_basis, position: row.position };
+      const before = { base_rate: row.base_rate, allowance_rate: row.allowance_rate, pay_basis: row.pay_basis, position: row.position };
       Object.assign(row, {
         full_name: input.full_name.trim(),
         position: input.position.trim() || row.position,
         unit: input.unit.trim() || row.unit,
         pay_basis: input.pay_basis,
         base_rate: Math.round(input.base_rate),
+        allowance_rate: input.allowance_rate != null ? Math.round(input.allowance_rate) : row.allowance_rate,
         daily_hours: input.daily_hours ?? row.daily_hours,
         paid_leave_days: input.paid_leave_days ?? row.paid_leave_days,
         note: input.note?.trim() ?? row.note,
@@ -121,7 +131,7 @@ export async function saveEmployee(
       writeAudit(draft, {
         service: SERVICE, entity: "employee", entity_no: row.employee_no,
         action: "update", outcome: "ok", reason: null,
-        detail: { before, after: { base_rate: row.base_rate, pay_basis: row.pay_basis, position: row.position }, by: user.email },
+        detail: { before, after: { base_rate: row.base_rate, allowance_rate: row.allowance_rate, pay_basis: row.pay_basis, position: row.position }, by: user.email },
       });
     } else {
       const row: Employee = {
@@ -132,6 +142,7 @@ export async function saveEmployee(
         unit: input.unit.trim() || "Workshop",
         pay_basis: input.pay_basis,
         base_rate: Math.round(input.base_rate),
+        allowance_rate: Math.round(input.allowance_rate ?? 0),
         daily_hours: input.daily_hours ?? 8,
         paid_leave_days: input.paid_leave_days ?? 12,
         joined_on: input.joined_on ?? new Date().toISOString().slice(0, 10),
@@ -144,7 +155,7 @@ export async function saveEmployee(
       writeAudit(draft, {
         service: SERVICE, entity: "employee", entity_no: row.employee_no,
         action: "create", outcome: "ok", reason: null,
-        detail: { pay_basis: row.pay_basis, base_rate: row.base_rate, by: user.email },
+        detail: { pay_basis: row.pay_basis, base_rate: row.base_rate, allowance_rate: row.allowance_rate, by: user.email },
       });
     }
   });
@@ -398,6 +409,166 @@ export async function markDay(
 
 /** Taking a mark off. It happens — the holiday was the Tuesday, not the
  *  Monday — and it is an act with a name on it like any other. */
+/** HRD saying one person does not get one day's tunjangan, and why (D250).
+ *
+ *  Deliberately **not** a day mark. A mark says what the day was; this says
+ *  what somebody decided about the money, and the two come apart on the case
+ *  the owner named first: a WFH day was worked, the timesheet is right, and
+ *  the allowance is still not paid. Folding it into the mark would make the
+ *  timesheet lie about the day in order to get the pay right.
+ *
+ *  It refuses on a day already inside an approved run, for the reason every
+ *  refusal in this module gives: that figure has been signed.
+ */
+export async function withholdAllowance(
+  input: { employee_no: string; work_date: string; reason: string },
+  idempotencyKey?: string,
+): Promise<Result<AllowanceWithholdingView>> {
+  await latency();
+  const cached = replayed<AllowanceWithholdingView>(SERVICE, "withholdAllowance", idempotencyKey);
+  if (cached) return cached;
+
+  const denied = requireModule(SERVICE, "hrd");
+  if (denied) return denied;
+
+  if (!input.reason.trim()) {
+    return invalid(
+      SERVICE, "reason_required",
+      "Tunjangan yang hilang tanpa alasan tertulis adalah pertanyaan yang tidak bisa dijawab tiga bulan lagi. Tulis sebabnya — WFH, setengah hari, apa pun.",
+      { field: "reason" },
+    );
+  }
+
+  const state = getState();
+  const emp = state.employees.find((e) => e.employee_no === input.employee_no);
+  if (!emp) return notFound(SERVICE, "employee_not_found", `No employee ${input.employee_no}.`);
+
+  const locked = state.payroll_runs.find(
+    (r) => r.status === "APPROVED" && input.work_date >= r.period_start && input.work_date <= r.period_end,
+  );
+  if (locked) {
+    return conflict(
+      SERVICE, "run_approved",
+      `${input.work_date} sudah masuk run ${locked.run_no} yang disetujui. Angkanya sudah ditandatangani — koreksinya lewat penyesuaian di run berikutnya, bukan dengan mengubah yang lalu.`,
+    );
+  }
+
+  const already = state.allowance_withholdings.find(
+    (w) => w.employee_id === emp.id && w.work_date === input.work_date && w.restored_by === null,
+  );
+  if (already) {
+    return conflict(
+      SERVICE, "already_withheld",
+      `Tunjangan ${emp.full_name} tanggal ${input.work_date} sudah ditahan: ${already.reason}`,
+    );
+  }
+
+  const user = actingUser();
+  let row: AllowanceWithholding | null = null;
+  apply((draft) => {
+    row = {
+      id: newId("awh"),
+      employee_id: emp.id,
+      work_date: input.work_date,
+      reason: input.reason.trim(),
+      by: user.id,
+      at: new Date().toISOString(),
+      restored_by: null, restored_at: null, restored_reason: null,
+    };
+    draft.allowance_withholdings.push(row);
+    writeAudit(draft, {
+      service: SERVICE, entity: "allowance_withholding", entity_no: `${input.work_date}/${emp.employee_no}`,
+      action: "withhold", outcome: "ok", reason: input.reason.trim(),
+      detail: { amount: emp.allowance_rate, by: user.email },
+    });
+  });
+  const result = ok(SERVICE, viewWithholding(getState(), row as unknown as AllowanceWithholding));
+  remember(SERVICE, "withholdAllowance", idempotencyKey, result);
+  return result;
+}
+
+/** Putting it back. The row stays — restoring is a second decision, not an
+ *  erasure, and *why was this not paid* must stay answerable after somebody
+ *  changes their mind (A5). */
+export async function restoreAllowance(
+  input: { id: string; reason: string },
+): Promise<Result<AllowanceWithholdingView>> {
+  await latency();
+  const denied = requireModule(SERVICE, "hrd");
+  if (denied) return denied;
+
+  if (!input.reason.trim()) {
+    return invalid(
+      SERVICE, "reason_required",
+      "Mengembalikan tunjangan juga sebuah keputusan. Tulis kenapa — biasanya karena yang pertama salah baca.",
+      { field: "reason" },
+    );
+  }
+
+  const state = getState();
+  const found = state.allowance_withholdings.find((w) => w.id === input.id);
+  if (!found) return notFound(SERVICE, "withholding_not_found", `No withholding ${input.id}.`);
+  if (found.restored_by) {
+    /* Already put back. Nothing to do and nothing to complain about — the
+       answer is the row itself, marked `noop`. */
+    return noop(SERVICE, viewWithholding(state, found));
+  }
+
+  const user = actingUser();
+  apply((draft) => {
+    const row = draft.allowance_withholdings.find((w) => w.id === input.id);
+    if (!row) return;
+    row.restored_by = user.id;
+    row.restored_at = new Date().toISOString();
+    row.restored_reason = input.reason.trim();
+    const emp = draft.employees.find((e) => e.id === row.employee_id);
+    writeAudit(draft, {
+      service: SERVICE, entity: "allowance_withholding",
+      entity_no: `${row.work_date}/${emp?.employee_no ?? row.employee_id}`,
+      action: "restore", outcome: "ok", reason: input.reason.trim(),
+      detail: { by: user.email },
+    });
+  });
+  const after = getState().allowance_withholdings.find((w) => w.id === input.id)!;
+  return ok(SERVICE, viewWithholding(getState(), after));
+}
+
+/** Every decision, restored ones included — the list is the record. */
+export async function listWithholdings(
+  opts: { employee_no?: string; from?: string; to?: string } = {},
+): Promise<Result<AllowanceWithholdingView[]>> {
+  await latency();
+  const denied = requireModule(SERVICE, "hrd");
+  if (denied) return denied;
+  const state = getState();
+  const emp = opts.employee_no
+    ? state.employees.find((e) => e.employee_no === opts.employee_no)
+    : null;
+  const rows = state.allowance_withholdings
+    .filter((w) => (!emp || w.employee_id === emp.id)
+      && (!opts.from || w.work_date >= opts.from)
+      && (!opts.to || w.work_date <= opts.to))
+    .map((w) => viewWithholding(state, w))
+    .sort((a, b) => b.work_date.localeCompare(a.work_date));
+  return ok(SERVICE, rows);
+}
+
+function viewWithholding(state: DemoState, w: AllowanceWithholding): AllowanceWithholdingView {
+  const emp = state.employees.find((e) => e.id === w.employee_id);
+  const name = (id: string | null) => id ? state.users.find((u) => u.id === id)?.full_name ?? id : null;
+  return {
+    ...w,
+    employee_no: emp?.employee_no ?? "—",
+    full_name: emp?.full_name ?? "—",
+    by_name: name(w.by) ?? w.by,
+    restored_by_name: name(w.restored_by),
+    /* The person's rate **as it stands**, not as it stood. Said in the contract
+       and worth repeating: this is context for the decision, not a stored
+       amount, and a rate that has since changed will move it. */
+    amount: emp?.allowance_rate ?? 0,
+  };
+}
+
 export async function unmarkDay(markId: string): Promise<Result<{ removed: string }>> {
   await latency();
   const denied = requireModule(SERVICE, "hrd");
@@ -1453,6 +1624,18 @@ export async function previewPayRules(
     }
     if (proposed.undertime_amount !== current.undertime_amount) {
       notes.push(`undertime ${formatDelta(-current.undertime_amount, -proposed.undertime_amount)}`);
+    }
+    /* The three the pay split introduced. Each named separately rather than
+       rolled into one delta: *your wage changed* is not a sentence anybody can
+       check, and these are exactly the changes people will argue about. */
+    if (proposed.allowance_pay !== current.allowance_pay) {
+      notes.push(`tunjangan ${formatDelta(current.allowance_pay, proposed.allowance_pay)}`);
+    }
+    if (proposed.late_deduction !== current.late_deduction) {
+      notes.push(`potongan terlambat ${formatDelta(-current.late_deduction, -proposed.late_deduction)}`);
+    }
+    if (proposed.hourly !== current.hourly) {
+      notes.push(`upah/jam ${formatDelta(current.hourly, proposed.hourly)}`);
     }
     return {
       employee_no: e.employee_no,

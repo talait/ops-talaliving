@@ -52,13 +52,21 @@ and I numbered them while agreeing what to do first.
 
 | # | What was decided | Size | Note |
 |---|---|---|---|
-| #6 | **The pay model splits into pokok + tunjangan**, with the hourly divisor derived from *setahun gaji ÷ hari kerja efektif ÷ jam sehari* rather than 173 | large | D230, D249. Touches the pay-rule book, the payslip and every existing run, so it is the one piece here that must not be done in a hurry. 173 stays where the law puts it — the statutory overtime ladder — and stops being the answer to *what is an hour worth here* |
+| #6 | ~~**The pay model splits into pokok + tunjangan**, with the hourly divisor derived from *setahun gaji ÷ hari kerja efektif ÷ jam sehari* rather than 173~~ | large | **built 2026-09-13 (M46)** — D250, D251, D252. The seeded split moves nobody's total at full attendance; what it moves is what a missed day costs. Lateness ships computed and not applied. Four findings fell out (F70–F73) |
 | #7 | **Simplify the production stages, and add a subcontract route** | medium | D236. The stage list is seeded data (Q35's whole point), so the simplification is a seed edit; the subcontract route is not — a piece that is made elsewhere and comes back for finishing and packing is a different path through production, not five skipped stages |
 | #8 | **Version the bill of material**, pinned to the work order that used it | medium | D237. A revision table plus `bom_rev` on the work order. Cheap now; the cost is a year of orders needing back-fill later, which is why the answer reversed the default |
 | #9 | **Layered BOM, a button that raises a PR from one, and a typed labour cost** | large | D238, D239. Layering turns costing from a sum into a walk. The labour figure is typed from the owner's own formula and the system will not derive it |
 | #10b | **BPJS and PPh: the enrolment register, and the per-person reconciliation** | medium | D227. The half of Q30 this commit did not build. *Names × rate against what was actually paid* is the audit the owner described, and it needs a roll of who is enrolled from what date — which does not exist yet in any system |
 | #11 | **KPI analyzer and task tracker**, with lateness as one of the points | large | D230, and the measurement #39 wants for labour hours (D239). Held deliberately: it is a module, not a feature, and it is the first thing here that measures **people** rather than money or goods |
 | #12 | **QR** — on the vendor PO (W3) and per box for installation (W4) | Phase 2 | D244. Both need a public read route and a token |
+
+## Open, from building #6
+
+| # | Question | Why it is a question and not a default |
+|---|---|---|
+| Q44 | **One business, two schedules, one start time.** The office day starts at 08:00 in the rule book; the workshop taps in at 06:49, 06:55, 07:02. With the owner's 15-minute grace on top, **nobody in the system is late** — including the man carrying a hand-typed Rp 45.000 lateness deduction | Raised 2026-09-13 (F70). The answer is either a start time per unit, or a start time per person, or the machine's records being read differently for the workshop — and all three are policy. A default here would invent a rule that decides whether thirty-five people are late every morning. The payslip now flags the contradiction rather than resolving it (D252) |
+| Q45 | **What is this business's own `hari kerja efektif`?** Seeded at 288 — six days a week less tanggal merah and cuti bersama, which is also 24 days a month | Raised 2026-09-13 (D249). It is the denominator in every hourly rate the company computes, so it is worth the owner stating rather than the seed implying. The rule screen shows the arithmetic and names it as the company's own |
+| Q46 | **Does a company half day earn the full tunjangan?** Today it does — the person was here, and only HRD's separate decision takes it away | Raised 2026-09-13 (D250). Follows from the owner's correction rather than from anything he said about half days specifically, so it is marked as a reading, not a ruling |
 
 ## Asked for, not yet scheduled
 

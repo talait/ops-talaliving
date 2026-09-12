@@ -263,6 +263,25 @@ function Slip({
             </td>
             <td className="py-0.5 text-right tabular-nums">{formatIDR(l.base_pay)}</td>
           </tr>
+          {/* Tunjangan is its own line, never folded into the pokok (D250). A
+              person knows what they were told they earn; a single total that
+              silently contains both is one they cannot check it against. */}
+          {l.allowance_rate > 0 && (
+            <tr>
+              <td className="py-0.5">
+                Tunjangan — {formatNumber(l.allowance_days)} hari × {formatIDR(l.allowance_rate)}
+                {l.allowance_withheld_days > 0 && (
+                  <span className="block text-[8px] leading-snug text-slate-500">
+                    {formatNumber(l.allowance_withheld_days)} hari tidak dapat:{" "}
+                    {l.allowance_withheld.map((w, i) => (
+                      <span key={i}>{i > 0 ? " · " : ""}{w.work_date.slice(8)}/{w.work_date.slice(5, 7)} {w.reason}</span>
+                    ))}
+                  </span>
+                )}
+              </td>
+              <td className="py-0.5 text-right tabular-nums">{formatIDR(l.allowance_pay)}</td>
+            </tr>
+          )}
           {l.overtime_pay > 0 && (
             <tr>
               <td className="py-0.5">
@@ -295,6 +314,17 @@ function Slip({
               <td className="py-0.5 text-right tabular-nums">({formatIDR(l.undertime_amount)})</td>
             </tr>
           )}
+          {l.late_deduction > 0 && (
+            <tr>
+              <td className="py-0.5">
+                Terlambat — {formatNumber(l.late_minutes)} menit di {formatNumber(l.late_days)} hari
+                <span className="block text-[8px] text-slate-500">
+                  Di luar toleransi, dihitung per jam. Tunjangan hari itu tetap dibayar.
+                </span>
+              </td>
+              <td className="py-0.5 text-right tabular-nums">({formatIDR(l.late_deduction)})</td>
+            </tr>
+          )}
           <tr className="border-t border-slate-300">
             <td className="py-0.5 font-medium">Bruto</td>
             <td className="py-0.5 text-right font-semibold tabular-nums">{formatIDR(l.gross)}</td>
@@ -306,6 +336,12 @@ function Slip({
               <td className="py-0.5">
                 {a.label}
                 <span className="block text-[8px] text-slate-500">{a.reason}</span>
+                {/* The contradiction, said on the line that causes it. */}
+                {a.kind === "late" && a.amount < 0 && l.late_minutes === 0 && (
+                  <span className="block text-[8px] text-amber-700">
+                    Absensi periode ini tidak mencatat keterlambatan di luar toleransi.
+                  </span>
+                )}
               </td>
               <td className={cn(
                 "py-0.5 text-right tabular-nums",
@@ -326,6 +362,15 @@ function Slip({
       <p className="mt-1 text-[8px] leading-snug text-slate-500">
         Bruto sebelum potongan BPJS dan PPh 21, yang belum dihitung di sistem ini.
         {l.days_unpaid > 0 && ` ${formatNumber(l.days_unpaid)} hari tercatat tanpa dibayar.`}
+        {" "}Satu jam biasa {formatIDR(l.hourly)} —{" "}
+        {l.hourly_basis === "company"
+          ? `${formatIDR(l.annual_pay)} setahun dibagi hari kerja efektif dan jam sehari`
+          : "gaji sebulan dibagi 173, angka peraturan"}.
+        {/* Lateness that costs nothing must still be visible as lateness that
+            costs nothing — otherwise the slip reads as though there was none. */}
+        {l.late_deduction === 0 && l.late_minutes > 0 && (
+          ` Terlambat ${formatNumber(l.late_minutes)} menit di luar toleransi, tidak dipotong.`
+        )}
       </p>
 
       <div className="mt-2 flex justify-between gap-2 text-[8px] text-slate-500">

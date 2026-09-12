@@ -1292,6 +1292,7 @@ retention rule.
 erDiagram
     employees ||--o{ attendance_scans : "tapped"
     employees ||--o{ day_marks : "marked for"
+    employees ||--o{ allowance_withholdings : "lost a day of it"
     employees ||--o{ overtime_lines : "worked"
     overtime_sheets ||--o{ overtime_lines : "lists"
     attendance_imports ||--o{ attendance_scans : "brought in"
@@ -1304,13 +1305,25 @@ erDiagram
         text position
         text unit
         pay_basis_t pay_basis "monthly|daily|hourly"
-        bigint base_rate "per month, day or hour"
+        bigint base_rate "POKOK only - per month, day or hour"
+        bigint allowance_rate "TUNJANGAN - per day present, whatever the basis (D250)"
         numeric daily_hours "standard day"
         date joined_on
         int paid_leave_days "per person - the owner was explicit"
         boolean active
         date left_on "records stay (A5)"
         text note
+    }
+    allowance_withholdings {
+        uuid id PK
+        uuid employee_id FK
+        date work_date
+        text reason "NOT NULL - a deduction with no sentence is unarguable (D155)"
+        uuid by FK
+        timestamptz at
+        uuid restored_by FK "nullable - putting it back is a second decision, not an erasure"
+        timestamptz restored_at
+        text restored_reason
     }
     attendance_imports {
         uuid id PK

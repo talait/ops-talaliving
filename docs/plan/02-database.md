@@ -1708,7 +1708,10 @@ finished, four sanded.
 
 ```mermaid
 erDiagram
+    products ||--o{ bom_revisions : "versioned as"
+    bom_revisions ||--o{ bom_components : "holds"
     products ||--o{ bom_components : "made of"
+    work_orders }o--|| bom_revisions : "pinned to (bom_rev)"
 
     products {
         uuid id PK
@@ -1725,9 +1728,19 @@ erDiagram
         boolean active
         text note
     }
+    bom_revisions {
+        uuid id PK
+        uuid product_id FK
+        int rev "1, 2, 3 - per product"
+        timestamptz released_at "NULL = draft. Set once, never cleared (D256)"
+        uuid released_by FK
+        text note "required to release"
+        uuid created_by FK
+    }
     bom_components {
         uuid id PK
         uuid product_id FK
+        int rev "the revision this line belongs to - never moved between them"
         bom_ref_t kind "material|product"
         text ref_code "procure.items.code, or another product_code"
         numeric qty "per ONE unit of the parent"

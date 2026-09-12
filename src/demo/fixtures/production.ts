@@ -21,6 +21,10 @@ export const WORK_ORDERS: WorkOrder[] = [
     qty: 4, uom: "set", project_code: "25007",
     due_date: "2026-09-05", status: "OPEN",
     created_at: "2026-08-24T08:00:00+08:00", created_by: "usr_made",
+    /* Pinned to rev 1 — the only BOM that has ever existed in this data
+       (D256). `bom_rev: null` on wo_07 is the honest other case: no catalogue
+       product, so nothing to pin. */
+    bom_rev: 1,
     route: "IN_HOUSE", subcon_vendor_id: null,
     subcon_sent_on: null, subcon_expected_back: null, subcon_returned_on: null, subcon_note: null,
     cancelled_reason: null, note: null,
@@ -32,6 +36,10 @@ export const WORK_ORDERS: WorkOrder[] = [
     qty: 24, uom: "pcs", project_code: "25007",
     due_date: "2026-09-12", status: "OPEN",
     created_at: "2026-08-24T08:05:00+08:00", created_by: "usr_made",
+    /* Pinned to rev 1 — the only BOM that has ever existed in this data
+       (D256). `bom_rev: null` on wo_07 is the honest other case: no catalogue
+       product, so nothing to pin. */
+    bom_rev: 1,
     route: "IN_HOUSE", subcon_vendor_id: null,
     subcon_sent_on: null, subcon_expected_back: null, subcon_returned_on: null, subcon_note: null,
     cancelled_reason: null, note: null,
@@ -43,6 +51,10 @@ export const WORK_ORDERS: WorkOrder[] = [
     qty: 6, uom: "unit", project_code: "25009",
     due_date: "2026-09-09", status: "OPEN",
     created_at: "2026-08-28T09:10:00+08:00", created_by: "usr_made",
+    /* Pinned to rev 1 — the only BOM that has ever existed in this data
+       (D256). `bom_rev: null` on wo_07 is the honest other case: no catalogue
+       product, so nothing to pin. */
+    bom_rev: 1,
     route: "IN_HOUSE", subcon_vendor_id: null,
     subcon_sent_on: null, subcon_expected_back: null, subcon_returned_on: null, subcon_note: null,
     cancelled_reason: null, note: null,
@@ -57,6 +69,7 @@ export const WORK_ORDERS: WorkOrder[] = [
     /* Rangka besinya dibuat vendor; bengkel tinggal finishing dan packing.
        Sudah lewat tanggal janji vendor — dan itu keterlambatan vendor, bukan
        keterlambatan bengkel, yang papan tidak boleh mencampuradukkannya. */
+    bom_rev: 1,
     route: "SUBCON", subcon_vendor_id: "vnd_06",
     subcon_sent_on: "2026-09-01", subcon_expected_back: "2026-09-09",
     subcon_returned_on: null,
@@ -70,6 +83,10 @@ export const WORK_ORDERS: WorkOrder[] = [
     qty: 8, uom: "unit", project_code: "25009",
     due_date: "2026-08-29", status: "DONE",
     created_at: "2026-08-10T08:00:00+08:00", created_by: "usr_made",
+    /* Pinned to rev 1 — the only BOM that has ever existed in this data
+       (D256). `bom_rev: null` on wo_07 is the honest other case: no catalogue
+       product, so nothing to pin. */
+    bom_rev: 1,
     route: "IN_HOUSE", subcon_vendor_id: null,
     subcon_sent_on: null, subcon_expected_back: null, subcon_returned_on: null, subcon_note: null,
     cancelled_reason: null, note: null,
@@ -81,6 +98,10 @@ export const WORK_ORDERS: WorkOrder[] = [
     qty: 12, uom: "daun", project_code: "25009",
     due_date: "2026-09-08", status: "OPEN",
     created_at: "2026-08-30T08:00:00+08:00", created_by: "usr_made",
+    /* Pinned to rev 1 — the only BOM that has ever existed in this data
+       (D256). `bom_rev: null` on wo_07 is the honest other case: no catalogue
+       product, so nothing to pin. */
+    bom_rev: 1,
     route: "IN_HOUSE", subcon_vendor_id: null,
     subcon_sent_on: null, subcon_expected_back: null, subcon_returned_on: null, subcon_note: null,
     cancelled_reason: null, note: null,
@@ -94,6 +115,7 @@ export const WORK_ORDERS: WorkOrder[] = [
     created_at: "2026-09-02T08:00:00+08:00", created_by: "usr_made",
     /* Sudah kembali, jadi finishing boleh dicatat. Selama masih di vendor,
        API menolak pencatatan tahap apa pun (D255). */
+    bom_rev: null,
     route: "SUBCON", subcon_vendor_id: "vnd_06",
     subcon_sent_on: "2026-09-02", subcon_expected_back: "2026-09-08",
     subcon_returned_on: "2026-09-08",

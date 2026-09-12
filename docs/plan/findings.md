@@ -3232,3 +3232,63 @@ hours apart.
 Worth noting what *found* it: not a test of the rule, but building a work order
 through the interface like a person would. The seeded data could not express
 the failing state, so nothing that read the seed could have caught it.
+
+## F76 — a sub-assembly priced at twice its cost, for one afternoon
+
+Adding revisions to the BOM meant every read of `bom_components` had to say
+*which revision*. Most of them were obvious. One was not:
+
+```ts
+function subAssemblyCost(state, product) {
+  const rows = state.bom_components.filter((b) => b.product_id === product.id);
+```
+
+That function prices a drawer box so a wardrobe's BOM can cost the drawer boxes
+inside it. Before revisions it was right: one product, one component list. After
+revisions it sums **every line ever written for that product** — rev 1 and the
+draft rev 2 that was copied from it — and a drawer box with a draft open costs
+roughly twice what it costs.
+
+Caught by reading rather than by running, because nothing in the seed had a
+draft on a sub-assembly. It would have appeared the first time somebody edited
+one, in a figure nobody would have questioned: a wardrobe is expensive, and
+being 40% more expensive than it should be does not look like a bug.
+
+The rule it teaches is about the shape of the change rather than the bug.
+**Adding a dimension to a table makes every existing query on that table
+ambiguous**, and the compiler cannot see it — `filter(b => b.product_id === id)`
+type-checks perfectly before and after. The only defence is to enumerate the
+readers: `grep` for the table, not for the error. Two readers, one already
+right, one silently wrong.
+
+## F77 — a diff that was one edit behind
+
+The BOM drawer showed what an open draft changes against the released revision.
+It fetched that diff through its own call:
+
+```ts
+const [diff, reloadDiff] = useLoad(() => production.getBomDiff({ product_code }), [productCode]);
+```
+
+Adding a component reloaded the product. It did not reload the diff. So the
+panel went on rendering the answer to a question about a state that no longer
+existed — and because the first edit is also what *opens* the draft, the stale
+answer was the diff from **before there was a draft at all**: `to` fell back to
+rev 1 and `from` to null, so the panel confidently listed all four of rev 1's
+components as newly added, and did not list the one component that had actually
+just been added.
+
+Every number on it was wrong and none of it looked wrong. It is exactly the
+shape of thing this project spends its refusals on, arriving through the back
+door — not an invented figure, but a **correct figure about the wrong moment**.
+
+The fix is not `reloadDiff()` in two more handlers. It is that a diff over a
+list should be derived from the list, not fetched alongside it: `draft_diff` is
+now computed inside `productView`, from the same components the table below it
+renders, so the two cannot describe different states. The separate endpoint
+stays for callers that want an arbitrary pair of revisions.
+
+Three findings in two days now share one sentence — F73 (two sums), F75 (two
+booleans), this (two reads of one state). **If two things must agree, one of
+them has to be derived from the other.** Keeping them in step by remembering to
+is not a design, it is a promise nobody can keep.

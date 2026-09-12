@@ -1,4 +1,4 @@
-import type { Product, BomComponent } from "@/services/production/contracts";
+import type { Product, BomComponent, BomRevision } from "@/services/production/contracts";
 
 /** What the business sells and makes, and what each one is made of.
  *
@@ -68,9 +68,10 @@ let n = 0;
 const c = (
   product_id: string, kind: "material" | "product", ref_code: string,
   qty: number, uom: string, waste_percent = 0, note: string | null = null,
+  rev = 1,
 ): BomComponent => {
   n += 1;
-  return { id: `bom_${String(n).padStart(3, "0")}`, product_id, kind, ref_code, qty, uom, waste_percent, note };
+  return { id: `bom_${String(n).padStart(3, "0")}`, product_id, rev, kind, ref_code, qty, uom, waste_percent, note };
 };
 
 export const BOM_COMPONENTS: BomComponent[] = [
@@ -123,3 +124,49 @@ export const BOM_COMPONENTS: BomComponent[] = [
   c("prd_07", "material", "ITM-0025", 1, "set", 0, "Rel full extension 45 cm."),
   c("prd_07", "material", "ITM-0027", 0.05, "box", 0, null),
 ];
+
+/** Every BOM that existed before versioning is **revision 1, released** (D256).
+ *
+ *  That is a statement of fact rather than a convenience. The BOM was
+ *  current-state with no history, so one list is the only list that has ever
+ *  existed in this data, and calling it rev 1 loses nothing. The same argument
+ *  carries the real migration in Phase 2.
+ *
+ *  `prd_01` then carries a **draft rev 2** on top, because the whole point of
+ *  versioning is invisible until a product has two: one work order on the floor
+ *  is pinned to rev 1 while the drafting table has moved on, and the board can
+ *  say so.
+ */
+export const BOM_REVISIONS: BomRevision[] = [
+  ...["prd_01", "prd_02", "prd_03", "prd_04", "prd_05", "prd_07"].map((product_id) => ({
+    id: `bmr_${product_id}_1`, product_id, rev: 1,
+    released_at: "2026-08-01T08:00:00+08:00", released_by: "usr_made",
+    note: "Versi awal, dari katalog yang dipakai sebelum BOM diberi versi.",
+    created_at: "2026-08-01T08:00:00+08:00", created_by: "usr_made",
+  })),
+  {
+    id: "bmr_prd_01_2", product_id: "prd_01", rev: 2,
+    released_at: null, released_by: null,
+    note: "Sekrup diganti ke ukuran yang lebih panjang dan susut papan dinaikkan — meja 220 sering kurang bahan.",
+    created_at: "2026-09-10T09:00:00+08:00", created_by: "usr_made",
+  },
+];
+
+/* The draft: a **full copy** of rev 1 with two lines changed and one added.
+   Copied, not referenced — releasing rev 1 froze its lines, and a draft that
+   pointed back at them would edit a released revision by the back door (D256).
+   Full, because a partial copy is a diff nobody meant: three lines left out is
+   three components removed, and the screen would be right to say so. */
+BOM_COMPONENTS.push(
+  c("prd_01", "material", "ITM-0006", 6, "lembar", 15, "Susut dinaikkan 12% → 15%: meja 220 sering kurang bahan.", 2),
+  c("prd_01", "material", "ITM-0001", 0.08, "m3", 15, "Kaki dan rangka, sortimen A.", 2),
+  c("prd_01", "material", "ITM-0022", 0.5, "pack", 0, null, 2),
+  c("prd_01", "material", "ITM-0013", 12, "lembar", 0, "Sekrup 6×80, naik dari 8 lembar.", 2),
+  c("prd_01", "material", "ITM-0014", 6, "lembar", 0, null, 2),
+  c("prd_01", "material", "ITM-0016", 2, "ltr", 5, null, 2),
+  c("prd_01", "material", "ITM-0019", 2.5, "ltr", 5, "Melamine clear doff, dua lapis.", 2),
+  c("prd_01", "material", "ITM-0021", 0.8, "kg", 0, null, 2),
+  c("prd_01", "material", "ITM-0033", 0.3, "roll", 0, "Bubble wrap saat packing.", 2),
+  c("prd_01", "material", "ITM-0032", 2, "pcs", 0, null, 2),
+  c("prd_01", "material", "ITM-0027", 0.2, "box", 0, "Baru: dowel untuk sambungan kaki.", 2),
+);

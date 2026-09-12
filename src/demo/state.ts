@@ -27,7 +27,7 @@ import type {
   AllowanceWithholding,
 } from "@/services/hr/contracts";
 import type {
-  WorkOrder, ProgressEntry, Product, BomComponent,
+  WorkOrder, ProgressEntry, Product, BomComponent, BomRevision,
   DesignTask, DesignRevision, DesignQuestion,
 } from "@/services/production/contracts";
 import type {
@@ -158,6 +158,9 @@ export interface DemoState {
   /** What we sell and make, and what each one is made of (D149). */
   products: Product[];
   bom_components: BomComponent[];
+  /** One dated version of a BOM. A draft is edited; a released one is frozen,
+   *  and the work orders written against it keep pointing at it (D256). */
+  bom_revisions: BomRevision[];
   /** The drafters' queue: what has to be drawn, which revision the floor may
    *  cut from, and what is stuck on an answer (D179). */
   design_tasks: DesignTask[];

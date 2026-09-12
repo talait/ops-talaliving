@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Calculator, FileText, ImageIcon, Paperclip, Plus, Ruler, Save, Trash2 } from "lucide-react";
+import { Calculator, FileText, GitBranch, ImageIcon, Lock, Paperclip, Plus, Ruler, Save, Trash2 } from "lucide-react";
 import { Drawer } from "@/components/ui/drawer";
 import { Badge, Button } from "@/components/ui/primitives";
 import { Loaded, useLoad } from "@/components/ui/loaded";
@@ -49,6 +49,20 @@ export function ProductDrawer({
   const [dims, setDims] = useState({ l: 0, w: 0, h: 0 });
   const [lead, setLead] = useState(14);
   const [busy, setBusy] = useState(false);
+  const [releaseNote, setReleaseNote] = useState("");
+
+  async function releaseRev(p: ProductView) {
+    setBusy(true);
+    const res = await production.releaseBom({ product_code: p.product_code, note: releaseNote });
+    setBusy(false);
+    if (res.error) {
+      toast(res.error.status === 403 ? "critical" : "warning", "Tidak dirilis", res.error.message);
+      return;
+    }
+    toast("success", `rev ${p.draft_rev} dirilis`, "Pesanan kerja baru memakainya mulai sekarang.");
+    setReleaseNote("");
+    reload();
+  }
 
   /* Add-a-component form. */
   const [kind, setKind] = useState<"material" | "product">("material");
@@ -327,6 +341,109 @@ export function ProductDrawer({
                 {p.warnings.map((w) => <li key={w}>· {w}</li>)}
               </ul>
             )}
+
+            {/* Which version this is, and what else exists (D256). */}
+            <div className={cn(
+              "rounded-xl border px-4 py-3",
+              p.draft_rev != null ? "border-amber-200 bg-amber-50/70" : "border-slate-200",
+            )}>
+              <div className="flex flex-wrap items-center gap-2">
+                <GitBranch className="h-4 w-4 text-slate-400" />
+                {p.viewing_rev == null ? (
+                  <span className="text-[13px] text-slate-600">Belum ada versi BOM sama sekali.</span>
+                ) : (
+                  <>
+                    <Badge tone={p.draft_rev === p.viewing_rev ? "amber" : "green"}>
+                      rev {p.viewing_rev}{p.draft_rev === p.viewing_rev ? " · draft" : " · dirilis"}
+                    </Badge>
+                    <span className="text-[12px] text-slate-600">
+                      {p.draft_rev != null
+                        ? `Sedang disunting. Pesanan kerja baru masih memakai rev ${p.current_rev ?? "—"} sampai ini dirilis.`
+                        : `Ini yang dipakai pesanan kerja baru.`}
+                    </span>
+                  </>
+                )}
+              </div>
+
+              {/* What is about to change, before anybody releases it. */}
+              {p.draft_diff != null && (() => {
+                /* Straight off the view (F77): the diff and the component table
+                   below it are the same read of the same state, so they cannot
+                   disagree about what the draft contains. */
+                const d = p.draft_diff;
+                return (
+                    <div className="mt-2">
+                      {d.identical ? (
+                        <p className="text-[12px] text-slate-500">
+                          Belum ada bedanya dengan rev {d.from_rev ?? "—"}.
+                        </p>
+                      ) : (
+                        <ul className="space-y-0.5 text-[12px]">
+                          {d.lines.map((l) => (
+                            <li key={l.ref_code} className="text-slate-700">
+                              <span className={cn(
+                                "mr-1.5 font-medium",
+                                l.change === "added" ? "text-emerald-700"
+                                  : l.change === "removed" ? "text-rose-700" : "text-amber-700",
+                              )}>
+                                {l.change === "added" ? "+" : l.change === "removed" ? "−" : "~"}
+                              </span>
+                              <span className="font-mono text-[11px]">{l.ref_code}</span>
+                              {l.ref_name && <span className="text-slate-500"> {l.ref_name}</span>}
+                              {l.change === "changed" && l.before && l.after && (
+                                <span className="text-slate-500">
+                                  {" — "}{formatNumber(l.before.qty)} {l.before.uom}
+                                  {l.before.waste_percent > 0 && ` +${l.before.waste_percent}%`}
+                                  {" → "}{formatNumber(l.after.qty)} {l.after.uom}
+                                  {l.after.waste_percent > 0 && ` +${l.after.waste_percent}%`}
+                                </span>
+                              )}
+                              {l.change === "added" && l.after && (
+                                <span className="text-slate-500"> — {formatNumber(l.after.qty)} {l.after.uom}</span>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      {mayEdit && (
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <input
+                            value={releaseNote} onChange={(e) => setReleaseNote(e.target.value)}
+                            placeholder="Kenapa versi ini ada — dibaca orang yang nanti bertanya soal selisih bahan"
+                            className="h-9 min-w-[240px] flex-1 rounded-lg border border-slate-200 px-2 text-sm focus:border-brand-400 focus:outline-none"
+                          />
+                          <Button
+                            size="sm" icon={Lock} disabled={busy || !releaseNote.trim() || d.identical}
+                            onClick={() => releaseRev(p)}
+                          >
+                            Rilis rev {p.draft_rev}
+                          </Button>
+                        </div>
+                      )}
+                      <p className="mt-1 text-[11px] text-slate-500">
+                        Setelah dirilis, barisnya tidak bisa diubah lagi — pesanan kerja yang memakainya
+                        harus tetap terbaca seperti apa adanya. Perubahan berikutnya membuka rev{" "}
+                        {(p.draft_rev ?? 0) + 1}.
+                      </p>
+                    </div>
+                );
+              })()}
+
+              {p.revisions.length > 1 && (
+                <ul className="mt-2 space-y-0.5 border-t border-slate-200/70 pt-2 text-[11px] text-slate-500">
+                  {p.revisions.filter((r) => !r.is_draft).map((r) => (
+                    <li key={r.id}>
+                      <span className="font-medium text-slate-600">rev {r.rev}</span>
+                      {" · "}{r.released_at?.slice(0, 10)}
+                      {r.released_by_name && ` · ${r.released_by_name}`}
+                      {" · "}{r.component_count} komponen
+                      {r.used_by > 0 && ` · dipakai ${r.used_by} SPK`}
+                      {r.note && <span className="block text-slate-400">{r.note}</span>}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
 
             {/* The bill of materials itself. */}
             <div className="overflow-x-auto rounded-xl border border-slate-200">

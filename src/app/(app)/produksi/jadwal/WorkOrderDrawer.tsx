@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, CheckCircle2, Factory, Hammer, PackageCheck, Plus, ShoppingCart } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Factory, GitBranch, Hammer, PackageCheck, Plus, ShoppingCart } from "lucide-react";
 import Link from "next/link";
 import { Drawer } from "@/components/ui/drawer";
 import { Badge, Button } from "@/components/ui/primitives";
@@ -41,7 +41,13 @@ export function WorkOrderDrawer({
      against it — the two halves of D151. */
   const [needs] = useLoad(
     () => (wo.status === "ready" && wo.data.product_code
-      ? production.materialsFor({ product_code: wo.data.product_code, qty: wo.data.qty })
+      /* **The revision this order was pinned to** (D256), not today's. The
+         projection an order is measured against is the list it was written
+         from; using the current one would move the comparison every time
+         somebody edits the catalogue. */
+      ? production.materialsFor({
+        product_code: wo.data.product_code, qty: wo.data.qty, rev: wo.data.bom_rev,
+      })
       : Promise.resolve({ data: null, meta: null } as never)),
     [woNo, wo.status],
   );
@@ -63,6 +69,23 @@ export function WorkOrderDrawer({
   const [expectBack, setExpectBack] = useState("");
   const [backOn, setBackOn] = useState(officeToday());
   const [subNote, setSubNote] = useState("");
+  const [repinReason, setRepinReason] = useState("");
+
+  /* Moving an open order onto a newer BOM revision. A decision with a reason,
+     not a refresh — it changes what this job's real spend is measured against
+     (D256). Refused by the API once anything has been built. */
+  async function repin(w: WorkOrderView) {
+    setBusy(true);
+    const res = await production.repinBom({ wo_no: w.wo_no, reason: repinReason });
+    setBusy(false);
+    if (res.error) {
+      toast(res.error.status === 403 ? "critical" : "warning", "Tidak dipindahkan", res.error.message);
+      return;
+    }
+    toast("success", `Dipindahkan ke rev ${res.data.bom_rev}`, "Proyeksinya dihitung ulang dari daftar itu.");
+    setRepinReason("");
+    reload(); onChanged();
+  }
   const vendorName = wo.status === "ready" && wo.data.subcon_vendor_id
     ? vendors.find((v) => v.id === wo.data.subcon_vendor_id)?.name ?? null
     : null;
@@ -409,6 +432,46 @@ export function WorkOrderDrawer({
                           <ShoppingCart className="h-4 w-4 text-slate-400" />
                           Bahan: proyeksi dari BOM vs yang benar-benar dibeli
                         </p>
+                        {/* Which list this is measured against, and whether the
+                            catalogue has moved on since (D256). */}
+                        {w.product_code && (
+                          <p className="mt-0.5 text-[12px] text-slate-500">
+                            {w.bom_rev == null ? (
+                              <span className="text-amber-700">
+                                Pesanan ini dibuat sebelum BOM diberi versi — versi yang benar-benar
+                                dipakai tidak pernah tercatat, jadi tidak ada proyeksi yang jujur
+                                untuk ditampilkan.
+                              </span>
+                            ) : (
+                              <>
+                                Diukur terhadap <strong className="text-slate-700">rev {w.bom_rev}</strong>
+                                {w.bom_drifted && (
+                                  <span className="text-amber-700">
+                                    {" "}— katalog sekarang sudah di rev {w.product_current_rev}. Angkanya
+                                    sengaja tetap memakai rev {w.bom_rev}: itu daftar yang dipakai waktu
+                                    pesanan ini ditulis.
+                                  </span>
+                                )}
+                              </>
+                            )}
+                          </p>
+                        )}
+                        {/* Gated on the predicate the API refuses on (F75). */}
+                        {mayEdit && w.bom_repinnable && (
+                          <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                            <input
+                              value={repinReason} onChange={(e) => setRepinReason(e.target.value)}
+                              placeholder={`Kenapa pindah ke rev ${w.product_current_rev}? Angka pembandingnya berubah.`}
+                              className="h-9 min-w-[220px] flex-1 rounded-lg border border-slate-200 px-2 text-sm focus:border-brand-400 focus:outline-none"
+                            />
+                            <Button
+                              size="sm" variant="outline" icon={GitBranch}
+                              disabled={busy || !repinReason.trim()} onClick={() => repin(w)}
+                            >
+                              Pindahkan ke rev {w.product_current_rev}
+                            </Button>
+                          </div>
+                        )}
                         {!need ? (
                           <p className="mt-1 text-[12px] text-slate-500">
                             Pesanan ini tidak menunjuk produk di katalog, jadi tidak ada BOM untuk

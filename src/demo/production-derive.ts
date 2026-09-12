@@ -12,6 +12,8 @@ import {
   PROCESS_STAGES, STAGE_SOURCES, ROUTE, goodsOnSite,
   type WorkOrder, type WorkOrderView, type StageProgress,
   type Product, type ProductView, type BomLineView, type ProductDrawing,
+  type BomRevision, type BomRevisionView, type BomDiff, type BomDiffLine,
+  type BomComponent,
   type DesignTask, type DesignTaskView, type DesignKind,
 } from "@/services/production/contracts";
 
@@ -28,12 +30,32 @@ function daysBetween(from: string, to: string): number {
   return Math.round((Date.UTC(by, bm - 1, bd) - Date.UTC(ay, am - 1, ad)) / 86_400_000);
 }
 
+/** May this order be moved onto a newer BOM revision?
+ *
+ *  **One predicate, read by the API and by the screen** — the lesson F75 taught
+ *  four hours earlier, applied before it could bite again. Re-pinning is
+ *  refused once anything has been built, because at that point the old list is
+ *  what was **actually** consumed, and measuring real spend against a list
+ *  nobody used is worse than measuring it against an outdated one.
+ */
+export function bomRepinnable(state: DemoState, wo: WorkOrder): boolean {
+  if (wo.status !== "OPEN" || !wo.product_code) return false;
+  const product = state.products.find((p) => p.product_code === wo.product_code);
+  if (!product) return false;
+  const current = currentBomRev(state, product);
+  if (current === null || current === wo.bom_rev) return false;
+  return !state.production_progress.some((p) => p.wo_id === wo.id && p.qty > 0);
+}
+
 export function workOrderView(
   state: DemoState,
   wo: WorkOrder,
   today = officeToday(),
 ): WorkOrderView {
   const entries = state.production_progress.filter((p) => p.wo_id === wo.id);
+  const productOf = wo.product_code
+    ? state.products.find((p) => p.product_code === wo.product_code)
+    : undefined;
   const route = ROUTE(wo.route);
   const total = (code: string) =>
     entries.filter((p) => p.stage === code).reduce((a, p) => a + p.qty, 0);
@@ -174,6 +196,14 @@ export function workOrderView(
     route_name: route.name,
     at_vendor,
     goods_on_site: goodsOnSite(wo),
+    /* What the product's BOM is on **now**, against what this order was
+       written against. Different is not wrong — this order is deliberately
+       measured against the list it was written from (D256) — but it is worth
+       seeing, because *the projection looks off* usually means the BOM moved. */
+    product_current_rev: productOf ? currentBomRev(state, productOf) : null,
+    bom_drifted: productOf !== undefined && wo.bom_rev !== null
+      && currentBomRev(state, productOf) !== wo.bom_rev,
+    bom_repinnable: bomRepinnable(state, wo),
     days_at_vendor,
     subcon_overdue,
     current_stage: current?.stage ?? null,
@@ -244,8 +274,107 @@ function dimensionText(p: Product): string | null {
   return p.dimension_note ? `${size} · ${p.dimension_note}` : size;
 }
 
-export function productView(state: DemoState, product: Product): ProductView {
-  const rows = state.bom_components.filter((b) => b.product_id === product.id);
+/** The revisions of one product's BOM, newest first, each saying what it is.
+ *
+ *  `is_current` is the newest **released** one — the revision a new work order
+ *  would pin to. Derived here rather than stored as a flag, for the reason
+ *  every flag in this system is derived: a flag is a field somebody forgets to
+ *  move when the next revision is released. */
+export function bomRevisions(state: DemoState, product: Product): BomRevisionView[] {
+  const rows = state.bom_revisions
+    .filter((r) => r.product_id === product.id)
+    .sort((a, b) => b.rev - a.rev);
+  const current = rows.find((r) => r.released_at !== null)?.rev ?? null;
+  const name = (id: string | null) =>
+    id ? state.users.find((u) => u.id === id)?.full_name ?? id : null;
+  return rows.map((r) => ({
+    ...r,
+    released_by_name: name(r.released_by),
+    is_current: r.released_at !== null && r.rev === current,
+    is_draft: r.released_at === null,
+    component_count: state.bom_components.filter(
+      (b) => b.product_id === product.id && b.rev === r.rev,
+    ).length,
+    used_by: state.work_orders.filter(
+      (w) => w.product_code === product.product_code && w.bom_rev === r.rev,
+    ).length,
+  }));
+}
+
+/** The revision a new work order pins to: the newest **released** one. Null
+ *  where nothing has been released, and null is not "the draft" — pinning to a
+ *  working copy would give the order a list that can still change under it. */
+export function currentBomRev(state: DemoState, product: Product): number | null {
+  return state.bom_revisions
+    .filter((r) => r.product_id === product.id && r.released_at !== null)
+    .reduce<number | null>((a, r) => (a === null || r.rev > a ? r.rev : a), null);
+}
+
+export function draftBomRev(state: DemoState, product: Product): number | null {
+  return state.bom_revisions
+    .find((r) => r.product_id === product.id && r.released_at === null)?.rev ?? null;
+}
+
+/** The components of one revision. Empty for a revision that does not exist —
+ *  which is different from a revision with no components, and the caller is
+ *  the one that knows which it is looking at. */
+export function bomAt(state: DemoState, product: Product, rev: number | null): BomComponent[] {
+  if (rev === null) return [];
+  return state.bom_components.filter((b) => b.product_id === product.id && b.rev === rev);
+}
+
+/** What changed between two revisions, line by line, computed from the two
+ *  lists themselves — a diff derived from the things cannot disagree with
+ *  them, and an edit log can (A3). */
+export function bomDiff(
+  state: DemoState,
+  product: Product,
+  fromRev: number | null,
+  toRev: number,
+): BomDiff {
+  const before = bomAt(state, product, fromRev);
+  const after = bomAt(state, product, toRev);
+  const codes = [...new Set([...before, ...after].map((b) => b.ref_code))].sort();
+  const shape = (b: BomComponent | undefined) =>
+    b ? { qty: b.qty, uom: b.uom, waste_percent: b.waste_percent } : null;
+  const nameOf = (code: string, kind: string) => kind === "material"
+    ? state.items.find((i) => i.code === code)?.name ?? null
+    : state.products.find((p) => p.product_code === code)?.name ?? null;
+
+  const lines: BomDiffLine[] = [];
+  for (const code of codes) {
+    const a = before.find((b) => b.ref_code === code);
+    const b = after.find((x) => x.ref_code === code);
+    const sa = shape(a);
+    const sb = shape(b);
+    if (sa && sb) {
+      if (sa.qty === sb.qty && sa.uom === sb.uom && sa.waste_percent === sb.waste_percent) continue;
+      lines.push({ ref_code: code, ref_name: nameOf(code, b!.kind), change: "changed", before: sa, after: sb });
+    } else if (sb) {
+      lines.push({ ref_code: code, ref_name: nameOf(code, b!.kind), change: "added", before: null, after: sb });
+    } else {
+      lines.push({ ref_code: code, ref_name: nameOf(code, a!.kind), change: "removed", before: sa, after: null });
+    }
+  }
+  return {
+    product_code: product.product_code,
+    from_rev: fromRev,
+    to_rev: toRev,
+    lines,
+    identical: lines.length === 0,
+  };
+}
+
+/** One product, at one revision.
+ *
+ *  `rev` defaults to **the draft if one is open, otherwise the current
+ *  released one** — which is what somebody editing the catalogue wants to see.
+ *  A work order asks for its own pinned revision instead, by number. */
+export function productView(state: DemoState, product: Product, rev?: number | null): ProductView {
+  const current = currentBomRev(state, product);
+  const draft = draftBomRev(state, product);
+  const viewing = rev !== undefined ? rev : (draft ?? current);
+  const rows = bomAt(state, product, viewing);
 
   const components: BomLineView[] = rows.map((b) => {
     const qty_with_waste = Math.round(b.qty * (1 + b.waste_percent / 100) * 10_000) / 10_000;
@@ -332,6 +461,11 @@ export function productView(state: DemoState, product: Product): ProductView {
   return {
     ...product,
     components,
+    viewing_rev: viewing,
+    current_rev: current,
+    draft_rev: draft,
+    revisions: bomRevisions(state, product),
+    draft_diff: draft === null ? null : bomDiff(state, product, current, draft),
     dimension: dimensionText(product),
     gambar_kerja,
     gambar_jadi,
@@ -346,7 +480,10 @@ export function productView(state: DemoState, product: Product): ProductView {
 /** The material cost of a sub-assembly, one level down. Null when any part of
  *  it cannot be priced — half a number is not a number. */
 function subAssemblyCost(state: DemoState, product: Product): number | null {
-  const rows = state.bom_components.filter((b) => b.product_id === product.id);
+  /* The **released** revision. Reading every line ever written would sum a
+     draft and the version it was copied from and price the sub-assembly at
+     roughly twice what it costs (F76). */
+  const rows = bomAt(state, product, currentBomRev(state, product));
   if (rows.length === 0) return null;
   let total = 0;
   for (const b of rows) {

@@ -174,6 +174,12 @@ export interface WorkOrder {
   due_date: string;
   /** Which stages this order actually goes through (D254). */
   route: RouteCode;
+  /** The BOM revision this order was written against, pinned when it was
+   *  created (D256). **Null is not "the current one"** — it means the order
+   *  predates versioning, or its product has no released BOM, and the screen
+   *  says so rather than showing today's list as though it were the one used.
+   *  A figure may be missing; it may not be quietly wrong. */
+  bom_rev: number | null;
   /** The vendor building it, on a `SUBCON` order. A public id validated at the
    *  seam, like every other cross-service reference (ADR-004). */
   subcon_vendor_id: string | null;
@@ -251,6 +257,17 @@ export interface WorkOrderView extends WorkOrder {
    *  The same predicate the API refuses on, so the screen cannot offer what
    *  the API will reject (F75). */
   goods_on_site: boolean;
+  /** The product's newest released revision **now**, against this order's
+   *  pinned one. When they differ the BOM has moved on since this order was
+   *  written, which is a thing to see: the projection this order is measured
+   *  against is the old list, deliberately. */
+  product_current_rev: number | null;
+  bom_drifted: boolean;
+  /** Whether moving this order onto the newer revision is allowed at all — the
+   *  same predicate the API refuses on, so the screen cannot offer a button
+   *  that will be rejected (F75). False once anything has been built: the old
+   *  list is what was actually consumed. */
+  bom_repinnable: boolean;
   /** Days since it left. Null when it has not been sent. */
   days_at_vendor: number | null;
   /** Past the date the vendor promised, and still not back. The workshop is
@@ -321,9 +338,77 @@ export interface Product {
  *  carried as a public code and resolved at the screen, never joined across
  *  services (ADR-004).
  */
+/** One dated version of a product's bill of material (D256).
+ *
+ *  The owner reversed the default on Q36: a BOM **is** versioned. The default
+ *  had been current-state with every change audited, which preserves the
+ *  history and loses the **pinning** — a wardrobe built in June reads today as
+ *  though it had always used today's components, and the projection against
+ *  what was actually bought becomes a comparison with the wrong list.
+ *
+ *  Two states and no more. A **draft** is being edited; a **released** one is
+ *  frozen for ever. There is at most one draft per product, because a second
+ *  one would raise the question of which the next work order pins to, and
+ *  there is no answer to that question worth having.
+ */
+export interface BomRevision {
+  id: string;
+  product_id: string;
+  /** 1, 2, 3 — per product, and printed everywhere as `rev 2`. */
+  rev: number;
+  /** Null while it is a draft. Set once, never cleared: releasing is what
+   *  makes the revision a fact rather than a working copy (A5). */
+  released_at: string | null;
+  released_by: string | null;
+  /** Why this version exists. Required to release — *rev 3* with no sentence
+   *  is a number somebody will have to reverse-engineer from a diff. */
+  note: string | null;
+  created_at: string;
+  created_by: string;
+}
+
+export interface BomRevisionView extends BomRevision {
+  released_by_name: string | null;
+  /** The revision a new work order would pin to: the newest released one. */
+  is_current: boolean;
+  is_draft: boolean;
+  component_count: number;
+  /** Work orders pinned to this revision. A released revision with orders
+   *  behind it is the reason none of this can be edited. */
+  used_by: number;
+}
+
+/** What changed between two revisions, line by line.
+ *
+ *  Computed from the two component lists rather than from an edit log: a diff
+ *  derived from the things themselves cannot disagree with them, and an edit
+ *  log can (A3). */
+export interface BomDiffLine {
+  ref_code: string;
+  ref_name: string | null;
+  change: "added" | "removed" | "changed";
+  before: { qty: number; uom: string; waste_percent: number } | null;
+  after: { qty: number; uom: string; waste_percent: number } | null;
+}
+
+export interface BomDiff {
+  product_code: string;
+  from_rev: number | null;
+  to_rev: number;
+  lines: BomDiffLine[];
+  /** True when the two lists are identical — which is why releasing an
+   *  unchanged draft is refused: a revision number for nothing is noise in a
+   *  history somebody will later have to read. */
+  identical: boolean;
+}
+
 export interface BomComponent {
   id: string;
   product_id: string;
+  /** The revision this line belongs to. A line is never moved between
+   *  revisions: opening a new draft **copies** the released one, so the
+   *  released lines stay exactly as they were released (A5). */
+  rev: number;
   kind: "material" | "product";
   /** `procure.items.code`, or another `products.product_code`. */
   ref_code: string;
@@ -363,7 +448,20 @@ export interface ProductDrawing {
 }
 
 export interface ProductView extends Product {
+  /** The components **of the revision being viewed** — the draft where one is
+   *  open, otherwise the newest released one. */
   components: BomLineView[];
+  /** Which revision `components` came from, and what else exists. */
+  viewing_rev: number | null;
+  current_rev: number | null;
+  draft_rev: number | null;
+  revisions: BomRevisionView[];
+  /** What the open draft changes against the newest released revision — **derived
+   *  here, from the same component list this view already carries**, so it
+   *  cannot describe a state the screen is not showing. Fetching it separately
+   *  made it one edit stale, which is a diff that is confidently wrong (F77).
+   *  Null when no draft is open. */
+  draft_diff: BomDiff | null;
   /** `2200 × 1000 × 750 mm`, built from the three numbers so every screen
    *  spells it the same way. Null when nothing has been recorded. */
   dimension: string | null;

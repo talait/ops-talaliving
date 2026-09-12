@@ -159,6 +159,29 @@ export default function DemoDiagnosticsPage() {
       pass: atVendor.error?.status === 409 && atVendor.error.code === "still_at_vendor",
     });
 
+    /* The revision rules (D256). Both are about a version that must stay
+       exactly as it was released, because a work order points at it. */
+    const editReleased = await production.saveBomComponent({
+      product_code: "PRD-KR-STD", component_id: "bom_011", kind: "material",
+      ref_code: "ITM-0006", qty: 99, uom: "lembar",
+    });
+    results.push({
+      name: "D256 — editing a line on a released BOM revision",
+      expect: "409 revision_released",
+      got: editReleased.error ? `${editReleased.error.status} ${editReleased.error.code}` : "accepted",
+      pass: editReleased.error?.status === 409 && editReleased.error.code === "revision_released",
+    });
+
+    const emptyRelease = await production.releaseBom({
+      product_code: "PRD-MJ-220", note: "",
+    });
+    results.push({
+      name: "D256 — releasing a revision with no reason for it",
+      expect: "422 note_required",
+      got: emptyRelease.error ? `${emptyRelease.error.status} ${emptyRelease.error.code}` : "accepted",
+      pass: emptyRelease.error?.status === 422 && emptyRelease.error.code === "note_required",
+    });
+
     await identity.actAs(original);
     setProbes(results);
     setRunning(false);

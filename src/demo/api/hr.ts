@@ -15,7 +15,7 @@ import {
   activePayRules, payrollLine, payrollLineWith,
   employeeFile, leaveBalance, leaveRequestView, datesBetween,
 } from "../hr-derive";
-import { latency, actingUser, requireModule, requireAuthority, conflict, replayed, remember } from "./_kit";
+import { latency, actingUser, requireModule, requireLevel, requireAuthority, conflict, replayed, remember } from "./_kit";
 
 const SERVICE = "hr" as const;
 
@@ -1261,7 +1261,13 @@ export async function savePayRules(
   const cached = replayed<PayRuleSetView>(SERVICE, "savePayRules", idempotencyKey);
   if (cached) return cached;
 
-  const denied = requireModule(SERVICE, "payroll");
+  /* HRD reads the rule book; **IT changes it** (owner, D193). Not because HRD
+     is not trusted with the numbers — they are the ones who know them — but
+     because a pay rule is the one piece of configuration that reaches every
+     payslip at once, and the people whose pay it computes should not be the
+     people who can change it without a second pair of hands. The proposal
+     comes from HRD; the change is made by IT, with the note attached. */
+  const denied = requireLevel(SERVICE, "it", "write");
   if (denied) return denied;
   if (!input.note?.trim()) {
     return invalid(

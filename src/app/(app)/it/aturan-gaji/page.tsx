@@ -53,7 +53,10 @@ export default function PayRulesPage() {
   const [note, setNote] = useState("");
   const [preview, setPreview] = useState<Awaited<ReturnType<typeof hr.previewPayRules>>["data"] | null>(null);
   const [busy, setBusy] = useState(false);
-  const mayEdit = can("payroll.run");
+  /* HRD reads, IT changes (owner, D193). Two different rights on one screen:
+     the people whose payslips these rules compute are not the people who can
+     change them alone. HRD proposes; IT writes the version, with the note. */
+  const mayEdit = can("it.update");
 
   async function runPreview() {
     if (!draft) return;
@@ -83,7 +86,7 @@ export default function PayRulesPage() {
   return (
     <div>
       <PageHeader
-        breadcrumb="IT"
+        breadcrumb="Payroll"
         title="Aturan penggajian"
         description="Skema upah, lembur dan undertime — angkanya kebijakan, bukan kode. Mengubahnya menulis versi baru mulai tanggal tertentu; versi lama tetap ada supaya slip lama masih bisa dihitung ulang."
         actions={<SourceBadge state={sets} />}
@@ -97,6 +100,15 @@ export default function PayRulesPage() {
 
           return (
             <>
+              {!mayEdit && (
+                <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-900">
+                  <strong className="font-medium">Lihat saja.</strong> Aturan gaji diubah oleh IT, bukan
+                  dari layar ini — bukan karena angkanya tidak Anda kuasai, tapi karena satu aturan di sini
+                  mengubah semua slip sekaligus. Kalau ada yang perlu diganti, sampaikan ke IT: perubahan
+                  ditulis sebagai versi baru dengan alasannya, dan versi lama tetap bisa dihitung ulang.
+                </div>
+              )}
+
               <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-[13px] shadow-card">
                 <Badge tone="brand">v{current.version}</Badge>
                 <span className="text-slate-700">

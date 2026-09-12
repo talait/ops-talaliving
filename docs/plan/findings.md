@@ -2421,3 +2421,55 @@ wrong since it was written; nothing surfaced it, because everyone who held the
 IT module held it at `admin` and the two questions gave the same answer for
 every person in the seed. **A guard is untested while exactly one kind of
 person passes it.**
+
+---
+
+## F56 — the test that proved nothing, twice over
+
+The change was small: the pay-rule book becomes readable by HRD and writable
+only by IT. The screen behaved immediately — twelve controls rendered and all
+twelve disabled for HRD, enabled for IT — and that was the moment to be
+careful, because F55 had just finished saying the UI gate is not the gate.
+
+So the guard was probed directly: open the editor as IT, fill the note, run
+the preview, then flip `session_user_id` in `localStorage` to HRD and press
+Simpan. It saved. **Versi 3 tersimpan.**
+
+For about a minute that looked like the guard not working. It was the test not
+working. The demo store is an in-memory singleton hydrated from `localStorage`
+exactly once, on load — writing to storage afterwards changes a copy nobody
+reads. The acting user never changed; IT saved their own rule set, correctly.
+
+The second failure was the shape of the test, not its plumbing. Every route to
+the save button goes through a screen that hides it, so no click can ever reach
+the endpoint as the wrong person. Driving the UI can only ever confirm the UI.
+
+What worked was exposing the demo API on `window` behind a probe, calling the
+four guarded endpoints as each person in turn, and reverting the probe
+afterwards:
+
+```
+HRD (Wulan)        403 module_required: no access to the it module
+LEADERSHIP (Evin)  403 level_required: needs write access to it; your account has read
+                   403 level_required: needs admin access to it; your account has read   (purge)
+IT (Shared)        OK
+```
+
+Three lessons, in the order they cost time.
+
+**A test that goes through the screen tests the screen.** The whole point of a
+server-side guard is the request that never came from your own form; a
+browser-driven test cannot make that request, so it cannot test that guard.
+
+**A passing result from a mechanism you have not verified is worse than no
+result.** The `localStorage` edit looked like it worked — no error, correct
+key, correct value — and produced a confident, wrong conclusion in the one
+direction that matters: *the guard is broken*. Had it produced a wrong
+conclusion the other way, the guard would have been shipped untested with a
+green tick beside it.
+
+**Two levels of refusal are two different messages, and both are worth
+reading.** HRD is refused at the module (`no access to the it module`) and
+leadership at the level (`needs admin; your account has read`). Under the old
+`requireModule` both would have been the first message, and leadership's — the
+one that actually says what is missing — could not have been written at all.

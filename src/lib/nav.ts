@@ -22,6 +22,13 @@ export interface NavItem {
   href: string;
   icon: LucideIcon;
   permission?: string;
+  /** A second permission that also opens the item. Exactly one screen needs
+   *  this and it is not an accident: the pay-rule book is **read** by HRD and
+   *  **changed** by IT (owner, D193), so gating it on either alone would hide
+   *  it from half the people who need it. An IT account with no payroll grant
+   *  is a normal account, and it must still be able to reach the rules it is
+   *  the only one allowed to change. */
+  orPermission?: string;
   badge?: "core" | "new";
 }
 
@@ -55,7 +62,7 @@ export const NAV: NavSection[] = [
        * leadership only" (owner, Q22), a payroll screen sitting inside it
        * made the heading say something untrue. Nobody gained or lost
        * access; the route is unchanged (D190). */
-      { label: "Aturan penggajian", href: "/it/aturan-gaji", icon: Scale, permission: "payroll.read", badge: "new" },
+      { label: "Aturan penggajian", href: "/it/aturan-gaji", icon: Scale, permission: "payroll.read", orPermission: "it.update", badge: "new" },
     ],
   },
   {

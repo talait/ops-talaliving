@@ -246,6 +246,27 @@ export default function DemoDiagnosticsPage() {
       pass: noReason.error?.status === 422 && noReason.error.code === "reason_required",
     });
 
+    /* The rule the whole KPI module rests on (D261): blocking a task lifts it
+       out of the assignee's score, so something that removes a penalty has to
+       say why. */
+    const blockBlind = await hr.updateTask({ task_no: "tgs-26-09-06_01", action: "block", reason: "" });
+    results.push({
+      name: "D261 — blocking a task without saying what it waits on",
+      expect: "422 reason_required",
+      got: blockBlind.error ? `${blockBlind.error.status} ${blockBlind.error.code}` : "accepted",
+      pass: blockBlind.error?.status === 422 && blockBlind.error.code === "reason_required",
+    });
+
+    const noDate = await hr.createTask({
+      assignee_no: "K-004", title: "Tugas tanpa tanggal", due_date: "",
+    });
+    results.push({
+      name: "D260 — a task nobody can tell is late",
+      expect: "422 due_date_required",
+      got: noDate.error ? `${noDate.error.status} ${noDate.error.code}` : "accepted",
+      pass: noDate.error?.status === 422 && noDate.error.code === "due_date_required",
+    });
+
     await identity.actAs(original);
     setProbes(results);
     setRunning(false);

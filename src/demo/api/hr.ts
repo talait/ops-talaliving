@@ -9,6 +9,7 @@ import type {
   EmployeeDocKind, EmployeeFileView, DocNoSource, LeaveBalance, LeaveKind, LeaveRequestView, LeaveStatus,
   AllowanceWithholding, AllowanceWithholdingView,
   ContributionScheme, ContributionRate, ContributionRoll, Enrolment,
+  Task, TaskView, TaskRefKind, KpiView,
 } from "@/services/hr/contracts";
 import { SENSITIVE_DOC_KINDS, SCHEME_LABEL, maskDocNo } from "@/services/hr/contracts";
 import type { DocKind } from "@/services/documents/contracts";
@@ -19,6 +20,7 @@ import {
   activePayRules, payrollLine, payrollLineWith,
   employeeFile, leaveBalance, leaveRequestView, datesBetween,
   contributionRoll, allRolls,
+  taskView, taskViews, kpiView, kpiViews,
 } from "../hr-derive";
 import { latency, actingUser, requireModule, requireLevel, requireAuthority, conflict, replayed, remember } from "./_kit";
 import { officeToday as sharedOfficeToday } from "@/lib/office";
@@ -1482,6 +1484,181 @@ function officeToday(): string {
  *  read the rule book and write the next version of it. What the rules *do* is
  *  in `payrollLine`, which is the only place that should know.
  */
+/* ── Tugas dan penilaian ──────────────────────────────────────────────────── */
+
+export async function listTasks(
+  filter: { assignee_no?: string; status?: Task["status"] } = {},
+): Promise<Result<TaskView[]>> {
+  await latency();
+  const denied = requireModule(SERVICE, "hrd");
+  if (denied) return denied;
+  return ok(SERVICE, taskViews(getState(), filter));
+}
+
+/** Asking somebody to do something, by a date.
+ *
+ *  Both required, and both for the same reason: a task with no owner is a note,
+ *  and a task with no date is one nobody can tell is late (D260).
+ */
+export async function createTask(
+  input: {
+    assignee_no: string;
+    title: string;
+    due_date: string;
+    detail?: string | null;
+    ref_kind?: TaskRefKind;
+    ref_no?: string | null;
+  },
+  idempotencyKey?: string,
+): Promise<Result<TaskView>> {
+  await latency();
+  const cached = replayed<TaskView>(SERVICE, "createTask", idempotencyKey);
+  if (cached) return cached;
+
+  const denied = requireModule(SERVICE, "hrd");
+  if (denied) return denied;
+
+  const state = getState();
+  const emp = state.employees.find((e) => e.employee_no === input.assignee_no);
+  if (!emp) return notFound(SERVICE, "employee_not_found", `No employee ${input.assignee_no}.`);
+  if (!emp.active) {
+    return conflict(SERVICE, "employee_left", `${emp.full_name} sudah tidak aktif.`);
+  }
+  if (!input.title.trim()) {
+    return invalid(SERVICE, "title_required", "Tugasnya apa?", { field: "title" });
+  }
+  if (!input.due_date) {
+    return invalid(
+      SERVICE, "due_date_required",
+      "Tugas tanpa tanggal tidak bisa terlambat, yang berarti tidak ada yang bisa tahu kapan ia terlambat.",
+      { field: "due_date" },
+    );
+  }
+
+  const user = actingUser();
+  let no = "";
+  apply((draft) => {
+    no = nextDocNumber(draft, "tgs");
+    draft.tasks.push({
+      id: newId("tsk"), task_no: no,
+      title: input.title.trim(),
+      detail: input.detail?.trim() || null,
+      assignee_id: emp.id,
+      assigned_by: user.id,
+      assigned_at: new Date().toISOString(),
+      due_date: input.due_date,
+      ref_kind: input.ref_kind ?? "none",
+      ref_no: input.ref_no?.trim() || null,
+      status: "OPEN",
+      done_at: null, done_by: null,
+      blocked_reason: null, blocked_at: null,
+      cancelled_reason: null,
+    });
+    writeAudit(draft, {
+      service: SERVICE, entity: "task", entity_no: no,
+      action: "create", outcome: "ok", reason: null,
+      detail: { assignee: emp.employee_no, due: input.due_date, by: user.email },
+    });
+  });
+  const state2 = getState();
+  const row = state2.tasks.find((t) => t.task_no === no)!;
+  const view = taskView(state2, row);
+  remember(SERVICE, "createTask", idempotencyKey, view);
+  return ok(SERVICE, view);
+}
+
+/** Done, blocked, unblocked or cancelled — the four things that happen to a
+ *  task, each carrying what it needs.
+ *
+ *  **Blocking requires a reason**, because a blocked task is removed from the
+ *  assignee's score (D261) and something that lifts a penalty has to say why.
+ *  It is also the sentence somebody else reads when they are the blocker.
+ */
+export async function updateTask(
+  input: {
+    task_no: string;
+    action: "done" | "block" | "unblock" | "cancel";
+    reason?: string | null;
+    done_on?: string | null;
+  },
+): Promise<Result<TaskView>> {
+  await latency();
+  const denied = requireModule(SERVICE, "hrd");
+  if (denied) return denied;
+
+  const state = getState();
+  const t = state.tasks.find((x) => x.task_no === input.task_no);
+  if (!t) return notFound(SERVICE, "task_not_found", `No task ${input.task_no}.`);
+  if (t.status !== "OPEN" && input.action !== "done") {
+    return conflict(SERVICE, "task_closed", `${t.task_no} sudah ${t.status}.`);
+  }
+  if ((input.action === "block" || input.action === "cancel") && !input.reason?.trim()) {
+    return invalid(
+      SERVICE, "reason_required",
+      input.action === "block"
+        ? "Tertahan menunggu apa? Tugas yang tertahan dikeluarkan dari penilaian orangnya — yang menghapus beban harus menyebut alasannya, dan kalimat ini juga yang dibaca pihak yang menahannya."
+        : "Kenapa dibatalkan? Tugas yang dibatalkan tidak dihitung sebagai berhasil maupun gagal, jadi alasannya adalah satu-satunya jejak yang tersisa.",
+      { field: "reason" },
+    );
+  }
+  if (input.action === "unblock" && t.blocked_reason === null) {
+    return noop(SERVICE, taskView(state, t));
+  }
+  if (input.action === "done" && t.status === "DONE") {
+    return noop(SERVICE, taskView(state, t));
+  }
+
+  const user = actingUser();
+  apply((draft) => {
+    const row = draft.tasks.find((x) => x.task_no === input.task_no);
+    if (!row) return;
+    if (input.action === "done") {
+      row.status = "DONE";
+      /* The day it was finished, not the day it was typed — the same rule the
+         production board follows (D148). */
+      row.done_at = input.done_on
+        ? `${input.done_on}T12:00:00+08:00`
+        : new Date().toISOString();
+      row.done_by = user.id;
+      row.blocked_reason = null;
+      row.blocked_at = null;
+    } else if (input.action === "block") {
+      row.blocked_reason = input.reason!.trim();
+      row.blocked_at = new Date().toISOString();
+    } else if (input.action === "unblock") {
+      row.blocked_reason = null;
+      row.blocked_at = null;
+    } else {
+      row.status = "CANCELLED";
+      row.cancelled_reason = input.reason!.trim();
+    }
+    writeAudit(draft, {
+      service: SERVICE, entity: "task", entity_no: row.task_no,
+      action: input.action, outcome: "ok", reason: input.reason?.trim() || null,
+      detail: { by: user.email },
+    });
+  });
+  const after = getState();
+  return ok(SERVICE, taskView(after, after.tasks.find((x) => x.task_no === input.task_no)!));
+}
+
+/** The analyzer. **Payroll-level**, like the payslips: this is the most
+ *  personal reading the system produces about anybody. */
+export async function getKpi(
+  input: { period_start: string; period_end: string; employee_no?: string },
+): Promise<Result<KpiView[]>> {
+  await latency();
+  const denied = requireModule(SERVICE, "payroll");
+  if (denied) return denied;
+  const state = getState();
+  if (input.employee_no) {
+    const emp = state.employees.find((e) => e.employee_no === input.employee_no);
+    if (!emp) return notFound(SERVICE, "employee_not_found", `No employee ${input.employee_no}.`);
+    return ok(SERVICE, [kpiView(state, emp, input.period_start, input.period_end)]);
+  }
+  return ok(SERVICE, kpiViews(state, input.period_start, input.period_end));
+}
+
 /* ── Iuran wajib ──────────────────────────────────────────────────────────── */
 
 /** The roll of names for one scheme and month — HRD's register, read. */

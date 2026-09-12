@@ -25,6 +25,7 @@ export const MESSAGES = {
     payrollWeek: m("Weekly payroll", "Gajian mingguan"),
     payRules: m("Pay rules", "Aturan penggajian"),
     contributions: m("Statutory contributions", "Iuran wajib"),
+    performance: m("Performance & tasks", "Kinerja & tugas"),
 
     procurement: m("Procurement", "Pengadaan"),
     requests: m("Purchase requests", "Permintaan pembelian"),

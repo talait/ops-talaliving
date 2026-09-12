@@ -281,6 +281,122 @@ export interface OvertimeLine {
 }
 
 /* ------------------------------------------------------------------ */
+/* Tasks, and measuring people — the one module that scores a person    */
+/* ------------------------------------------------------------------ */
+
+/** Something one person is expected to do, by a date (D260).
+ *
+ *  The owner asked for a **task tracker and a KPI analyzer**, and the tracker
+ *  has to come first, because a KPI over deliverables with no record of what
+ *  was asked of anybody is a score over opinions.
+ *
+ *  `assignee_id` is a **real employee link**, unlike `worked_by` on a
+ *  production entry or `assignee` on a design task — both of which are free
+ *  text, on purpose, because a subcontractor is a legitimate answer there. That
+ *  difference is why production work does **not** feed the score: matching
+ *  people by name into a performance record is the kind of cleverness that ends
+ *  with the wrong person's review (F81).
+ */
+export type TaskStatus = "OPEN" | "DONE" | "CANCELLED";
+
+/** What a task is for. A public reference, validated at the seam and never
+ *  joined across services (ADR-004). */
+export type TaskRefKind = "none" | "work_order" | "project" | "purchase_request";
+
+export interface Task {
+  id: string;
+  task_no: string;
+  title: string;
+  detail: string | null;
+  /** Who it belongs to. Required — a task with no owner is a note. */
+  assignee_id: string;
+  assigned_by: string;
+  assigned_at: string;
+  /** Required. A task that cannot be late is one nobody can tell is late —
+   *  the same rule the work order carries (D148). */
+  due_date: string;
+  ref_kind: TaskRefKind;
+  ref_no: string | null;
+  status: TaskStatus;
+  done_at: string | null;
+  done_by: string | null;
+  /** Waiting on something outside the person's hands, with what it is waiting
+   *  on.
+   *
+   *  **A blocked task never counts against the assignee**, and that is the
+   *  single load-bearing rule of this whole module (D261). A tracker that
+   *  punishes people for reporting blockers is a tracker that stops being told
+   *  about blockers, and then it measures nothing at all. */
+  blocked_reason: string | null;
+  blocked_at: string | null;
+  cancelled_reason: string | null;
+}
+
+export interface TaskView extends Task {
+  assignee_name: string;
+  assignee_no: string;
+  assigned_by_name: string;
+  /** Negative once the due date has passed. */
+  days_left: number;
+  /** Open, past its date, and not blocked. */
+  overdue: boolean;
+  /** Finished after its due date. */
+  late: boolean;
+  /** Days between the due date and completion; negative means early. Null
+   *  while it is open. */
+  days_early: number | null;
+}
+
+/** One measure of one person, over one period.
+ *
+ *  `value` is null when the data to compute it **does not exist** — and that is
+ *  not a zero. The office does not use the fingerprint reader, so punctuality
+ *  cannot be measured for office staff; scoring them 100% would be a
+ *  compliment nobody earned, and scoring them 0% would be a slander (D261).
+ */
+export interface KpiMeasure {
+  key: "punctuality" | "attendance" | "task_delivery";
+  label: string;
+  /** 0–100, or null where it could not be measured. */
+  value: number | null;
+  /** Why it could not be measured, in words. */
+  unmeasured_reason: string | null;
+  /** What the figure is over — *18 dari 20 hari*, so the number can be argued
+   *  with rather than only believed. */
+  basis: string;
+  /** Where it came from, named: a score whose source is not printed is one
+   *  nobody can check. */
+  source: string;
+  weight: number;
+}
+
+export interface KpiView {
+  employee_id: string;
+  employee_no: string;
+  full_name: string;
+  position: string;
+  unit: string;
+  period_start: string;
+  period_end: string;
+  measures: KpiMeasure[];
+  /** Weighted mean over the **measured** measures only. Null where too few of
+   *  them could be measured — a score over one axis out of three is not a
+   *  performance score, it is that one axis wearing a costume (D261). */
+  score: number | null;
+  measured_count: number;
+  measure_count: number;
+  score_reason: string | null;
+  /** Context, deliberately **not** scored: hours somebody worked late is a
+   *  fact about the month, and turning it into a number that goes up when
+   *  people stay late is how a business teaches itself the wrong thing. */
+  overtime_hours: number;
+  tasks_open: number;
+  tasks_blocked: number;
+  /** Said plainly under the score, including what it could not see. */
+  notes: string[];
+}
+
+/* ------------------------------------------------------------------ */
 /* Statutory contributions: who is enrolled, at what rate               */
 /* ------------------------------------------------------------------ */
 

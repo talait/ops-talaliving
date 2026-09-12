@@ -1294,6 +1294,7 @@ erDiagram
     employees ||--o{ day_marks : "marked for"
     employees ||--o{ allowance_withholdings : "lost a day of it"
     employees ||--o{ enrolments : "registered in"
+    employees ||--o{ tasks : "asked to do"
     employees ||--o{ overtime_lines : "worked"
     overtime_sheets ||--o{ overtime_lines : "lists"
     attendance_imports ||--o{ attendance_scans : "brought in"
@@ -1314,6 +1315,20 @@ erDiagram
         boolean active
         date left_on "records stay (A5)"
         text note
+    }
+    tasks {
+        uuid id PK
+        text task_no UK "tgs-26-09-13_01"
+        text title
+        uuid assignee_id FK "a REAL employee link, unlike worked_by (D260)"
+        uuid assigned_by FK
+        date due_date "required - a task that cannot be late is one nobody can tell is late"
+        task_ref_t ref_kind "none|work_order|project|purchase_request"
+        text ref_no "public code, validated at the seam"
+        task_status_t status "OPEN|DONE|CANCELLED"
+        timestamptz done_at
+        text blocked_reason "set = out of the assignee's score entirely (D261)"
+        text cancelled_reason
     }
     contribution_rates {
         uuid id PK

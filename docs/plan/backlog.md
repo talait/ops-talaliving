@@ -57,7 +57,7 @@ and I numbered them while agreeing what to do first.
 | #8 | ~~**Version the bill of material**, pinned to the work order that used it~~ | medium | **built 2026-09-13 (M48)** — D256. Every pre-existing BOM became rev 1, released, which loses nothing: it was the only list that had ever existed. Two findings (F76, F77) |
 | #9 | ~~**Layered BOM, a button that raises a PR from one, and a typed labour cost**~~ | large | **built 2026-09-13 (M49)** — D257, D239, and D258 for the self-check the work exposed. The button existed since M23 and was quietly dropping every sub-assembly (F78) |
 | #10b | ~~**BPJS and PPh: the enrolment register, and the per-person reconciliation**~~ | medium | **built 2026-09-13 (M50)** — D259. PPh 21 is recorded and not computed, which is the honest half. One finding (F80) and one new question (Q49) |
-| #11 | **KPI analyzer and task tracker**, with lateness as one of the points | large | D230, and the measurement #39 wants for labour hours (D239). Held deliberately: it is a module, not a feature, and it is the first thing here that measures **people** rather than money or goods |
+| #11 | ~~**KPI analyzer and task tracker**, with lateness as one of the points~~ | large | **built 2026-09-13 (M51)** — D260, D261. One finding in three parts (F81). Two things it deliberately does not do: score production work, and score overtime |
 | #12 | **QR** — on the vendor PO (W3) and per box for installation (W4) | Phase 2 | D244. Both need a public read route and a token |
 
 ## Open, from building #6
@@ -71,6 +71,8 @@ and I numbered them while agreeing what to do first.
 | Q47 | **Are these the right four stages, and is *amplas* really part of Finishing?** Pembuatan · Finishing · QC · Packing, with potong/serut/rakit inside the first and amplas inside the second | Raised 2026-09-13 (D253). The owner said *sederhanakan*; he did not name the four. The collapse is our reading, it is a **seed edit** to change, and the workshop's own words for what happens inside each stage are printed on the board so the reading is visible rather than buried |
 | Q48 | **Does a subcontracted piece ever come back needing more than finishing?** The `SUBCON` route is Finishing → QC → Packing | Raised 2026-09-13 (D254). Taken straight from *kita tinggal finishing dan packing*. If some vendors deliver raw and some deliver finished, that is a third route, not a flag on this one — and adding one is a data edit |
 | Q46 | **Does a company half day earn the full tunjangan?** Today it does — the person was here, and only HRD's separate decision takes it away | Raised 2026-09-13 (D250). Follows from the owner's correction rather than from anything he said about half days specifically, so it is marked as a reading, not a ruling |
+
+| W5 | **Link production work to people.** `ProgressEntry.worked_by` and `DesignTask.assignee` are free text, on purpose — a subcontractor is a legitimate answer — so neither can feed a performance score without matching people by name | Raised 2026-09-13 (D260, F81). The fix is an optional `employee_id` **beside** the name, not instead of it: the name stays because it is what was written down, and the link is what makes the work countable. Until then every KPI card says the production board is not in the score, which is the honest half |
 
 ## Asked for, not yet scheduled
 

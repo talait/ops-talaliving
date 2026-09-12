@@ -8,6 +8,7 @@
  */
 import type { DemoState } from "./state";
 import { settingNumber } from "./settings";
+import { officeToday } from "@/lib/office";
 import type {
   Employee, TimesheetDay, DayState, ScanSlot, DayPay, DayMark,
   OvertimeSheet, OvertimeStage, PayrollLine, PayrollView, PayrollRun,
@@ -15,6 +16,7 @@ import type {
   PayRules, PayRuleSet, OvertimeTier, OvertimePart, HourlyBasis,
   AllowanceWithholding, AllowanceWithholdingView,
   ContributionScheme, ContributionRate, Enrolment, ContributionLine, ContributionRoll,
+  Task, TaskView, KpiMeasure, KpiView,
   EmployeeFileView, EmployeeDocSlot, EmployeeDocument, EmployeeDocumentView,
   LeaveBalance, LeaveRequest, LeaveRequestView,
 } from "@/services/hr/contracts";
@@ -714,6 +716,230 @@ export interface HourlyRate {
   annual: number;
   /** Pokok + tunjangan, or pokok alone (D250). */
   includes_allowance: boolean;
+}
+
+/* ── Tugas, dan mengukur orang ─────────────────────────────────────────────── */
+
+export function taskView(state: DemoState, t: Task, today = officeToday()): TaskView {
+  const emp = state.employees.find((e) => e.id === t.assignee_id);
+  const by = state.users.find((u) => u.id === t.assigned_by);
+  const days_left = daysBetweenDates(today, t.due_date);
+  const doneDay = t.done_at?.slice(0, 10) ?? null;
+  return {
+    ...t,
+    assignee_name: emp?.full_name ?? "—",
+    assignee_no: emp?.employee_no ?? "—",
+    assigned_by_name: by?.full_name ?? t.assigned_by,
+    days_left,
+    /* Blocked is not overdue. A task waiting on somebody else has not been
+       failed by the person holding it (D261). */
+    overdue: t.status === "OPEN" && t.blocked_reason === null && days_left < 0,
+    late: t.status === "DONE" && doneDay !== null && doneDay > t.due_date,
+    days_early: doneDay === null ? null : daysBetweenDates(doneDay, t.due_date),
+  };
+}
+
+export function taskViews(
+  state: DemoState,
+  filter: { assignee_no?: string; status?: Task["status"] } = {},
+  today = officeToday(),
+): TaskView[] {
+  const emp = filter.assignee_no
+    ? state.employees.find((e) => e.employee_no === filter.assignee_no)
+    : null;
+  return state.tasks
+    .filter((t) => (!emp || t.assignee_id === emp.id) && (!filter.status || t.status === filter.status))
+    .map((t) => taskView(state, t, today))
+    /* What somebody has to deal with, first: overdue, then blocked, then by
+       date. The same ordering the production board uses, for the same reason. */
+    .sort((a, b) => {
+      const rank = (x: TaskView) => x.status !== "OPEN" ? 3 : x.overdue ? 0 : x.blocked_reason ? 1 : 2;
+      return rank(a) - rank(b) || a.due_date.localeCompare(b.due_date);
+    });
+}
+
+function daysBetweenDates(from: string, to: string): number {
+  const [ay, am, ad] = from.split("-").map(Number);
+  const [by, bm, bd] = to.split("-").map(Number);
+  return Math.round((Date.UTC(by, bm - 1, bd) - Date.UTC(ay, am - 1, ad)) / 86_400_000);
+}
+
+/** One person, measured over a period (D261).
+ *
+ *  Three rules hold this together and each one exists because its opposite
+ *  would quietly hurt somebody.
+ *
+ *  **Unmeasured is not zero.** The office does not use the fingerprint reader,
+ *  so punctuality cannot be measured for office staff. Scoring them 100% is a
+ *  compliment nobody earned; scoring them 0% is a slander. The measure carries
+ *  null and the reason.
+ *
+ *  **A blocked task is not a failure.** It is a fact about the workshop, and a
+ *  tracker that punishes people for reporting blockers stops being told about
+ *  them.
+ *
+ *  **Entitlements are not absences.** Sakit with a letter and cuti out of the
+ *  balance are days somebody is owed; counting them against attendance would
+ *  make taking your own leave lower your score.
+ */
+export function kpiView(
+  state: DemoState,
+  employee: Employee,
+  from: string,
+  to: string,
+): KpiView {
+  const days = timesheet(state, employee, from, to);
+  const rules = activePayRules(state, from).rules;
+  const notes: string[] = [];
+
+  /* ── Ketepatan waktu, from the taps ─────────────────────────────────── */
+  const tapped = days.filter((d) => d.slots.in && !d.mark);
+  const lateDays = tapped.filter((d) => {
+    const inAt = d.slots.in!;
+    const mins = Number(inAt.slice(11, 13)) * 60 + Number(inAt.slice(14, 16));
+    return mins - rules.day_starts_minutes - rules.late_grace_minutes > 0;
+  }).length;
+  const minDaysTaps = settingNumber(state, "kpi.min_days_recorded", 5);
+  const thinTaps = tapped.length < minDaysTaps;
+  const punctuality: KpiMeasure = {
+    key: "punctuality",
+    label: "Ketepatan waktu masuk",
+    value: thinTaps ? null : Math.round(((tapped.length - lateDays) / tapped.length) * 100),
+    unmeasured_reason: !thinTaps ? null
+      : tapped.length === 0
+        ? "Tidak ada satu pun tap mesin absensi pada periode ini. Mesinnya alat bengkel; staf kantor tidak memakainya, dan tidak terukur bukan berarti seratus persen."
+        : `Baru ${tapped.length} hari dengan tap, di bawah ambang ${minDaysTaps} hari.`,
+    basis: thinTaps
+      ? `${tapped.length} hari dengan tap`
+      : `${tapped.length - lateDays} dari ${tapped.length} hari tepat waktu (toleransi ${rules.late_grace_minutes} menit)`,
+    source: "Mesin absensi · aturan penggajian yang berlaku",
+    weight: settingNumber(state, "kpi.weight_punctuality", 25),
+  };
+
+  /* ── Kehadiran ──────────────────────────────────────────────────────── */
+  /* Measured over **the days the system has a record for**, not over a
+     calendar.
+     
+     The first version divided by scheduled working days and rated every office
+     worker at 4% present — one day out of twenty-five — because attendance
+     comes from taps and the office does not use the fingerprint reader. That is
+     F72 exactly, two days later, in the one module where it would have ended up
+     in somebody's review: **no taps is not evidence of absence** (F81).
+     
+     There is no honest percentage over a calendar here. A monthly person's
+     calendar exists but the machine does not record them; a daily person is
+     recorded but was never *scheduled* — they are called in. So the denominator
+     is what is actually known: days carrying a tap or a mark. The numerator is
+     days HRD marked **absent without explanation**, which is a fact somebody
+     asserted rather than one inferred from silence. */
+  /* `slots` is a **partial** record, so an absent tap is `undefined`, not
+     `null` — and `undefined !== null` is true, so the first version counted
+     every calendar day as recorded and rated all forty people at 100%. The
+     same missing-data question answered wrongly in the opposite direction from
+     the version before it (F81). Loose equality here, deliberately: it is the
+     one comparison that means *has a value*. */
+  const recorded = days.filter((d) => d.slots.in != null || d.mark != null);
+  const unexplained = recorded.filter((d) => d.mark?.kind === "absent").length;
+  /* A figure over two days is not the same claim as a figure over thirty, and
+     presenting them identically lets a two-day sample carry a quarter of
+     somebody's score. Below the floor the measure is **unmeasured**, not
+     confidently 100%. */
+  const minDays = settingNumber(state, "kpi.min_days_recorded", 5);
+  const thin = recorded.length < minDays;
+  const attendance: KpiMeasure = {
+    key: "attendance",
+    label: "Hadir tanpa mangkir",
+    value: thin ? null : Math.round(((recorded.length - unexplained) / recorded.length) * 100),
+    unmeasured_reason: !thin ? null
+      : recorded.length === 0
+        ? "Tidak ada satu hari pun pada periode ini yang punya catatan — tidak ada tap mesin dan tidak ada tanda hari dari HRD. Tidak ada catatan bukan berarti tidak masuk."
+        : `Baru ${recorded.length} hari yang punya catatan, di bawah ambang ${minDays} hari. Persentase atas dua hari bukan persentase yang sama dengan atas tiga puluh.`,
+    basis: thin
+      ? `${recorded.length} hari tercatat`
+      : `${recorded.length - unexplained} dari ${recorded.length} hari yang tercatat · hanya hari yang ditandai HRD sebagai mangkir yang dihitung; sakit bersurat dan cuti tidak pernah`,
+    source: "Timesheet · tanda hari dari HRD",
+    weight: settingNumber(state, "kpi.weight_attendance", 25),
+  };
+
+  /* ── Penyelesaian tugas ─────────────────────────────────────────────── */
+  const mine = state.tasks.filter((t) => t.assignee_id === employee.id);
+  const dueHere = mine.filter((t) => t.due_date >= from && t.due_date <= to);
+  /* Cancelled is neither a success nor a failure; blocked is not the person's.
+     Both leave the arithmetic rather than landing on one side of it. */
+  const counted = dueHere.filter((t) => t.status !== "CANCELLED" && t.blocked_reason === null);
+  const onTime = counted.filter((t) => {
+    if (t.status !== "DONE") return false;
+    return (t.done_at?.slice(0, 10) ?? "9999-12-31") <= t.due_date;
+  }).length;
+  const blocked = dueHere.filter((t) => t.blocked_reason !== null).length;
+  const task_delivery: KpiMeasure = {
+    key: "task_delivery",
+    label: "Tugas selesai tepat waktu",
+    value: counted.length === 0 ? null : Math.round((onTime / counted.length) * 100),
+    unmeasured_reason: counted.length === 0
+      ? dueHere.length === 0
+        ? "Tidak ada tugas yang jatuh tempo pada periode ini. Tidak ada tugas bukan nilai nol — tidak ada yang diukur."
+        : "Semua tugas periode ini dibatalkan atau tertahan menunggu pihak lain, jadi tidak ada yang bisa dinilai."
+      : null,
+    basis: counted.length === 0
+      ? `${dueHere.length} tugas jatuh tempo, tidak ada yang dihitung`
+      : `${onTime} dari ${counted.length} tugas${blocked > 0 ? ` · ${blocked} tertahan, tidak dihitung` : ""}`,
+    source: "Task tracker",
+    weight: settingNumber(state, "kpi.weight_tasks", 50),
+  };
+
+  const measures = [punctuality, attendance, task_delivery];
+  const measured = measures.filter((m) => m.value !== null);
+  const minMeasures = settingNumber(state, "kpi.min_measures", 2);
+
+  /* A score over one axis out of three is that one axis wearing a costume. */
+  const totalWeight = measured.reduce((a, m) => a + m.weight, 0);
+  const score = measured.length < minMeasures || totalWeight === 0
+    ? null
+    : Math.round(measured.reduce((a, m) => a + (m.value ?? 0) * m.weight, 0) / totalWeight);
+  const score_reason = score !== null ? null
+    : `Baru ${measured.length} dari ${measures.length} ukuran yang bisa dihitung; nilai gabungan baru ditampilkan mulai ${minMeasures}. Angka gabungan dari satu ukuran hanya ukuran itu sendiri dengan nama lain.`;
+
+  if (tapped.length === 0) {
+    notes.push("Tidak ada data absensi mesin untuk orang ini pada periode ini.");
+  }
+  if (blocked > 0) {
+    notes.push(`${blocked} tugas tertahan menunggu pihak lain — tidak dihitung sebagai kegagalan orang ini.`);
+  }
+  /* The limitation worth printing on every card: production work is recorded
+     against a name, not a person, so none of it reaches this score (F81). */
+  notes.push("Pekerjaan di papan produksi tercatat atas nama, bukan tertaut ke karyawan, jadi belum masuk ke penilaian ini.");
+
+  return {
+    employee_id: employee.id,
+    employee_no: employee.employee_no,
+    full_name: employee.full_name,
+    position: employee.position,
+    unit: employee.unit,
+    period_start: from,
+    period_end: to,
+    measures,
+    score,
+    measured_count: measured.length,
+    measure_count: measures.length,
+    score_reason,
+    overtime_hours: Math.round(days.reduce((a, d) => a + d.overtime_hours, 0) * 10) / 10,
+    tasks_open: mine.filter((t) => t.status === "OPEN").length,
+    tasks_blocked: mine.filter((t) => t.status === "OPEN" && t.blocked_reason !== null).length,
+    notes,
+  };
+}
+
+export function kpiViews(state: DemoState, from: string, to: string): KpiView[] {
+  return state.employees
+    .filter((e) => e.active)
+    .map((e) => kpiView(state, e, from, to))
+    /* Unscored last, then lowest first: the board's job is to put the person
+       somebody has to talk to at the top — not to rank everybody. */
+    .sort((a, b) => {
+      if ((a.score === null) !== (b.score === null)) return a.score === null ? 1 : -1;
+      return (a.score ?? 0) - (b.score ?? 0);
+    });
 }
 
 /* ── Iuran wajib: siapa terdaftar, berapa tarifnya ────────────────────────── */

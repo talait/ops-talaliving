@@ -27,6 +27,7 @@ import {
 import { STOCK_LOCATIONS, STOCK_SETTINGS, STOCK_MOVES } from "./stock";
 import { PAY_RULE_SETS } from "./payrules";
 import { CONTRIBUTION_RATES, ENROLMENTS } from "./contributions";
+import { TASKS } from "./tasks";
 import { EMPLOYEE_DOCUMENTS, LEAVE_REQUESTS } from "./hrfiles";
 import { DESIGN_TASKS, DESIGN_REVISIONS, DESIGN_QUESTIONS } from "./design";
 import { BANK_STATEMENTS, STATEMENT_LINES } from "./statements";
@@ -51,7 +52,7 @@ export * from "./reference";
  *  changes every count, and their own work is exactly what the snapshot is
  *  for. A version somebody types when they edit the fixtures separates "the
  *  demo data moved" from "somebody used the demo". */
-export const FIXTURE_VERSION = "2026-09-13.12";
+export const FIXTURE_VERSION = "2026-09-13.13";
 
 export function stateSignature(state: DemoState): string {
   return [
@@ -114,6 +115,7 @@ export function initialState(): DemoState {
     allowance_withholdings: ALLOWANCE_WITHHOLDINGS,
     contribution_rates: CONTRIBUTION_RATES,
     enrolments: ENROLMENTS,
+    tasks: TASKS,
     pay_rule_sets: PAY_RULE_SETS,
     employee_documents: EMPLOYEE_DOCUMENTS,
     leave_requests: LEAVE_REQUESTS,

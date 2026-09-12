@@ -6,7 +6,7 @@ import {
   FolderKanban, Hammer, Truck, Wrench, Stamp,
   PencilRuler, ListTree, CalendarClock, CalendarRange,
   Cpu, ScrollText, Activity, UserCog, KeyRound, Clock, Scale,
-  Settings, FlaskConical, MessagesSquare, Route, ShieldCheck, type LucideIcon,
+  Settings, FlaskConical, MessagesSquare, Route, ShieldCheck, Gauge, type LucideIcon,
 } from "lucide-react";
 
 /** Menu sebagai DATA, bukan JSX.
@@ -67,6 +67,7 @@ export const NAV: NavSection[] = [
       { label: "Payroll", labelKey: "payroll", href: "/hrd/payroll", icon: Wallet, permission: "payroll.read" },
       { label: "Gajian mingguan", labelKey: "payrollWeek", href: "/hrd/payroll/minggu", icon: CalendarRange, permission: "payroll.read", badge: "new" },
       { label: "Statutory contributions", labelKey: "contributions", href: "/hrd/iuran", icon: ShieldCheck, permission: "payroll.read", orPermission: "accounting.read", badge: "new" },
+      { label: "Performance & tasks", labelKey: "performance", href: "/hrd/kinerja", icon: Gauge, permission: "payroll.read", orPermission: "hrd.read", badge: "new" },
       /* Under Payroll, not under IT. Its gate has always been `payroll.read`
        * — HRD owns the rule book — and once the IT heading means "IT and
        * leadership only" (owner, Q22), a payroll screen sitting inside it

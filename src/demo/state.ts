@@ -24,7 +24,7 @@ import type {
 import type {
   Employee, AttendanceScan, DayMark, OvertimeSheet, OvertimeLine, PayrollRun,
   PayrollAdjustment, PayRuleSet, EmployeeDocument, LeaveRequest,
-  AllowanceWithholding, ContributionRate, Enrolment,
+  AllowanceWithholding, ContributionRate, Enrolment, Task,
 } from "@/services/hr/contracts";
 import type {
   WorkOrder, ProgressEntry, Product, BomComponent, BomRevision,
@@ -155,6 +155,9 @@ export interface DemoState {
   /** Who is in which scheme, from when. HRD's to enter, accounting's to audit
    *  (owner, D259). Append-only: ending an enrolment sets `ended_on`. */
   enrolments: Enrolment[];
+  /** What one person is expected to do, by a date — the record a KPI over
+   *  deliverables has to be built on (D260). */
+  tasks: Task[];
 
   /* --- production ------------------------------------------------- */
   /** What is being made, in what quantity, by when (D148). */

@@ -3411,3 +3411,60 @@ scheme; they are paid per invoice; the audit is about payment. Getting that
 backwards produces rows that are individually defensible and collectively a
 lie — the same shape as F69, where three lists each correct made one bill
 appear twice.
+
+## F81 — the module built to avoid scoring people on missing data did it twice, in opposite directions
+
+The KPI analyzer exists to measure people, so it was written defensively from
+the first line: *unmeasured is not zero*, in a comment, at the top. It then got
+the same question wrong twice on the way to the first screenshot.
+
+**First run: every office worker rated 4% present.** Attendance divided present
+days by scheduled working days. Present comes from the timesheet; the timesheet
+comes from taps; the office does not use the fingerprint reader. So Andi, who
+had worked every day of the month, was rated 4% — one day in twenty-five.
+
+This is F72 exactly. Two days earlier, the pay split cut five office salaries by
+Rp 600.000 for the same reason, and the finding was written up with the sentence
+*no taps is not evidence of absence*. Knowing the rule, and having written it
+down, was not enough to stop writing the code that violates it — because the
+violation does not look like the rule. It looks like a division.
+
+**Second run: everybody rated 100%.** The fix measured attendance over *days the
+system has a record for*:
+
+```ts
+const recorded = days.filter((d) => d.slots.in !== null || d.mark !== null);
+```
+
+`slots` is a `Partial<Record<ScanSlot, string>>`. An absent tap is `undefined`,
+not `null`. `undefined !== null` is true, so every calendar day counted as
+recorded, and all forty people scored 100% on a measure that had just been
+rated 4%. The same missing-data question, answered wrongly in the opposite
+direction, by a comparison operator.
+
+**Third pass: a figure over two days is not a figure.** With the operator fixed,
+office staff read *100%, 2 dari 2 hari yang tercatat* — true, and carrying a
+full 25% of a performance score on a two-day sample. A floor now marks a thin
+basis as unmeasured.
+
+Three things worth keeping.
+
+**A rule in a comment does not protect the code under it.** The file opens with
+*unmeasured is not zero* and then contains two ways of treating unmeasured as
+something. What would have caught it is not more care, it is the habit of
+looking at the output for a person the data does not cover — which is one probe.
+
+**`undefined` and `null` are the same fact and different values.** Everywhere
+missing data matters, `!= null` is the comparison that means *has a value*, and
+`!== null` is a trap that type-checks. This codebase has now been bitten by the
+missing/zero distinction in F60, F62, F72 and here.
+
+**And the seed could not demonstrate the module.** With a five-day floor, no
+calendar month in the data has enough taps — the real export covers ten days
+across a month boundary. The honest fix was not to lower the floor to flatter
+the seed; it was that **a calendar month is the wrong period for performance**.
+Attendance arrives in fortnights, and the payroll run already carries the period
+somebody was actually paid for. The screen now takes a date range and defaults
+to the last run's, and 24 of 40 people score over the window the data covers.
+A rule that makes a screen look broken is sometimes telling you the screen was
+asking the wrong question.

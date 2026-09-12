@@ -274,10 +274,16 @@ export interface BoardMoveView extends BoardMove {
   m3: number;
   purchase_no: string | null;
   by_name: string;
-  /** What these boards cost, from the load's own cost per m³ of board. Null
-   *  when the load is unknown or has no costed yield yet — missing, never
-   *  averaged into existence. */
+  /** What these boards cost. From the load's own cost per m³ of board where
+   *  the load is known and costed; otherwise from the **dearest** costed load
+   *  of the same species (D232, Q43) — the owner's rule, on the grounds that
+   *  timber only ever gets more expensive, so the dearest rate is close and
+   *  never flatters the job. Null only when the species has no costed load at
+   *  all: still missing rather than invented. */
   value: number | null;
+  /** Which of the two the `value` came from, so a screen can say so rather
+   *  than presenting an estimate as a measurement. */
+  value_basis: "load" | "dearest" | null;
 }
 
 /** One size of one species on the rack. */
@@ -300,8 +306,14 @@ export interface BoardStockView {
    *  valued, an individual issue is not costed unless its load is known. */
   avg_cost_per_m3: number | null;
   value: number | null;
-  /** Boards on the rack whose load carries no costed yield yet, so they are
-   *  counted and left out of `value`. */
+  /** Boards on the rack whose own load carries no costed yield, valued in
+   *  `value` at `estimate_per_m3` — the dearest costed load of this species
+   *  (D232, Q43). Counted separately so the rack can show how much of its
+   *  value is an estimate rather than a measurement. */
+  estimated_qty: number;
+  estimate_per_m3: number | null;
+  /** Boards whose species has no costed load anywhere, so no rate exists to
+   *  estimate from. Counted, and left out of `value`. */
   unpriced_qty: number;
   last_move_at: string | null;
 }

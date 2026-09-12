@@ -48,6 +48,26 @@ export const APP_SETTINGS: AppSetting[] = [
 
   /* ── Operational thresholds: safe to move, and they only look forward ── */
   {
+    key: "ops.no_approval_limit_idr", group: "operations",
+    label: "Batas belanja tanpa persetujuan",
+    help: "Di atas nilai ini, pembelian yang keluar tanpa baris disetujui atau order di belakangnya ditandai di layar pertanggungjawaban dana. Tidak memblokir — barangnya sudah terlanjur dibeli waktu kita melihatnya. Yang di bawah batas tetap terdaftar: batas ini mengatur mana yang layak dikejar, bukan mana yang benar (owner, D231).",
+    kind: "number", value: "2000000", default_value: "2000000",
+    unit: "Rp", choices: null, reach: "forward",
+    locked_reason: null, managed_at: null,
+    affects: ["Pertanggungjawaban dana"],
+    updated_by: null, updated_at: null,
+  },
+  {
+    key: "ops.bill_anomaly_percent", group: "operations",
+    label: "Tagihan dianggap tidak wajar kalau beda lebih dari",
+    help: "Dibandingkan dengan bulan sebelumnya, per komponen, sebagai total bulanan lawan total bulanan, bukan baris lawan baris. Baris yang bulan lalu tidak ada tidak pernah ditandai — kemunculan pertama bukan kenaikan (D228, D229).",
+    kind: "number", value: "25", default_value: "25",
+    unit: "%", choices: null, reach: "forward",
+    locked_reason: null, managed_at: null,
+    affects: ["Tagihan bulanan"],
+    updated_by: null, updated_at: null,
+  },
+  {
     key: "ops.doc_expiry_warning_days", group: "operations",
     label: "Peringatan dokumen kedaluwarsa",
     help: "Berapa hari sebelum masa berlaku habis sebuah kontrak atau sertifikat mulai ditandai di Berkas 201.",

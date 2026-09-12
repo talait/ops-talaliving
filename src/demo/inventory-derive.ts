@@ -415,13 +415,29 @@ function buckets(state: DemoState): Map<string, BoardBucket> {
   return out;
 }
 
-export function boardStock(state: DemoState): BoardStockView[] {
-  /* Cost per m³ of board, per load. Null where the load has not been costed —
-     nothing is bought at an average that was invented here (D172, D204). */
+/** Cost per m³ of board, per load. Null where the load has not been costed —
+ *  nothing is bought at an average that was invented here (D172, D204). */
+function boardCostIndex(state: DemoState): {
+  costOf: Map<string, number | null>;
+  dearestOf: Map<string, number>;
+} {
   const costOf = new Map<string, number | null>();
+  /* The dearest costed load **per species** is the fallback the owner chose for
+     boards whose own load is unknown or uncosted (D232, Q43): timber only gets
+     more expensive, so the dearest rate we have seen is close to today's and
+     errs against the job rather than in its favour. Per species, never across
+     them — jati at a mahoni rate would be worse than no rate at all. */
+  const dearestOf = new Map<string, number>();
   for (const p of state.log_purchases) {
-    costOf.set(p.id, logPurchaseView(state, p).cost_per_sawn_m3);
+    const c = logPurchaseView(state, p).cost_per_sawn_m3;
+    costOf.set(p.id, c);
+    if (c != null) dearestOf.set(p.species, Math.max(dearestOf.get(p.species) ?? 0, c));
   }
+  return { costOf, dearestOf };
+}
+
+export function boardStock(state: DemoState): BoardStockView[] {
+  const { costOf, dearestOf } = boardCostIndex(state);
 
   return [...buckets(state).values()]
     .map((b) => {
@@ -431,13 +447,23 @@ export function boardStock(state: DemoState): BoardStockView[] {
       /* Weighted average across what is still represented on the rack, and the
          boards whose load has no costed yield are counted but left out of the
          value — the same shape as the material rack (D172). */
+      const dearest = dearestOf.get(b.species) ?? null;
       let valued = 0;
       let valuedQty = 0;
+      let estimated = 0;
       let unpriced = 0;
       for (const [purchaseId, n] of b.byPurchase) {
         if (n <= 0) continue;
         const c = purchaseId ? costOf.get(purchaseId) ?? null : null;
-        if (c == null) { unpriced += n; continue; }
+        if (c == null) {
+          /* No rate of its own. Take the species' dearest (D232) — and where
+             not even that exists, leave it counted and unvalued. */
+          if (dearest == null) { unpriced += n; continue; }
+          estimated += n;
+          valued += dearest * m3Each * n;
+          valuedQty += n;
+          continue;
+        }
         valued += c * m3Each * n;
         valuedQty += n;
       }
@@ -457,6 +483,8 @@ export function boardStock(state: DemoState): BoardStockView[] {
         m3: round4(m3Each * qty),
         avg_cost_per_m3: valuedQty > 0 ? Math.round(valued / (m3Each * valuedQty)) : null,
         value: valuedQty > 0 ? Math.round(valued * share) : null,
+        estimated_qty: Math.round(Math.min(estimated, Math.max(0, qty)) * 1000) / 1000,
+        estimate_per_m3: estimated > 0 ? dearest : null,
         unpriced_qty: Math.min(unpriced, Math.max(0, qty)),
         last_move_at: b.last,
       };
@@ -470,8 +498,15 @@ export function boardMoveViews(
   state: DemoState,
   filter: { board_key?: string; ref_no?: string } = {},
 ): BoardMoveView[] {
-  const costOf = new Map<string, number | null>();
-  for (const p of state.log_purchases) costOf.set(p.id, logPurchaseView(state, p).cost_per_sawn_m3);
+  const { costOf, dearestOf } = boardCostIndex(state);
+  /* The load's own rate where there is one, the species' dearest where there
+     is not, and null where neither exists (D232). */
+  const rateFor = (purchaseId: string | null, species: string): { rate: number | null; basis: "load" | "dearest" | null } => {
+    const own = purchaseId ? costOf.get(purchaseId) ?? null : null;
+    if (own != null) return { rate: own, basis: "load" };
+    const dearest = dearestOf.get(species) ?? null;
+    return dearest == null ? { rate: null, basis: null } : { rate: dearest, basis: "dearest" };
+  };
   const name = (id: string) => state.users.find((u) => u.id === id)?.full_name ?? id;
   const noOf = (id: string | null) => state.log_purchases.find((p) => p.id === id)?.purchase_no ?? null;
 
@@ -479,7 +514,7 @@ export function boardMoveViews(
     const purchase = state.log_purchases.find((p) => p.id === sb.purchase_id);
     const species = purchase?.species ?? "—";
     const m3Each = boardVolumeM3(sb.thickness_mm, sb.width_mm, sb.length_mm);
-    const c = costOf.get(sb.purchase_id) ?? null;
+    const { rate: c, basis } = rateFor(sb.purchase_id, species);
     return {
       id: sb.id, move_no: sb.id, at: `${sb.sawn_on}T12:00:00+08:00`,
       board_key: boardKey(species, sb.thickness_mm, sb.width_mm, sb.length_mm),
@@ -493,12 +528,13 @@ export function boardMoveViews(
       purchase_no: noOf(sb.purchase_id),
       by_name: name(purchase?.created_by ?? ""),
       value: c == null ? null : Math.round(c * m3Each * sb.qty),
+      value_basis: basis,
     };
   });
 
   const rest: BoardMoveView[] = state.board_moves.map((m) => {
     const m3Each = boardVolumeM3(m.thickness_mm, m.width_mm, m.length_mm);
-    const c = m.purchase_id ? costOf.get(m.purchase_id) ?? null : null;
+    const { rate: c, basis } = rateFor(m.purchase_id, m.species);
     return {
       ...m,
       size: boardSize(m.thickness_mm, m.width_mm, m.length_mm),
@@ -506,6 +542,7 @@ export function boardMoveViews(
       purchase_no: noOf(m.purchase_id),
       by_name: name(m.by),
       value: c == null ? null : Math.round(c * m3Each * m.qty),
+      value_basis: basis,
     };
   });
 

@@ -35,7 +35,7 @@ export const PERMISSION_CATALOG: Record<ModuleName, readonly string[]> = {
   payroll: ["read", "run"],
   procurement: ["read", "create", "update"],
   inventory: ["read", "create", "update", "adjust"],
-  accounting: ["read", "create", "update"],
+  accounting: ["read", "create", "update", "plan_cash"],
   marketing: ["read", "create", "update"],
   project: ["read", "create", "update", "handover"],
   production: ["read", "create", "update", "schedule"],
@@ -43,8 +43,14 @@ export const PERMISSION_CATALOG: Record<ModuleName, readonly string[]> = {
   settings: ["read", "update"],
 } as const;
 
-/** Reserved for `admin`. Everything else a module offers comes with `write`. */
-const ADMIN_ONLY = new Set(["manage_users", "manage_roles", "purge_activity"]);
+/** Reserved for `admin`. Everything else a module offers comes with `write`.
+ *
+ *  `plan_cash` is here because of Q24 (D233): the estimates on the twelve-month
+ *  cash calendar belong to leadership alone. Accounting keeps `write`, which is
+ *  every other thing accounting does — reading the plan included, and booking
+ *  the real payments that land against it. Moving the *estimate* is the one
+ *  verb it does not carry. */
+const ADMIN_ONLY = new Set(["manage_users", "manage_roles", "purge_activity", "plan_cash"]);
 
 export const LEVELS: ModuleLevel[] = ["read", "write", "admin"];
 
@@ -116,6 +122,7 @@ const VERB_LABEL: Record<string, string> = {
   manage_users: "manage users",
   manage_roles: "manage roles",
   purge_activity: "purge the activity log",
+  plan_cash: "set the cash estimates",
 };
 
 export function describeGrant(module: ModuleName, level: ModuleLevel): string {

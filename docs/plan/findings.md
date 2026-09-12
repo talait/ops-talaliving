@@ -2889,3 +2889,146 @@ That also resolves where the resolution belongs. John Lau's catalogue holds
 both languages and the **dispatcher** picks one, so the language of a refusal
 is decided in the same place as the refusal, and understanding is decided
 nowhere near either.
+
+## F67 — the largest payments in the system had no date anybody could plan around
+
+Q26 read like a permissions question — *who puts the expected date on a payment
+term, procurement or accounting?* — and the answer, *biarkan yang punya akses
+procurement*, was already how the code worked. One line of documentation, no
+diff.
+
+The sentence in front of it was the finding: **jatuh tempo adalah tanggal
+ekspektasi pengiriman.**
+
+A PO term fires on one of three rules — `on_issue`, `on_delivery`, `date` — and
+only the third carries a date. For the other two, `poTerms` computed whether the
+trigger had *fired* and wrote a sentence explaining it:
+
+```
+"not until everything has arrived"
+```
+
+True, useful, and undated. Which means the final payment on every order in the
+system — the largest single figures the business owes — appeared on no calendar,
+because nothing anywhere held an opinion about when it would fall due. The
+expected delivery date was sitting on the PO the whole time, one field away,
+recorded by procurement, already shown on the order screen. It just never
+reached the term that depends on it.
+
+Two things are worth keeping from this.
+
+The first is that **a status and a date are different answers and the screen had
+only ever been asked for one.** *Has it fired* is a yes or no about today. *When
+will it fire* is a date about the future. The term view answered the first
+perfectly and was never asked the second, so nobody noticed it could not.
+
+The second is how the fix has to render. `expected_on` now carries
+`expected_basis` beside it: `fired` when the date is the day goods actually
+landed, `expected` when it is still what the vendor promised. The screen prints
+the promise with a `±` in front of it. Without that pair the field would be
+worse than the gap it filled — a promise and a fact in the same column, same
+font, and the one that can still move indistinguishable from the one that
+cannot. This is F62's rule arriving from the other direction: there, one number
+was answering two questions; here, one column would have been holding two kinds
+of truth.
+
+A third thing fell out on the way. Fixing it meant reading `poTerms`, which
+opened with:
+
+```ts
+const today = new Date().toISOString().slice(0, 10);
+```
+
+UTC. F63 consolidated the office day into `src/lib/office.ts` after finding the
+offset copied into thirteen files, and two stragglers in `derive.ts` — `poTerms`
+and `poDetail`, the function that decides whether a delivery is **late** —
+survived it, because the sweep looked for the offset string `+08:00` and these
+two never spelled it. Between midnight and 08:00 WITA they read yesterday.
+Which is to say: a consolidation that searches for the *symptom* misses every
+copy that has the bug without the symptom.
+
+## F68 — a comparison column that could not work, and then compared the wrong things
+
+The monthly bills screen (D228) carries one column that is not a restatement of
+the cash calendar: **what this line cost last month**, and the percentage
+between the two. It took four tries to make that column true, and each wrong
+version rendered without complaint.
+
+**One — the column was structurally dead.** `cashPlan()` runs twelve months
+*forward* from today, so the previous month is never in it. `monthlyBills` went
+looking for last month's cell among those twelve, found nothing, every time,
+for every row. Every cell printed `—`. The anomaly banner never appeared. The
+rule I had been careful about — *a line that did not exist last month reads —,
+never +100%* — was doing all the work, because every line looked like it did
+not exist last month.
+
+It is the most comfortable kind of bug: the output was **exactly what the
+careful case is supposed to look like.** Nothing was red. A screenshot of it
+would have passed review. What caught it was reading the seed and knowing that
+August payroll certainly existed.
+
+**Two — the comparison was one week against one month.** Fixed by anchoring a
+second plan run at the previous month, the column filled in — with nonsense.
+Payroll runs weekly: five rows a month at Rp 30.000.000. Last month's figure
+was the whole component's month, Rp 150.000.000. So every payroll row in the
+system read **−80%**, five times a month, for ever, and the anomaly banner
+counted five anomalies where there was not one.
+
+The rule underneath: **a percentage is a claim that two numbers are the same
+kind of number.** One payday and one month are not. So the comparison moved to
+where the question actually lives — *did this line move this month* is a
+monthly question — and the row now shows `total bulan` beside the figure
+wherever the line runs more than once, because a number sitting next to a
+single Rp 30 juta payday will otherwise be read as that payday's own history.
+
+**Three — `actual || planned`, in both directions.** Taking a month's `actual`
+where the month is still running compared a half-paid September against a
+finished August and reported the materials bill as −82% when nothing had
+changed. Falling back to `planned` where a finished month had no payments read
+*we spent this* when the truth was *we spent nothing*. One rule replaced both:
+**a month that has ended is worth what it cost; a month still running is worth
+what it is expected to cost** — applied to both sides, so the two halves of
+every percentage are always measured the same way.
+
+**Four — and this is the one worth the entry.** Anchoring a plan at a past
+month worked, and re-dated the world. August opened with four unpaid paydays
+reading *belum jatuh tempo* and *jatuh tempo minggu ini*. The plan believed it
+was the first of August, because `cashPlan(state, now)` had always used its one
+argument for two different questions:
+
+- **when does the window start** — which month is at the left edge
+- **what is *now*** — which bills are overdue, due, still to come
+
+Those had never needed to differ, so nothing said they were two things. The fix
+is one extra parameter and a comment that will now outlive me: a month that has
+gone by has no bills that are *not yet due*.
+
+There is a general shape here. Three of these four are the same mistake at
+different sizes — **a parameter, a fallback, or a window doing double duty**,
+where the two duties agreed right up until the day something asked for the past.
+It is F62 again (`deliveredFor` answering two questions) and F60 again (a lookup
+returning the identity element). The tell is always the same: a value that is
+*usually* correct because the two meanings usually coincide.
+
+## F69 — the same bill in two lists
+
+The bills screen splits a month into *lewat tempo · belum dibayar · sudah
+dibayar*. A partly-paid bill satisfied two of those filters and appeared in
+both — the September payroll of Rp 30.000.000 sat under *belum dibayar* with
+Rp 200.000 still owing, and again under *sudah dibayar* with Rp 29.800.000
+against it.
+
+Both rows were true. Neither was wrong on its own. The screen was still lying,
+because a list of *what do I have to pay this month* that shows one obligation
+twice is a list somebody pays twice.
+
+Three lists over one month must **partition** it. The rule that settles which
+side a partial falls on is what the screen is for: it is a worklist, so
+anything with money still owing belongs to the work, and what has already gone
+out against it shows in its own column with `sisa` underneath. *Sudah dibayar*
+means finished.
+
+Worth pairing with F65: there the overflow test measured every screen and
+missed three faults because it asked *does this fit* rather than *does this
+still mean what the screen means*. Here a filter test would pass on both rows
+for the same reason. Neither list is wrong; the **set** of lists is.

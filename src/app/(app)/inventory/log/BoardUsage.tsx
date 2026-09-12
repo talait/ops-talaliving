@@ -27,14 +27,15 @@ export function BoardUsage({ reloadKey }: { reloadKey: number }) {
       {(rows) => {
         const issued = rows.filter((m) => m.kind === "issue");
         const m3Out = -issued.reduce((a, m) => a + m.m3, 0);
-        const valued = issued.filter((m) => m.value != null);
-        const blind = issued.length - valued.length;
+        const estimated = issued.filter((m) => m.value_basis === "dearest").length;
+        const blind = issued.filter((m) => m.value == null).length;
 
         return (
           <Card>
             <CardHeader
               title={`${rows.length} pergerakan`}
               subtitle={`${formatNumber(m3Out)} m³ papan sudah dipakai${
+                estimated > 0 ? ` · ${estimated} pengeluaran dinilai pakai harga termahal` : ""}${
                 blind > 0 ? ` · ${blind} pengeluaran tanpa asal kiriman, jadi nilainya kosong` : ""}`}
               icon={History}
               action={<SourceBadge state={moves} />}
@@ -70,11 +71,22 @@ export function BoardUsage({ reloadKey }: { reloadKey: number }) {
                             {m.ref_no && <span className="block font-mono text-[11px] text-slate-700">{m.ref_no}</span>}
                             {m.purchase_no
                               ? <span className="block font-mono text-[10px] text-slate-400">dari {m.purchase_no}</span>
-                              : m.kind !== "sawn" && <span className="block text-[10px] text-amber-700">kiriman asal tidak diketahui</span>}
+                              : m.kind !== "sawn" && (
+                                <span className="block text-[10px] text-amber-700">
+                                  kiriman asal tidak diketahui
+                                  {m.value_basis === "dearest" && " — dinilai pakai harga termahal"}
+                                </span>
+                              )}
                             {m.reason && <span className="block text-[11px] text-slate-500">{m.reason}</span>}
                           </td>
                           <td className="px-4 py-2 text-right tabular-nums text-slate-700">
-                            {m.value == null ? <span className="text-slate-300">—</span> : formatIDR(Math.abs(m.value))}
+                            {m.value == null
+                              ? <span className="text-slate-300">—</span>
+                              : (
+                                <span className={m.value_basis === "dearest" ? "text-amber-700" : undefined}>
+                                  {m.value_basis === "dearest" && "± "}{formatIDR(Math.abs(m.value))}
+                                </span>
+                              )}
                           </td>
                         </tr>
                       ))}
@@ -86,7 +98,9 @@ export function BoardUsage({ reloadKey }: { reloadKey: number }) {
             <p className="border-t border-slate-100 px-4 py-2 text-[11px] text-slate-500">
               Baris <em>hasil gergajian</em> tidak dicatat di sini — ia dihitung dari laporan
               gergajiannya, supaya isi rak dan rendemen tidak pernah bisa berbeda. Pengeluaran yang
-              tidak menyebut kiriman asalnya tetap pasti jumlahnya; yang kosong hanya nilainya.
+              tidak menyebut kiriman asalnya tetap pasti jumlahnya; nilainya diambil dari harga
+              termahal jenis kayu itu dan ditandai <span className="text-amber-700">±</span> —
+              kalau jenis itu belum pernah punya harga sama sekali, nilainya dibiarkan kosong.
             </p>
           </Card>
         );

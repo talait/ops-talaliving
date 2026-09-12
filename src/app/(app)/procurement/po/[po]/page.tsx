@@ -102,7 +102,21 @@ export default function PoDetailPage({ params }: { params: { po: string } }) {
       key: "trigger",
       header: "When",
       className: "whitespace-normal",
-      render: (t) => <span className="text-[12px] text-slate-600">{t.trigger}</span>,
+      render: (t) => (
+        <div>
+          <span className="text-[12px] text-slate-600">{t.trigger}</span>
+          {/* Jatuh tempo = tanggal ekspektasi pengiriman (D234). Tanggal yang
+              belum terjadi ditandai ± supaya janji tidak terbaca sebagai fakta. */}
+          {t.expected_on && t.expected_basis !== "stated" && (
+            <span className={cn(
+              "block whitespace-nowrap text-[11px] tabular-nums",
+              t.expected_basis === "expected" ? "text-amber-700" : "text-slate-400",
+            )}>
+              {t.expected_basis === "expected" ? "± " : ""}{t.expected_on}
+            </span>
+          )}
+        </div>
+      ),
     },
     {
       key: "amount",

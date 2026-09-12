@@ -45,6 +45,7 @@ export const MESSAGES = {
     ledger: m("Ledger", "Buku besar"),
     verification: m("Purchase verification", "Verifikasi pembelian"),
     calendar: m("Cash calendar", "Kalender kas"),
+    monthlyBills: m("Monthly bills", "Tagihan bulanan"),
     liquidation: m("Liquidation", "Pertanggungjawaban dana"),
     statements: m("Bank statements", "Rekening koran"),
 

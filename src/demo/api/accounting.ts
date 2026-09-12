@@ -7,17 +7,19 @@ import type {
   CashPlan, CashDue, CashComponent, CashOverride, CashSettlement,
   CashFrequency, CashMonthDetail,
   Direction, PaymentAllocation, EvidenceInboxRow, InboxHealth, AllocMethod,
-  BankStatementView, DocumentCoverage, TransactionCoverage,
+  BankStatementView, DocumentCoverage, TransactionCoverage, MonthlyBills,
 } from "@/services/accounting/contracts";
 import { getActiveLocale } from "@/lib/format";
+import { officeToday } from "@/lib/office";
 import { getState, apply, newId, nextDocNumber, writeAudit, writeOutbox } from "../store";
 import type { AuditRow } from "../state";
 import {
   accountBalances, transactionView, allocatedTotal, inboxHealth, lineCoverage,
   lineStatus, fundings, fundingView, cashPlan, cashDue, cashMonthDetail,
   bankStatementView, bankStatementViews, documentCoverage, transactionCoverage,
+  monthlyBills,
 } from "../derive";
-import { latency, actingUser, requireAuthority, requireModule, conflict, replayed, remember, paged } from "./_kit";
+import { latency, actingUser, requireAuthority, requireModule, requireLevel, conflict, replayed, remember, paged } from "./_kit";
 import { PRIMARY_DOC_KINDS, type DocKind } from "@/services/documents/contracts";
 import * as procurement from "./procurement";
 
@@ -885,7 +887,13 @@ export async function addComponent(
   const cached = replayed<CashComponent>(SERVICE, "addComponent", idempotencyKey);
   if (cached) return cached;
 
-  const denied = requireModule(SERVICE, "accounting");
+  /* Q24 (D233): the estimates on the cash calendar belong to leadership alone.
+     Enforced at the module **level** rather than by an authority, for the same
+     reason D24 gives: who counts as leadership is a grant somebody made, not
+     something to infer in code from holding `approve_funds` — accounting holds
+     that too. Accounting keeps `write` and therefore keeps reading the plan and
+     booking real payments against it; only `admin` may move the estimate. */
+  const denied = requireLevel(SERVICE, "accounting", "admin");
   if (denied) return denied;
 
   const frequency: CashFrequency = input.frequency ?? "monthly";
@@ -986,7 +994,13 @@ export async function updateComponent(
   patch: { name?: string; amount?: number; due_day?: number; ends_on?: string | null; note?: string | null; active?: boolean },
 ): Promise<Result<CashComponent>> {
   await latency();
-  const denied = requireModule(SERVICE, "accounting");
+  /* Q24 (D233): the estimates on the cash calendar belong to leadership alone.
+     Enforced at the module **level** rather than by an authority, for the same
+     reason D24 gives: who counts as leadership is a grant somebody made, not
+     something to infer in code from holding `approve_funds` — accounting holds
+     that too. Accounting keeps `write` and therefore keeps reading the plan and
+     booking real payments against it; only `admin` may move the estimate. */
+  const denied = requireLevel(SERVICE, "accounting", "admin");
   if (denied) return denied;
 
   const state = getState();
@@ -1028,7 +1042,13 @@ export async function setOverride(
   input: { component_id: string; month: string; amount: number | null; due_day?: number | null; reason?: string | null },
 ): Promise<Result<CashOverride>> {
   await latency();
-  const denied = requireModule(SERVICE, "accounting");
+  /* Q24 (D233): the estimates on the cash calendar belong to leadership alone.
+     Enforced at the module **level** rather than by an authority, for the same
+     reason D24 gives: who counts as leadership is a grant somebody made, not
+     something to infer in code from holding `approve_funds` — accounting holds
+     that too. Accounting keeps `write` and therefore keeps reading the plan and
+     booking real payments against it; only `admin` may move the estimate. */
+  const denied = requireLevel(SERVICE, "accounting", "admin");
   if (denied) return denied;
 
   const state = getState();
@@ -1473,4 +1493,14 @@ export async function coverageForTransaction(trxNo: string): Promise<Result<Tran
   const c = transactionCoverage(getState(), trxNo);
   if (!c) return notFound(SERVICE, "transaction_not_found", `Tidak ada transaksi ${trxNo}.`);
   return ok(SERVICE, c);
+}
+
+/** The month's bills as a worklist (D227). The same computation the calendar
+ *  draws, in the shape the person paying them needs. */
+export async function getMonthlyBills(month?: string): Promise<Result<MonthlyBills>> {
+  await latency();
+  const denied = requireModule(SERVICE, "accounting");
+  if (denied) return denied;
+  const m = month || officeToday().slice(0, 7);
+  return ok(SERVICE, monthlyBills(getState(), m));
 }

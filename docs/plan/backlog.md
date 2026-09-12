@@ -42,10 +42,29 @@ record that it is empty and the menu is what makes it look full.
 | ~~`/pengaturan`~~ | ~~the settings that are today constants in `src/lib/`~~ | **built 2026-09-13 (M42)** — D214–D216. **The placeholder list is now empty.** |
 | ~~`/accounting/payslip`~~ | ~~nothing — it duplicates `/hrd/payroll`~~ | **removed** 2026-09-13 (M41) — owner: accounting does not read payslips. Deleted rather than parked: D105 parked two *working* screens over a judgement that might change; this was an empty route, and the question it was holding open has been answered (D213) |
 
+## From the interview of 2026-09-13 — answered, deliberately not built yet
+
+Nineteen questions were answered in one conversation (D227–D249). Five were
+small enough to ship in the same commit. **These are the rest**, kept here
+rather than in the open-questions table because they are no longer questions —
+the decision is made and only the build is outstanding. Numbered as the owner
+and I numbered them while agreeing what to do first.
+
+| # | What was decided | Size | Note |
+|---|---|---|---|
+| #6 | **The pay model splits into pokok + tunjangan**, with the hourly divisor derived from *setahun gaji ÷ hari kerja efektif ÷ jam sehari* rather than 173 | large | D230, D249. Touches the pay-rule book, the payslip and every existing run, so it is the one piece here that must not be done in a hurry. 173 stays where the law puts it — the statutory overtime ladder — and stops being the answer to *what is an hour worth here* |
+| #7 | **Simplify the production stages, and add a subcontract route** | medium | D236. The stage list is seeded data (Q35's whole point), so the simplification is a seed edit; the subcontract route is not — a piece that is made elsewhere and comes back for finishing and packing is a different path through production, not five skipped stages |
+| #8 | **Version the bill of material**, pinned to the work order that used it | medium | D237. A revision table plus `bom_rev` on the work order. Cheap now; the cost is a year of orders needing back-fill later, which is why the answer reversed the default |
+| #9 | **Layered BOM, a button that raises a PR from one, and a typed labour cost** | large | D238, D239. Layering turns costing from a sum into a walk. The labour figure is typed from the owner's own formula and the system will not derive it |
+| #10b | **BPJS and PPh: the enrolment register, and the per-person reconciliation** | medium | D227. The half of Q30 this commit did not build. *Names × rate against what was actually paid* is the audit the owner described, and it needs a roll of who is enrolled from what date — which does not exist yet in any system |
+| #11 | **KPI analyzer and task tracker**, with lateness as one of the points | large | D230, and the measurement #39 wants for labour hours (D239). Held deliberately: it is a module, not a feature, and it is the first thing here that measures **people** rather than money or goods |
+| #12 | **QR** — on the vendor PO (W3) and per box for installation (W4) | Phase 2 | D244. Both need a public read route and a token |
+
 ## Asked for, not yet scheduled
 
 | # | What | Note |
 |---|---|---|
 | W2 | **Two roads to a confirmed PO**: when leadership create the order themselves it is confirmed on creation — asking themselves is theatre; when anybody else creates it, the confirmation goes out on chat like a request batch does | Raised 2026-09-11. Cheap and obvious once the approval gate exists (D132). The chat half reuses the machinery already built for approval batches — the outbox event is already written on `requestPoApproval`, so what is missing is the card, not the plumbing |
-| W3 | **The PDF a vendor receives should carry its own signature.** Open question: does that mean a scanned signature image, or a QR code the vendor can scan to see the order on our side? | Raised 2026-09-11. See **Q29** — the two answers solve different problems and only one of them survives a photocopier |
+| W3 | **The PDF a vendor receives should carry its own signature** — answered: a **QR resolving to our own PO page** (D244). Needs a public read route and a token, so Phase 2 | Raised 2026-09-11, answered 2026-09-13. The two other candidates are dead: a scanned signature survives a photocopier and therefore proves nothing, a cryptographic one nobody in this trade can verify. The QR also catches an amended order presented as the original, because what the vendor sees is live |
+| W4 | **QR per box, as the marker for installation** — the owner's second sentence on Q29, and a different thing from W3 | Raised 2026-09-13 (D244). A purchase order is one document with one QR; an installation needs a code **per box** that survives being carried to a site, and resolves to what is inside it and where it goes. Not built by widening W3 |
 | W1 | ~~Receiving reported by whoever actually saw the goods arrive~~ | **answered and built** 2026-09-11 (D131). The owner's answer changed the shape: there *is* a procurement team with access, so accountability was never in doubt — the problem is only that goods arrive outside working hours. So receiving split into a report (photo, anyone present) and a confirmation (tanda terima, procurement). The Chat route is no longer required for it: the same two acts work from the app tonight, and a bot can produce the report later without changing anything |

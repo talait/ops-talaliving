@@ -32,10 +32,12 @@ import type {
   CashComponent, CashEvent, CashMonthDetail, CashDayRow, Transaction as TrxRow,
   BankStatement, BankStatementView, StatementLineView,
   DocumentCoverage, CoverageTransaction, CoverageLine, CoveragePayment, TransactionCoverage,
+  MonthlyBills, MonthlyBill,
 } from "@/services/accounting/contracts";
 import type { DocKind } from "@/services/documents/contracts";
 import { REQUEST_SUPPORT_KINDS } from "@/services/documents/contracts";
 import { getActiveLocale } from "@/lib/format";
+import { officeToday, officeDay } from "@/lib/office";
 import { settingNumber } from "./settings";
 
 /** One definition, read from settings — never a literal repeated in three
@@ -928,6 +930,12 @@ export function fundingView(state: DemoState, trx: Transaction, all?: Transactio
       left_of_transfer: running,
       decided: isDecided(state, t),
       expects_link: expectsDecision(state, t.type_code),
+      /* Above the owner's limit and nothing approved behind it. Below it, the
+         row is still undecided and still listed: the limit decides what is
+         worth chasing, never what is true (D229). */
+      over_no_approval_limit: !isDecided(state, t)
+        && expectsDecision(state, t.type_code)
+        && t.amount_idr > settingNumber(state, "ops.no_approval_limit_idr", 2_000_000),
       status: t.status,
     };
   });
@@ -1103,9 +1111,19 @@ function payingAccountIds(state: DemoState): Set<string> {
   );
 }
 
-export function cashPlan(state: DemoState, now = new Date()): CashPlan {
+/** Twelve months, planned against actual.
+ *
+ *  `now` and `windowFrom` are **two different questions** and were one argument
+ *  until F68. `now` is what *due*, *overdue* and *paid* are measured against —
+ *  always the real today. `windowFrom` is only where the twelve months start.
+ *  Passing one date for both meant that asking for a past month re-dated the
+ *  whole world: August opened with its unpaid paydays reading *belum jatuh
+ *  tempo*, because the plan believed it was the first of August. A month that
+ *  has gone by has no bills that are *not yet due*.
+ */
+export function cashPlan(state: DemoState, now = new Date(), windowFrom = now): CashPlan {
   const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-  const months = planMonths(now);
+  const months = planMonths(windowFrom);
   const current = months[0];
   const paying = payingAccountIds(state);
   const ledger = state.transactions.filter((t) => t.status !== "VOID" && paying.has(t.account_id));
@@ -1417,7 +1435,17 @@ export function poTerms(state: DemoState, poId: string): PoTermView[] {
     return qty >= l.qty;
   });
   const anyDelivered = view.value_received > 0;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = officeToday();
+
+  /* The first arrival against this order, for a term that fires on delivery
+     and already has. Once something has landed the term is due on the day it
+     landed, not on the day the vendor once promised. */
+  const arrivals = state.receipts
+    .filter((r) => receiptCounts(r) && lines.some((l) => l.id === r.po_line_id))
+    .map((r) => r.received_at.slice(0, 10))
+    .sort();
+  const firstArrival = arrivals[0] ?? null;
+  const lastArrival = arrivals.length > 0 ? arrivals[arrivals.length - 1] : null;
 
   let left = view.paid_to_date;
   let firstUnpaid: string | null = null;
@@ -1464,6 +1492,22 @@ export function poTerms(state: DemoState, poId: string): PoTermView[] {
       state: termState,
       blocked_by: termState === "BLOCKED" ? firstUnpaid : null,
       trigger,
+      /* Q26 (D234): a term that has not fired is still dated, by the promise
+         that will fire it — the expected delivery for an `on_delivery` term.
+         Null where no such promise has been recorded: undated is honest, and
+         a date invented here would be planned against. */
+      expected_on: fired
+        ? (t.due_rule === "on_issue"
+          ? po.issued_at?.slice(0, 10) ?? null
+          : t.due_rule === "on_delivery"
+            ? (t.kind === "FINAL" ? lastArrival : firstArrival)
+            : t.due_date)
+        : (t.due_rule === "on_issue"
+          ? null
+          : t.due_rule === "on_delivery"
+            ? po.expected_delivery
+            : t.due_date),
+      expected_basis: fired ? "fired" : t.due_rule === "date" ? "stated" : "expected",
     };
   });
 }
@@ -1556,7 +1600,7 @@ export function poDetail(state: DemoState, poId: string): PoDetail | null {
 
   /* Late is a claim about a promise, so it needs the promise: with no
      expected date nothing is late, it is merely absent (D134). */
-  const today = new Date().toISOString().slice(0, 10);
+  const today = officeToday();
   const days_late = po.expected_delivery && view.delivery_state !== "COMPLETE"
     && po.expected_delivery < today
     ? Math.round(
@@ -2067,4 +2111,152 @@ export function transactionCoverage(state: DemoState, trxNo: string): Transactio
     unallocated: (trx.status === "VOID" ? 0 : trx.amount_idr) - allocated_total,
     lines,
   };
+}
+
+/** The month's bills, as a worklist rather than as a plan (D227).
+ *
+ *  Built from `cashPlan` — the same computation the twelve-month calendar
+ *  draws — so the two can never disagree. What this adds is one month, in date
+ *  order, with the previous month beside each line.
+ *
+ *  The comparison is the part with a rule in it: **a line that did not exist
+ *  last month has `last_month: null`, not zero** (D228). A first occurrence is
+ *  not an infinite increase, and flagging it as one is how an anomaly list
+ *  teaches people to ignore anomaly lists.
+ */
+export function monthlyBills(
+  state: DemoState,
+  month: string,
+  now = new Date(),
+): MonthlyBills {
+  /* Today is the office's own, and it is **not** taken from the plan: the plan
+     below may be anchored in a past month so that month's cells exist at all,
+     and `generated_for` would then be a day in the past. Overdue is a claim
+     about now (D234's lesson, one function over). */
+  const today = officeDay(now);
+  const prev = previousMonth(month);
+
+  /* `cashPlan` runs twelve months **forward** from where it is anchored, so a
+     month behind today is not in the default window — and neither is last
+     month, ever. Anchoring a second run at the month being compared against is
+     what makes the comparison possible at all; without it `last_month` was
+     structurally always null and the whole column was dead (F68).
+
+     Both runs are the same function over the same ledger. This is still one
+     calculation seen twice, which is D228's whole condition. */
+  const plan = cashPlan(state, now, firstOf(month));
+  const prevPlan = cashPlan(state, now, firstOf(prev));
+
+  /* What a line is worth **for a whole month**, on one rule applied to both
+     months being compared: a month that has ended is worth what it actually
+     cost; a month still running is worth what it is expected to cost.
+
+     Both halves of that rule were got wrong first time and the errors looked
+     plausible (F68). Taking `actual` for a month still running compared a
+     half-paid September against a finished August and reported the materials
+     bill as −82% when nothing had changed. Taking `actual || planned` for a
+     finished month let a line nobody paid fall back to its estimate, which
+     reads as *we spent this* when the truth is *we spent nothing*. */
+  const ended = (m: string) => m < today.slice(0, 7);
+  const figure = (cell: CashCell, m: string) =>
+    ended(m) ? cell.actual : Math.max(cell.planned, cell.actual);
+
+  /* Keyed by component and summed over the month. A weekly line has four or
+     five events in a month, and *is this bill unusual* is a question about the
+     month, not about one Tuesday — comparing a single Rp 30 juta payday
+     against last month's whole Rp 150 juta payroll reported −80% on every
+     payroll row in the system, five times a month, for no reason (F68). */
+  const lastByComponent = new Map<string, number>();
+  for (const row of prevPlan.rows) {
+    const cell = row.cells.find((c) => c.month === prev);
+    if (cell && cell.state !== "SKIPPED") lastByComponent.set(row.component.id, figure(cell, prev));
+  }
+
+  /* The same figure for the month being shown, so the two sides of every
+     percentage are the same kind of number. */
+  const thisByComponent = new Map<string, number>();
+  const occurrences = new Map<string, number>();
+  for (const row of plan.rows) {
+    const cell = row.cells.find((c) => c.month === month);
+    if (cell && cell.state !== "SKIPPED") {
+      thisByComponent.set(row.component.id, figure(cell, month));
+      occurrences.set(row.component.id, cell.events.length);
+    }
+  }
+
+  const threshold = settingNumber(state, "ops.bill_anomaly_percent", 25);
+
+  const bills: MonthlyBill[] = plan.rows
+    .flatMap((row) =>
+      row.cells
+        .filter((c) => c.month === month)
+        .flatMap((c) => c.events.map((e) => ({ row, cell: c, event: e }))),
+    )
+    .map(({ row, cell, event }) => {
+      const last = lastByComponent.get(row.component.id) ?? null;
+      const thisMonth = thisByComponent.get(row.component.id) ?? 0;
+      const delta = last == null ? null : thisMonth - last;
+      const deltaPercent = last == null || last === 0
+        ? null
+        : Math.round(((thisMonth - last) / last) * 100);
+      return {
+        component_id: row.component.id,
+        name: event.name,
+        date: event.date,
+        direction: event.direction,
+        planned: event.planned,
+        actual: event.actual,
+        outstanding: Math.max(0, event.planned - event.actual),
+        state: event.state,
+        days_away: daysBetween(today, event.date),
+        vendor_name: event.vendor_name,
+        account_code: event.account_code,
+        trx_nos: event.trx_nos,
+        matched_by: event.matched_by,
+        reason: event.reason,
+        month_total: thisMonth,
+        occurrences: occurrences.get(row.component.id) ?? 1,
+        last_month: last,
+        delta,
+        delta_percent: deltaPercent,
+        unusual: deltaPercent != null && Math.abs(deltaPercent) >= threshold,
+      };
+    })
+    .sort((a, b) => a.date.localeCompare(b.date) || a.name.localeCompare(b.name));
+
+  const out = bills.filter((b) => b.direction === "OUT" && b.state !== "SKIPPED");
+  const lastTotal = lastByComponent.size > 0
+    ? prevPlan.rows
+        .filter((r) => r.component.direction === "OUT")
+        .reduce((sum, r) => {
+          const c = r.cells.find((x) => x.month === prev);
+          return sum + (c && c.state !== "SKIPPED" ? figure(c, prev) : 0);
+        }, 0)
+    : null;
+
+  return {
+    month,
+    label: monthLabel(month),
+    bills,
+    total_planned: out.reduce((s, b) => s + b.planned, 0),
+    total_paid: out.reduce((s, b) => s + b.actual, 0),
+    total_outstanding: out.reduce((s, b) => s + b.outstanding, 0),
+    overdue_count: out.filter((b) => b.state === "OVERDUE").length,
+    overdue_amount: out.filter((b) => b.state === "OVERDUE").reduce((s, b) => s + b.outstanding, 0),
+    due_this_week: out.filter((b) => b.state === "DUE").length,
+    /* Counted per **line**, not per row: a weekly payroll that moved is one
+       unusual bill, not five (F68). */
+    unusual_count: new Set(out.filter((b) => b.unusual).map((b) => b.component_id)).size,
+    last_month_total: lastTotal,
+  };
+}
+
+/** The first day of a month, as a `Date`, for anchoring a plan run there. */
+function firstOf(month: string): Date {
+  return new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)) - 1, 1);
+}
+
+function previousMonth(month: string): string {
+  const [y, m] = month.split("-").map(Number);
+  return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, "0")}`;
 }

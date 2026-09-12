@@ -918,6 +918,21 @@ export interface PoTermView {
   blocked_by: string | null;
   /** Why the trigger has or has not fired, in words. */
   trigger: string;
+  /** The date this term is expected to fall due — the owner's answer to Q26
+   *  (D234): **jatuh tempo adalah tanggal ekspektasi pengiriman**. An
+   *  `on_delivery` term that nothing has arrived against still has a date
+   *  somebody can plan cash around, and that date is the delivery the vendor
+   *  promised. Null where no promise exists: a term with no expected delivery
+   *  date is undated, not due today. */
+  expected_on: string | null;
+  /** Where `expected_on` came from. `fired` is the day the thing actually
+   *  happened — the order went out, the goods landed. `expected` is the
+   *  vendor's promise and can still move, so a screen must mark it. `stated`
+   *  is a term written with a fixed date in the contract, which is neither a
+   *  promise nor an event and is already printed in `trigger`. A screen must
+   *  be able to tell the three apart; rendering them alike would put a guess
+   *  and a fact in one column in one font. */
+  expected_basis: "fired" | "expected" | "stated" | null;
 }
 
 export interface PoDocument {

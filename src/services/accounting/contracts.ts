@@ -544,6 +544,10 @@ export interface FundingSpendRow {
   decided: boolean;
   /** Whether this kind of spending is expected to carry one at all (D83). */
   expects_link: boolean;
+  /** Money that left with nothing approved behind it, **above the limit the
+   *  owner set** (D231). Below the limit the row is still undecided and still
+   *  listed — the limit changes what is worth chasing, not what is true. */
+  over_no_approval_limit: boolean;
   status: TrxStatus;
 }
 
@@ -772,3 +776,74 @@ export interface CashMonthDetail {
 /** One bill about to fall due — the reminder half of the calendar. Built from
  *  the same events as the month expansion, so the two cannot drift (D116). */
 export type CashDue = CashEvent & { days_away: number };
+
+
+/* ── The month's bills, as a worklist ────────────────────────────────────
+ *
+ *  The cash calendar is twelve months wide and it belongs to leadership: it
+ *  answers *when does the money run out*. Accounting opening it has to walk
+ *  the whole grid to find the only question they have — **what do I have to
+ *  pay this month, and what have I already paid** (owner, D227).
+ *
+ *  Same components, same events, same arithmetic as the calendar. Nothing new
+ *  is computed: a second figure for the same obligation is a figure that will
+ *  disagree with the first one within a month. What changes is the shape — one
+ *  month, in date order, with what is done separated from what is not.
+ */
+export interface MonthlyBill {
+  component_id: string;
+  name: string;
+  date: string;
+  direction: Direction;
+  planned: number;
+  actual: number;
+  /** `planned − actual`, floored at zero. What is still to go out. */
+  outstanding: number;
+  state: CashCellState;
+  /** Negative once the date has passed. */
+  days_away: number;
+  vendor_name: string | null;
+  account_code: AccountCode | null;
+  trx_nos: string[];
+  /** How the payment was recognised — a link somebody made, or a category
+   *  match the system inferred. Worth showing: an inferred match is a guess
+   *  that happens to be right most of the time. */
+  matched_by: "linked" | "category" | null;
+  reason: string | null;
+  /** What this **line** amounts to across the whole month, and how many rows
+   *  it has here. The comparison below is against these, not against this one
+   *  row: a weekly payday is one fifth of a payroll, and measuring it against
+   *  last month's whole payroll reports −80% five times a month for nothing
+   *  (F68). One rule decides both months — a month that has ended is worth
+   *  what it cost, a month still running is worth what it is expected to
+   *  cost — so the two sides of every percentage are the same kind of
+   *  number. */
+  month_total: number;
+  occurrences: number;
+  /** The same figure for the previous month, and by how much this one differs.
+   *  **Null when there was no such line last month** — a first occurrence is
+   *  not a hundred-per-cent increase (D228). */
+  last_month: number | null;
+  delta: number | null;
+  delta_percent: number | null;
+  /** Set when the difference is large enough to be worth a look. Never blocks,
+   *  and the threshold is a setting rather than a number in the code. */
+  unusual: boolean;
+}
+
+export interface MonthlyBills {
+  month: string;
+  label: string;
+  bills: MonthlyBill[];
+  /** Out only — what leaves. The `IN` lines are shown but excluded from the
+   *  totals, because *what must I pay* is not answered by money arriving. */
+  total_planned: number;
+  total_paid: number;
+  total_outstanding: number;
+  overdue_count: number;
+  overdue_amount: number;
+  due_this_week: number;
+  unusual_count: number;
+  /** The same month a year of components ago, for the header comparison. */
+  last_month_total: number | null;
+}

@@ -38,12 +38,14 @@ export function BoardStock({ onUsed }: { onUsed: () => void }) {
           const totalM3 = onHand.reduce((a, r) => a + r.m3, 0);
           const totalValue = onHand.reduce((a, r) => a + (r.value ?? 0), 0);
           const unpriced = onHand.reduce((a, r) => a + r.unpriced_qty, 0);
+          const estimated = onHand.reduce((a, r) => a + r.estimated_qty, 0);
 
           return (
             <Card>
               <CardHeader
                 title={`${onHand.length} ukuran di rak`}
                 subtitle={`${formatNumber(totalM3)} m³ · senilai ${formatIDR(totalValue)}${
+                  estimated > 0 ? ` · ${estimated} lembar dinilai pakai harga termahal` : ""}${
                   unpriced > 0 ? ` · ${unpriced} lembar terhitung tapi belum berharga` : ""}`}
                 icon={Layers}
                 action={<SourceBadge state={stock} />}
@@ -71,6 +73,15 @@ export function BoardStock({ onUsed }: { onUsed: () => void }) {
                               <span className="block font-medium text-slate-800">
                                 {r.species} <span className="font-normal text-slate-500">· {r.size}</span>
                               </span>
+                              {/* Dua kalimat yang berbeda, sengaja dipisah: satu
+                                  memakai tarif termahal sejenis (D232), satu lagi
+                                  memang tidak punya tarif apa pun. */}
+                              {r.estimated_qty > 0 && r.estimate_per_m3 != null && (
+                                <span className="block text-[11px] text-amber-700">
+                                  {r.estimated_qty} lembar tanpa asal kiriman — dinilai pakai harga
+                                  termahal {formatIDR(r.estimate_per_m3)}/m³
+                                </span>
+                              )}
                               {r.unpriced_qty > 0 && (
                                 <span className="block text-[11px] text-amber-700">
                                   {r.unpriced_qty} lembar tanpa asal kiriman — dihitung, tidak dinilai

@@ -300,7 +300,15 @@ dies — the same reason `john-lau` set 15 MB under Next's 16 MB.
 | POST | `/day-marks/{id}/surat-dokter` | link an uploaded letter to a day marked `sick`. **This is what makes the day paid** (D144), and it may arrive days later — nothing is recomputed, because nothing was stored |
 | DELETE | `/day-marks/{id}` | the holiday was the Tuesday, not the Monday. Audited like any other act |
 | GET | `/files` · `/files/{employee_no}` | Berkas 201 as a **checklist**: every required kind listed whether or not anything is filed, with what is missing and what expires (D177) |
-| POST | `/files/{employee_no}/documents` | 422 when neither a scan nor a number is given — a number with no scan is still a record |
+| POST | `/files/{employee_no}/documents` | 422 when neither a scan nor a number is given — a number with no scan is still a record. **422 `extracted_without_file`** when the number claims to have been read from a scan that is not attached (D199) |
+| POST | `/files/documents/{id}/reveal` | the real identity number, for one document, for one person, once. `hrd` module. **Writes an audit row** — actor, whose document, which kind, never the number (D197). The list never carries the number at all, so this is the only road to it (D196); there is no batch form, deliberately — *reveal every KTP* is not a request this API knows how to make |
+
+**Masking.** `GET /files` and `GET /files/{employee_no}` return
+`doc_no_masked`, `doc_no_length` and `doc_no_length_ok` for the kinds in
+`SENSITIVE_DOC_KINDS` (KTP, KK, NPWP, BPJS) and **omit `doc_no` entirely**;
+every other kind carries its number in the clear (D195, D198). The mask is
+server-side: a payload that carried the number and a screen that hid it would
+make the reveal log record a click.
 | GET | `/leave/balances` | entitlement − marked − approved-not-yet-taken, computed on read |
 | GET | `/leave` · POST `/leave` | asking. 409 on an overlapping request for the same person; never refused for exceeding the entitlement (D144) |
 | POST | `/leave/{request_no}/decide` | approving **writes the day marks** and reports which days were skipped because they already carried one; rejecting without a reason is 422 (D178) |

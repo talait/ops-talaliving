@@ -164,6 +164,13 @@ export interface ActivityDaily {
   /** Refusals they ran into. A person hitting three 403s in a day is either
    *  missing a grant or doing somebody else's job. */
   refusals: number;
+  /** Identity numbers they opened — a KTP, a KK, an NPWP, a BPJS number.
+   *
+   *  Counted **apart from `changes`**, because a reveal changes nothing and
+   *  folding it in would have quietly inflated every recap the day the eye
+   *  button shipped (D197). It is also the number worth looking at on its own:
+   *  one is somebody doing their job, fourteen in an afternoon is a question. */
+  reveals: number;
 }
 
 export interface RetentionStatus {

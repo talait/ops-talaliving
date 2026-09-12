@@ -416,6 +416,62 @@ export const EMPLOYEE_DOC_CHECKLIST: { kind: EmployeeDocKind; required: boolean;
   { kind: "sp", required: false, note: "Surat peringatan yang pernah diterbitkan." },
 ];
 
+/** The kinds whose number is an **identity number**, and the only ones masked.
+ *
+ *  A contract number, a certificate number and an ijazah number identify a
+ *  document. A NIK, a KK number, an NPWP and a BPJS membership number identify
+ *  a **person**, and are enough on their own to open an account somewhere in
+ *  their name. Masking the first group too would be ritual, and a screen full
+ *  of rituals stops being read — which is how the masking on the second group
+ *  would come to be clicked through without thinking.
+ */
+export const SENSITIVE_DOC_KINDS = new Set<EmployeeDocKind>([
+  "ktp", "kartu_keluarga", "npwp", "bpjs_kesehatan", "bpjs_tk",
+]);
+
+/** How many digits the number should have, where the format is fixed. Used to
+ *  say *this reading is wrong* without showing a single digit of it — a
+ *  fifteen-digit NIK is a failed extraction, and that is a fact about the
+ *  machine, not about the person. Null where the format is not fixed. */
+export const DOC_NO_DIGITS: Partial<Record<EmployeeDocKind, number>> = {
+  ktp: 16,
+  kartu_keluarga: 16,
+  npwp: 15,
+  bpjs_kesehatan: 13,
+  bpjs_tk: 11,
+};
+
+/** Where the number came from. The document goes to Drive and the number is
+ *  read out of it (owner) — so the number has a provenance, and a number
+ *  nobody has read yet is **absent**, never guessed. */
+export type DocNoSource =
+  /** Read out of the scan. */
+  | "extracted"
+  /** Somebody typed it. */
+  | "typed"
+  /** The scan is filed and the number has not been read from it yet. */
+  | "pending";
+
+export const DOC_NO_SOURCE_LABEL: Record<DocNoSource, string> = {
+  extracted: "terbaca dari berkas",
+  typed: "diketik",
+  pending: "menunggu dibaca",
+};
+
+/** Every character of a number, replaced — separators kept so the shape and
+ *  the **length** survive. Length is the one thing worth showing: it says
+ *  whether the reading is plausible without saying what it is.
+ *
+ *  The alternative offered was a visible prefix (`332006***********`). It is
+ *  rejected: the first six digits of a NIK are province, city and district, so
+ *  a prefix tells the room where every employee is from — and it buys nothing,
+ *  because there is one KTP per person and the row already says whose it is.
+ *  Nothing on this screen needs the digits to tell two rows apart (D195).
+ */
+export function maskDocNo(docNo: string): string {
+  return docNo.replace(/[0-9A-Za-z]/g, "•");
+}
+
 export interface EmployeeDocument {
   id: string;
   employee_id: string;
@@ -424,8 +480,15 @@ export interface EmployeeDocument {
    *  document with a number but no scan is still a record — the number is
    *  often what somebody actually needs. */
   attachment_id: string | null;
-  /** KTP number, contract number, BPJS membership number. */
+  /** KTP number, contract number, BPJS membership number.
+   *
+   *  **Never sent to a screen for a kind in `SENSITIVE_DOC_KINDS`.** The list
+   *  carries `doc_no_masked` and the real number comes back only from
+   *  `revealEmployeeDocNo`, which writes an audit row. If the view carried the
+   *  number and the screen merely hid it, the reveal log would be theatre —
+   *  the number would already be in the browser (D196). */
   doc_no: string | null;
+  doc_no_source: DocNoSource | null;
   issued_on: string | null;
   /** After this it is no longer true. Null where it never expires. */
   expires_on: string | null;
@@ -434,12 +497,28 @@ export interface EmployeeDocument {
   recorded_at: string;
 }
 
+/** What a screen is allowed to see. The sensitive number is **not here** —
+ *  only its mask, its length, and whether that length is what the kind wants. */
+export interface EmployeeDocumentView extends Omit<EmployeeDocument, "doc_no"> {
+  /** The plain number, for kinds that are not identity numbers. Null for the
+   *  sensitive ones — those come back only from a reveal. */
+  doc_no: string | null;
+  sensitive: boolean;
+  /** `••••••••••••••••`, or null where there is no number at all. */
+  doc_no_masked: string | null;
+  doc_no_length: number | null;
+  /** False when the length is not what this kind should have — a reading to
+   *  check, said without showing a digit. Null where the kind has no fixed
+   *  format, or there is no number. */
+  doc_no_length_ok: boolean | null;
+}
+
 export interface EmployeeDocSlot {
   kind: EmployeeDocKind;
   label: string;
   required: boolean;
   note: string;
-  documents: EmployeeDocument[];
+  documents: EmployeeDocumentView[];
   /** Days until the soonest expiry, negative when it has already passed. Null
    *  when nothing in this slot expires. */
   expires_in_days: number | null;

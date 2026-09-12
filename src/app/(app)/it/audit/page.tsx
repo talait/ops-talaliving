@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ScrollText, Search, ShieldAlert } from "lucide-react";
+import { ScrollText, Search, ShieldAlert, Eye } from "lucide-react";
 import { Badge, Button, Card, CardHeader, PageHeader } from "@/components/ui/primitives";
 import { Loaded, SourceBadge, useLoad } from "@/components/ui/loaded";
 import { Paged } from "@/components/ui/pager";
@@ -28,9 +28,10 @@ const OUTCOME_TONE = {
 export default function AuditPage() {
   const [q, setQ] = useState("");
   const [outcome, setOutcome] = useState("");
+  const [action, setAction] = useState("");
   const [rows, reload] = useLoad(
-    () => identity.listAudit({ entity_no: q || undefined, outcome: outcome || undefined }),
-    [q, outcome],
+    () => identity.listAudit({ entity_no: q || undefined, outcome: outcome || undefined, action: action || undefined }),
+    [q, outcome, action],
   );
 
   return (
@@ -45,8 +46,25 @@ export default function AuditPage() {
       <Loaded state={rows} onRetry={reload}>
         {(all) => {
           const refused = all.filter((r) => r.outcome === "refused");
+          /* Only the ones that actually opened. A refused reveal is a number
+             that was **not** read, and counting it here would have made this
+             banner say four where three is the truth — the refusals have their
+             own banner below, which is where that row belongs. */
+          const reveals = all.filter((r) => r.action === "reveal" && r.outcome === "ok");
           return (
             <>
+              {reveals.length > 0 && (
+                <div className="mb-4 flex flex-wrap items-start gap-2 rounded-xl border border-violet-200 bg-violet-50/70 px-4 py-3 text-[13px] text-violet-900">
+                  <Eye className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>
+                    {reveals.length} nomor identitas dibuka —{" "}
+                    {[...new Set(reveals.map((r) => r.actor_email))].join(", ")}. Membaca nomor KTP,
+                    KK, NPWP atau BPJS tidak mengubah apa pun, tapi tercatat di sini dan tidak pernah
+                    dihapus: pertanyaan <em>siapa yang melihat data saya</em> datang berbulan-bulan
+                    kemudian. Baris ini menyebut dokumen siapa, bukan nomornya.
+                  </span>
+                </div>
+              )}
               {refused.length > 0 && (
                 <div className="mb-4 flex flex-wrap items-start gap-2 rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3 text-[13px] text-amber-900">
                   <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
@@ -83,6 +101,14 @@ export default function AuditPage() {
                         <option value="refused">Ditolak</option>
                         <option value="duplicate">Duplikat</option>
                         <option value="noop">Tidak ada perubahan</option>
+                      </select>
+                      <select
+                        value={action} onChange={(e) => setAction(e.target.value)}
+                        aria-label="Tindakan"
+                        className="h-8 rounded-lg border border-slate-200 px-2 text-[13px] focus:border-brand-400 focus:outline-none"
+                      >
+                        <option value="">Semua tindakan</option>
+                        <option value="reveal">Buka nomor identitas</option>
                       </select>
                     </div>
                   }

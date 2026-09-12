@@ -12,11 +12,12 @@ import type {
   OvertimeSheet, OvertimeStage, PayrollLine, PayrollView, PayrollRun,
   PayslipDay, AdjustmentKind,
   PayRules, PayRuleSet, OvertimeTier, OvertimePart,
-  EmployeeFileView, EmployeeDocSlot, LeaveBalance, LeaveRequest, LeaveRequestView,
+  EmployeeFileView, EmployeeDocSlot, EmployeeDocument, EmployeeDocumentView,
+  LeaveBalance, LeaveRequest, LeaveRequestView,
 } from "@/services/hr/contracts";
 import {
   ADJUSTMENT_LABEL, DAY_MARK_SHORT,
-  EMPLOYEE_DOC_CHECKLIST, EMPLOYEE_DOC_LABEL,
+  EMPLOYEE_DOC_CHECKLIST, EMPLOYEE_DOC_LABEL, SENSITIVE_DOC_KINDS, DOC_NO_DIGITS, maskDocNo,
 } from "@/services/hr/contracts";
 
 const HOURS = 3_600_000;
@@ -736,13 +737,35 @@ export function payrollView(state: DemoState, run: PayrollRun): PayrollView {
  *  ever actually needs — before a BPJS registration, before an audit, before
  *  paying somebody whose contract ran out last month.
  */
+/** What leaves the store for a screen.
+ *
+ *  The sensitive number is dropped here rather than hidden later, which is the
+ *  whole difference between a reveal log that means something and one that
+ *  records a click (D196). Everything a screen legitimately needs about the
+ *  number — is there one, how long is it, is that length right — survives.
+ */
+export function docView(d: EmployeeDocument): EmployeeDocumentView {
+  const sensitive = SENSITIVE_DOC_KINDS.has(d.kind);
+  const digits = d.doc_no ? d.doc_no.replace(/[^0-9A-Za-z]/g, "").length : null;
+  const want = DOC_NO_DIGITS[d.kind] ?? null;
+  return {
+    ...d,
+    doc_no: sensitive ? null : d.doc_no,
+    sensitive,
+    doc_no_masked: d.doc_no ? maskDocNo(d.doc_no) : null,
+    doc_no_length: digits,
+    doc_no_length_ok: digits != null && want != null ? digits === want : null,
+  };
+}
+
 export function employeeFile(state: DemoState, employee: Employee, today: string): EmployeeFileView {
   const mine = state.employee_documents.filter((d) => d.employee_id === employee.id);
 
   const slots: EmployeeDocSlot[] = EMPLOYEE_DOC_CHECKLIST.map((c) => {
     const documents = mine
       .filter((d) => d.kind === c.kind)
-      .sort((a, b) => (b.issued_on ?? "").localeCompare(a.issued_on ?? ""));
+      .sort((a, b) => (b.issued_on ?? "").localeCompare(a.issued_on ?? ""))
+      .map(docView);
     const expiries = documents.map((d) => d.expires_on).filter((x): x is string => !!x);
     const soonest = expiries.sort()[0] ?? null;
     return {

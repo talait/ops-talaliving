@@ -2473,3 +2473,49 @@ reading.** HRD is refused at the module (`no access to the it module`) and
 leadership at the level (`needs admin; your account has read`). Under the old
 `requireModule` both would have been the first message, and leadership's — the
 one that actually says what is missing — could not have been written at all.
+
+---
+
+## F57 — seventeen numbers that were read from a file that was not there
+
+Recording where a number came from took one field: `extracted`, `typed`, or
+`pending`. Backfilling it across twenty-seven seeded documents took one
+regular expression — *has a number, so it was extracted* — and that was the
+mistake, written in three seconds and invisible for an hour.
+
+The screen said it out loud the moment it rendered:
+
+```
+PKWT/2026/007
+terbaca dari berkas
+nomor saja, berkas belum dipindai
+```
+
+Read from the file. No file. Two lines apart, on the same row.
+
+It looks like a cosmetic slip in demo data and it is not, for a reason that
+outlives the seeds: **provenance exists so that somebody later trusts a number
+because of where it came from.** A number marked *read from the scan* is one
+nobody needs to check against the scan — that is the entire value of the mark.
+A system that hands out that mark for free has not recorded provenance, it has
+decorated the number with a word.
+
+Two fixes, and the second is the one that matters.
+
+The seeds were corrected: `extracted` only where an attachment is actually
+filed, which left three, not seventeen.
+
+Then `saveEmployeeDocument` was taught to refuse `extracted` with no
+`attachment_id`. The seeds are not the last thing that will ever write one of
+these rows — a Phase-2 import, an OCR job that half-finishes, a fixture written
+by whoever comes next. The guard is four lines and it makes the claim
+unrepresentable rather than merely currently-untrue.
+
+The same hour produced a smaller one of the same shape, on the audit screen:
+*4 nomor identitas dibuka*, counting a **refused** reveal among them. Three
+numbers were opened. The fourth was the system working. A count that adds up
+what happened and what was stopped describes neither.
+
+Both are the project's oldest rule in a new costume: a figure is allowed to be
+missing, never allowed to be quietly wrong. Provenance you did not establish is
+missing; provenance you inferred from the presence of a number is wrong.

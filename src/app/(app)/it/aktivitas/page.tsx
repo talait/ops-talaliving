@@ -205,6 +205,10 @@ export default function ActivityPage() {
                           <span className="flex-1" />
                           <Badge tone={d.changes > 0 ? "brand" : "slate"}>{d.changes} mengubah</Badge>
                           {d.refusals > 0 && <Badge tone="red">{d.refusals} ditolak</Badge>}
+                          {/* Counted apart from `mengubah`: a reveal changes
+                              nothing, and it is the figure worth reading on its
+                              own (D197). */}
+                          {d.reveals > 0 && <Badge tone="violet">{d.reveals} buka nomor</Badge>}
                         </div>
                         <p className="mt-0.5 text-[11px] text-slate-500">
                           {d.top_screens.map((s) => `${s.label} (${s.count})`).join(" · ")}

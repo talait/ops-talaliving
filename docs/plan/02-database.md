@@ -531,6 +531,18 @@ the trail that outlives it.
 retention edge, and only for days that already have a recap row — a day without
 one is refused **by name**, never skipped quietly.
 
+**Reads that live in the audit log, not the activity log.** Opening somebody's
+identity number is a read, and it is written to `core.audit_log` with
+`action = 'reveal'` — because *who looked at my KTP* is asked months later and
+the activity log keeps detail for thirty days (D197). Two constraints belong on
+it in Phase 2, and both are about what the row must **not** contain:
+
+- the `detail` of a `reveal` row carries whose document and which kind, never
+  the number — an audit table nobody may delete from is the worst place to keep
+  a national ID;
+- `activity_daily.reveals` counts these separately from `changes`, because a
+  reveal changes nothing and folding it in would inflate every recap.
+
 `core.audit_log` has no retention at all. It is the evidence behind every
 figure the system prints, and a purged audit row is a past number nobody can
 explain.

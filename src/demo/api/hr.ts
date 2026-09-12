@@ -6,8 +6,9 @@ import type {
   PayrollRun, PayrollView, PayBasis,
   AdjustmentKind, PayrollAdjustmentView,
   PayRules, PayRuleSet, PayRuleSetView,
-  EmployeeDocKind, EmployeeFileView, LeaveBalance, LeaveKind, LeaveRequestView, LeaveStatus,
+  EmployeeDocKind, EmployeeFileView, DocNoSource, LeaveBalance, LeaveKind, LeaveRequestView, LeaveStatus,
 } from "@/services/hr/contracts";
+import { SENSITIVE_DOC_KINDS } from "@/services/hr/contracts";
 import type { DocKind } from "@/services/documents/contracts";
 import { getState, apply, newId, nextDocNumber, writeAudit, writeOutbox } from "../store";
 import {
@@ -988,6 +989,7 @@ export async function saveEmployeeDocument(
   input: {
     employee_no: string; kind: EmployeeDocKind;
     attachment_id?: string | null; doc_no?: string | null;
+    doc_no_source?: DocNoSource;
     issued_on?: string | null; expires_on?: string | null; note?: string | null;
   },
 ): Promise<Result<EmployeeFileView>> {
@@ -1005,6 +1007,18 @@ export async function saveEmployeeDocument(
       { field: "doc_no" },
     );
   }
+  /* A number cannot have been read out of a file that is not there. The demo
+     seeds made exactly this claim before it was caught (F57) — seventeen rows
+     saying *terbaca dari berkas* beside *berkas belum dipindai*. It reads as a
+     detail and it is not: the whole point of recording provenance is that
+     somebody later trusts a number because of where it came from. */
+  if (input.doc_no_source === "extracted" && !input.attachment_id) {
+    return invalid(
+      SERVICE, "extracted_without_file",
+      "Nomor tidak bisa ditandai terbaca dari berkas kalau berkasnya tidak ada. Lampirkan berkasnya, atau tandai diketik.",
+      { field: "doc_no_source" },
+    );
+  }
   if (input.expires_on && input.issued_on && input.expires_on < input.issued_on) {
     return invalid(SERVICE, "expiry_before_issue", "Tanggal berakhir mendahului tanggal terbit.", { field: "expires_on" });
   }
@@ -1017,6 +1031,12 @@ export async function saveEmployeeDocument(
       kind: input.kind,
       attachment_id: input.attachment_id ?? null,
       doc_no: input.doc_no?.trim() || null,
+      /* Where the number came from, recorded at the moment it arrives. A scan
+         filed with no number is **pending**, not blank-because-nobody-cared:
+         the difference is whether anybody is expected to come back to it. */
+      doc_no_source: input.doc_no?.trim()
+        ? (input.doc_no_source ?? "typed")
+        : (input.attachment_id ? "pending" : null),
       issued_on: input.issued_on || null,
       expires_on: input.expires_on || null,
       note: input.note?.trim() || null,
@@ -1034,10 +1054,66 @@ export async function saveEmployeeDocument(
     writeAudit(draft, {
       service: SERVICE, entity: "employee_document", entity_no: emp.employee_no,
       action: "file", outcome: "ok", reason: null,
-      detail: { kind: input.kind, doc_no: input.doc_no ?? null, expires_on: input.expires_on ?? null, by: user.email },
+      /* Same rule as the reveal: the trail says a number was filed, never what
+         it is. An audit row nobody may delete is the worst place to keep one. */
+      detail: {
+        kind: input.kind,
+        doc_no: SENSITIVE_DOC_KINDS.has(input.kind)
+          ? (input.doc_no ? "(disamarkan)" : null)
+          : (input.doc_no ?? null),
+        expires_on: input.expires_on ?? null, by: user.email,
+      },
     });
   });
   return getEmployeeFile(emp.employee_no);
+}
+
+/** Reading somebody's identity number — the one act on this screen that is a
+ *  **read** and still belongs in the audit trail.
+ *
+ *  Two rules hold it together, and the second is the one that is easy to get
+ *  wrong:
+ *
+ *  1. **It is written to `audit_log`, not to the activity log.** The activity
+ *     log keeps detail for thirty days (D188), and *who looked at Karjo's KTP*
+ *     is a question asked months later, usually by Karjo. The audit trail is
+ *     never deleted, so that is where it goes — and D188's line between the two
+ *     is amended accordingly: the audit log holds **acts**, of which changing a
+ *     row is the commonest, not changes alone (D197).
+ *
+ *  2. **The audit row must not contain the number.** A log of who read a
+ *     secret that stores the secret has multiplied the thing it was protecting
+ *     — and the audit trail is the one table nobody may ever delete from. What
+ *     it records is whose document, which kind, and who looked.
+ */
+export async function revealEmployeeDocNo(
+  docId: string,
+): Promise<Result<{ doc_id: string; doc_no: string; revealed_at: string }>> {
+  await latency();
+  const denied = requireModule(SERVICE, "hrd");
+  if (denied) return denied;
+
+  const state = getState();
+  const doc = state.employee_documents.find((d) => d.id === docId);
+  if (!doc) return notFound(SERVICE, "document_not_found", "Dokumen tidak ada.");
+  if (!doc.doc_no) {
+    return invalid(SERVICE, "no_number", "Dokumen ini belum punya nomor untuk dibuka.", { field: "doc_no" });
+  }
+  const emp = state.employees.find((e) => e.id === doc.employee_id);
+  const user = actingUser();
+  const at = new Date().toISOString();
+
+  apply((draft) => {
+    writeAudit(draft, {
+      service: SERVICE, entity: "employee_document", entity_no: emp?.employee_no ?? doc.employee_id,
+      action: "reveal", outcome: "ok",
+      reason: null,
+      /* Whose, and which kind. Never the number itself. */
+      detail: { kind: doc.kind, employee: emp?.full_name ?? doc.employee_id, by: user.email },
+    });
+  });
+
+  return ok(SERVICE, { doc_id: doc.id, doc_no: doc.doc_no, revealed_at: at });
 }
 
 /** Which document kind a personnel record travels under on the evidence road.

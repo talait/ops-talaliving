@@ -119,7 +119,7 @@ function daysAgo(iso: string): number {
 /** What changed, with who and why. Never deleted (A5) — this is evidence about
  *  **records**, and it is the opposite case from activity below. */
 export async function listAudit(
-  opts: { entity_no?: string; actor?: string; outcome?: string; service?: string; limit?: number } = {},
+  opts: { entity_no?: string; actor?: string; outcome?: string; action?: string; service?: string; limit?: number } = {},
 ): Promise<Result<AuditRowView[]>> {
   await latency();
   const denied = requireModule(SERVICE, "it");
@@ -129,6 +129,7 @@ export async function listAudit(
   if (opts.entity_no) rows = rows.filter((r) => r.entity_no?.toLowerCase().includes(opts.entity_no!.toLowerCase()));
   if (opts.actor) rows = rows.filter((r) => r.actor_email.toLowerCase().includes(opts.actor!.toLowerCase()));
   if (opts.outcome) rows = rows.filter((r) => r.outcome === opts.outcome);
+  if (opts.action) rows = rows.filter((r) => r.action === opts.action);
   if (opts.service) rows = rows.filter((r) => r.service === opts.service);
 
   return ok(SERVICE, rows
@@ -263,8 +264,11 @@ export async function rollUpActivity(
         /* Taken from the audit trail rather than counted here: the difference
            between a day of reading and a day of deciding is what the recap is
            for, and the audit row is the only honest source of it. */
-        changes: audits.filter((a) => a.outcome === "ok").length,
+        /* A reveal is an act in the audit trail but it changes nothing, so it
+           is counted on its own line rather than inflating this one (D197). */
+        changes: audits.filter((a) => a.outcome === "ok" && a.action !== "reveal").length,
         refusals: audits.filter((a) => a.outcome === "refused").length,
+        reveals: audits.filter((a) => a.action === "reveal" && a.outcome === "ok").length,
       });
       written += 1;
     }

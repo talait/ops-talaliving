@@ -50,6 +50,36 @@ export const AUDIT_SEED: AuditRow[] = [
     action: "open", outcome: "ok", reason: null,
     detail: { period: "2026-08-31…2026-09-06", people: 40 },
   },
+  /* The read that belongs in this trail rather than in the activity log: HRD
+     opening a workshop hand's KTP number for a BPJS registration. Note what
+     the detail says and what it does not — whose document and which kind,
+     never the number (D196). */
+  {
+    id: "aud_s10", at: iso(5 * 3_600_000),
+    actor_id: "usr_wulan", actor_email: "wulan@talaliving.com",
+    service: "hr", entity: "employee_document", entity_no: "B-009",
+    action: "reveal", outcome: "ok",
+    reason: null,
+    detail: { kind: "ktp", employee: "Karjo", by: "wulan@talaliving.com" },
+  },
+  {
+    id: "aud_s11", at: iso(6 * 3_600_000),
+    actor_id: "usr_wulan", actor_email: "wulan@talaliving.com",
+    service: "hr", entity: "employee_document", entity_no: "B-006",
+    action: "reveal", outcome: "ok",
+    reason: null,
+    detail: { kind: "kartu_keluarga", employee: "Sumiati", by: "wulan@talaliving.com" },
+  },
+  /* And the one that was stopped: Andi has no HR module, so opening somebody's
+     KTP is refused — and the refusal is a row like any other. */
+  {
+    id: "aud_s12", at: iso(7 * 3_600_000),
+    actor_id: "usr_andi", actor_email: "andi@talaliving.com",
+    service: "hr", entity: "employee_document", entity_no: "B-009",
+    action: "reveal", outcome: "refused",
+    reason: "tanpa akses modul hrd",
+    detail: { required: "hrd", acting_as: "andi@talaliving.com" },
+  },
   {
     id: "aud_s05", at: iso(30 * 3_600_000),
     actor_id: "usr_made", actor_email: "made@talaliving.com",
@@ -92,23 +122,23 @@ export const ACTIVITY_EVENTS: ActivityEvent[] = EVENTS.map(([h, actor_id, actor_
   actor_id, actor_email, kind, target, label,
 }));
 
-type D = [daysAgo: number, actor: string, email: string, name: string, events: number, changes: number, refusals: number, top: [string, number][]];
+type D = [daysAgo: number, actor: string, email: string, name: string, events: number, changes: number, refusals: number, reveals: number, top: [string, number][]];
 
 const DAILIES: D[] = [
-  [1, "usr_wulan", "wulan@talaliving.com", "Wulan Sari", 34, 11, 0, [["Absensi", 14], ["Payroll", 9], ["Cuti & izin", 6]]],
-  [1, "usr_putri", "putri@talaliving.com", "Putri Handayani", 41, 17, 0, [["Ledger", 19], ["Verifikasi", 12], ["Rekening koran", 5]]],
-  [1, "usr_andi", "andi@talaliving.com", "Andi Prasetyo", 22, 6, 2, [["Permintaan pembelian", 12], ["Tracker vendor", 7]]],
-  [2, "usr_wulan", "wulan@talaliving.com", "Wulan Sari", 28, 8, 0, [["Absensi", 15], ["Lembur", 7]]],
-  [2, "usr_made", "made@talaliving.com", "Made Suparta", 19, 9, 0, [["Stok bahan", 9], ["Papan produksi", 6]]],
-  [9, "usr_putri", "putri@talaliving.com", "Putri Handayani", 37, 14, 1, [["Ledger", 18], ["Kalender pembayaran", 9]]],
+  [1, "usr_wulan", "wulan@talaliving.com", "Wulan Sari", 34, 11, 0, 3, [["Absensi", 14], ["Payroll", 9], ["Cuti & izin", 6]]],
+  [1, "usr_putri", "putri@talaliving.com", "Putri Handayani", 41, 17, 0, 0, [["Ledger", 19], ["Verifikasi", 12], ["Rekening koran", 5]]],
+  [1, "usr_andi", "andi@talaliving.com", "Andi Prasetyo", 22, 6, 2, 0, [["Permintaan pembelian", 12], ["Tracker vendor", 7]]],
+  [2, "usr_wulan", "wulan@talaliving.com", "Wulan Sari", 28, 8, 0, 1, [["Absensi", 15], ["Lembur", 7]]],
+  [2, "usr_made", "made@talaliving.com", "Made Suparta", 19, 9, 0, 0, [["Stok bahan", 9], ["Papan produksi", 6]]],
+  [9, "usr_putri", "putri@talaliving.com", "Putri Handayani", 37, 14, 1, 0, [["Ledger", 18], ["Kalender pembayaran", 9]]],
   /* Just inside six months — the next sweep takes it. */
-  [178, "usr_evin", "evin@talaliving.com", "Evin Jonathan", 12, 3, 0, [["Papan rapat", 8]]],
+  [178, "usr_evin", "evin@talaliving.com", "Evin Jonathan", 12, 3, 0, 0, [["Papan rapat", 8]]],
   /* Past six months: due for deletion, and the screen says so. */
-  [186, "usr_anggun", "anggun@talaliving.com", "Anggun Lestari", 26, 12, 0, [["Verifikasi", 14], ["Ledger", 8]]],
+  [186, "usr_anggun", "anggun@talaliving.com", "Anggun Lestari", 26, 12, 0, 0, [["Verifikasi", 14], ["Ledger", 8]]],
 ];
 
 export const ACTIVITY_DAILY: ActivityDaily[] = DAILIES.map(
-  ([d, actor_id, actor_email, full_name, events, changes, refusals, top], i) => ({
+  ([d, actor_id, actor_email, full_name, events, changes, refusals, reveals, top], i) => ({
     id: `acd_${String(i + 1).padStart(3, "0")}`,
     day: day(d),
     actor_id, actor_email, full_name,
@@ -116,6 +146,6 @@ export const ACTIVITY_DAILY: ActivityDaily[] = DAILIES.map(
     first_at: `${day(d)}T08:${String(10 + i).padStart(2, "0")}:00+08:00`,
     last_at: `${day(d)}T17:${String(20 + i).padStart(2, "0")}:00+08:00`,
     top_screens: top.map(([label, count]) => ({ label, count })),
-    changes, refusals,
+    changes, refusals, reveals,
   }),
 );

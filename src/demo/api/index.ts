@@ -17,3 +17,4 @@ export * as production from "./production";
 export * as inventory from "./inventory";
 export * as marketing from "./marketing";
 export * as delivery from "./delivery";
+export * as assistant from "./assistant";

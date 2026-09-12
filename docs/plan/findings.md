@@ -2758,3 +2758,55 @@ and silently did nothing, because the file had grown and line 49 was no longer
 the version line. `sed` reported success each time. **An edit addressed by line
 number is an edit that stops being the edit you wrote the moment anything above
 it moves** — and unlike a failed string match, it fails quietly.
+
+---
+
+## F64 — the refusal that accused somebody of the wrong thing
+
+The router checks blocked capabilities first. The reasoning looked sound when
+it was written: somebody asking for a salary should be told it is refused, not
+quietly matched to something adjacent that happens to be allowed. Refuse
+early, fail closed.
+
+Then a production supervisor typed *SPK apa yang terlambat?* and John Lau
+answered:
+
+```
+⛔ Tertutup lewat prompt — tidak ada izin yang membukanya
+   Kehadiran per orang tidak dibaca lewat prompt…
+```
+
+`terlambat` is a person arriving late and a work order past its date. The
+attendance rule owned the word, the attendance rule ran first, and a
+legitimate question about the workshop came back as a refusal implying the
+asker had been trying to read staff records.
+
+**A false refusal is the most expensive mistake this router can make**, and
+worse than a false answer in one specific way: a wrong number is a mistake, a
+wrong refusal is an accusation. The person is told, in a red box, that they
+asked for something they did not ask for.
+
+So the rule inverts the intuition that produced the bug: **the blocked rules
+must be more precise than the open ones, not less.** Failing closed is right
+about the *consequence* of a match and wrong about the *threshold* for one.
+The attendance rule now carries the guards — `not: [spk, produksi, order,
+proyek, kirim, bayar, vendor]` — and the production rule requires its own noun
+rather than hoping to win a race it had already lost.
+
+Two smaller things surfaced in the same hour, both from the demo contradicting
+itself:
+
+**The suggestion chips did not work.** The opening panel offers *Barang apa
+yang stoknya menipis?* and the rule was written *stok menipis*. Substring
+matching, and Indonesian glues its possessive on: `stoknya` is not `stok`. The
+app's own worked example failing is the cheapest possible way to discover that
+a matcher is too literal — and the fix (strip a trailing `-nya`, lowercase,
+drop punctuation) is the sort of thing a language model makes irrelevant,
+which is precisely why the matcher lives in one file by itself.
+
+**Two different refusals rendered identically.** *Closed to everybody* and
+*your account lacks the grant* both came back under the same red header. The
+second is fixed by asking IT; the first never is. One shared header sends
+somebody to argue with the wrong person, so the turn now records **why** it
+refused and the panel says the two differently — red for the boundary, amber
+for the grant.

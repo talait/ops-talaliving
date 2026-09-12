@@ -20,6 +20,7 @@ changing one environment variable (ADR-001). None of them imports another.
 /api/v1/production/…      prod.*      work orders, stages, progress, deadlines
 /api/v1/inventory/…       inv.*       timber: logs, boards, kubikasi, cost per m³
 /api/v1/delivery/…        dlv.*       consignments, site visits, snags, handover
+/api/v1/assistant/…       asst.*      John Lau: tool catalogue, turns, drafts
 ```
 
 ## Service contract — the same for all eight
@@ -533,3 +534,31 @@ owns what came off the floor; this owns what happened to it afterwards.
 
 `project` module at `write` for every POST above. Building these screens found
 that nobody in the seed held it (F61).
+
+
+---
+
+## `assistant` — John Lau
+
+Turns a sentence into **named calls against the endpoints above**. It owns no
+data of its own beyond the conversation, and it is **not a module anybody can
+be granted**: it acts with the grants of the person typing (D219).
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/assistant/tools` | the whole catalogue, **including the closed entries**, each with its reason in full. The boundary is a page anybody can read, because a boundary nobody can check is not one (D218) |
+| GET | `/assistant/turns` | your own conversation only. Somebody else's questions are a record about them |
+| POST | `/assistant/ask` | `{prompt}`. Three gates in order: **is the tool reachable from a prompt at all** (blocked ones refuse here, before permissions, so the refusal reads the same for the CEO as for a new hire); **does this person hold the grant**; **is it a write** (then it is a draft). The reply separates `text` from `facts`, and every fact carries the tool that produced it and the screen showing the same number (D217) |
+| POST | `/assistant/drafts/{turn_id}/confirm` | `{fields}` — the payload **as shown and edited**, not as originally parsed. The grant is re-checked here: a draft is not a licence. Idempotent on the draft's key |
+| POST | `/assistant/drafts/{turn_id}/abandon` | nothing was written, and the turn says so |
+
+**Closed at every grant level** (D218): `hr.employee_files`, `hr.payroll`,
+`hr.attendance`, `it.audit`, `it.settings_write`. The first and the fourth are
+the owner's answer; the middle three are a default taken and marked as such in
+the catalogue, so reversing one is a single line.
+
+**A read through the prompt is a read.** It writes an `activity_events` row
+exactly as opening the screen would (D188). A *refused* ask writes an audit row
+recording that the boundary held — **without the prompt text**: asking for a
+salary is not misconduct, and a permanent record of the question would be a
+worse trail than none.

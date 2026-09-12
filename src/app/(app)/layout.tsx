@@ -6,6 +6,7 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 import { useSession } from "@/store/session";
 import { TourBar } from "@/components/tour-bar";
+import { JohnLauDock } from "@/components/john-lau/dock";
 
 /** The application shell.
  *
@@ -56,6 +57,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <Suspense fallback={null}>
         <TourBar />
       </Suspense>
+      {/* In the shell, not on a page: the point of it is to keep reading the
+          steps while you move to the screen they describe (D223). */}
+      <JohnLauDock />
     </div>
   );
 }

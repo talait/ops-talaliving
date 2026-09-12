@@ -570,6 +570,17 @@ about it are load-bearing:
   column in this schema that is, because it is the only one backing a claim
   about what somebody else agreed to (D211).
 
+**Schema `asst`** — `assistant_turns`: the prompt verbatim, what it was
+understood as, the tools it ran, the facts it returned, and the draft plus its
+outcome. Kept because *what did John Lau tell me on Tuesday* is asked after
+somebody has acted on the answer (D217). Two constraints matter:
+
+- a turn's **figures live in their own column**, never inside the prose, so a
+  number cannot be paraphrased on its way into a sentence;
+- the **tool catalogue is code, not rows.** A list of what an assistant may
+  reach is a security boundary, and a boundary stored as data somebody can
+  edit at runtime is a boundary with an UPDATE statement in it (D218).
+
 `core.audit_log` has no retention at all. It is the evidence behind every
 figure the system prints, and a purged audit row is a past number nobody can
 explain.

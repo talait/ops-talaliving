@@ -1,6 +1,7 @@
 import type {
   Session, User, ModuleGrant, Authority, ActivityEvent, ActivityDaily, AppSetting,
 } from "@/services/identity/contracts";
+import type { AssistantTurn } from "@/services/assistant/contracts";
 import type {
   Vendor, Uom, UomConversion, ItemCategory, Item, Project, ProjectLine,
   PrDocument, PrLine, PrApproval, PaymentRound, PaymentRoundLine,
@@ -167,6 +168,9 @@ export interface DemoState {
   /* The inventory of numbers somebody might think are theirs to change, with
      what each one does to figures that already exist (D214). */
   app_settings: AppSetting[];
+  /* John Lau's conversations. Kept because *what did it tell me on Tuesday*
+     is asked after somebody acted on the answer (D217). */
+  assistant_turns: AssistantTurn[];
   /** Append-only. A mistake is another move with a reason (A5, D171). */
   stock_moves: StockMove[];
 

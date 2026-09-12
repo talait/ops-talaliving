@@ -2,7 +2,7 @@ import {
   LayoutDashboard, Users, CalendarCheck, FileBadge, Wallet,
   ShoppingCart, ClipboardList, FileText, PackageCheck, Boxes, TreePine,
   Landmark, BookOpen, TrendingUp, PiggyBank, Receipt,
-  Megaphone, UserRound, Target, HandCoins,
+  Megaphone, UserRound, Target, HandCoins, MessageSquare,
   FolderKanban, Hammer, Truck, Wrench, Stamp,
   PencilRuler, ListTree, CalendarClock, CalendarRange,
   Cpu, ScrollText, Activity, UserCog, KeyRound, Clock, Scale,
@@ -131,6 +131,15 @@ export const NAV: NavSection[] = [
       { label: "Design", href: "/produksi/desain", icon: PencilRuler, permission: "production.read", badge: "new" },
       { label: "Products & BOM", href: "/produksi/bom", icon: ListTree, permission: "production.read", badge: "core" },
       { label: "Planning & Schedule", href: "/produksi/jadwal", icon: CalendarClock, permission: "production.read", badge: "new" },
+    ],
+  },
+  {
+    title: "John Lau",
+    icon: MessageSquare,
+    items: [
+      /* Readable by anyone who can open anything: the page is the boundary,
+         and a boundary nobody can read is a boundary nobody can check. */
+      { label: "Apa yang boleh ditanyakan", href: "/john-lau", icon: MessageSquare, permission: "dashboard.read", badge: "new" },
     ],
   },
   {

@@ -3375,3 +3375,39 @@ people learn to ignore warnings. Here a test manufactures a failure, and the
 risk is that people learn to ignore the test — or worse, "fix" the thing it
 accuses. **A check that can be wrong about the system is worse than no check,
 because it spends the credibility of every check beside it.**
+
+## F80 — four red rows describing one healthy payment
+
+The contribution audit compares what the roll of names says a scheme should
+cost against what actually went out. Built per scheme, it read:
+
+```
+BPJS Kesehatan     3 orang   seharusnya Rp 1.225.000   dibayar Rp 1.525.000  +300.000
+Jaminan Hari Tua   5 orang   seharusnya Rp 2.671.020   dibayar Rp 3.310.689  +639.669
+Jaminan Pensiun    2 orang   seharusnya Rp   526.269   dibayar Rp 0          belum ada baris kas
+Jaminan Kecelakaan 2 orang   seharusnya Rp    72.900   dibayar Rp 0          belum ada baris kas
+Jaminan Kematian   2 orang   seharusnya Rp    40.500   dibayar Rp 0          belum ada baris kas
+```
+
+Five rows, four of them wrong, and the money was fine. **One BPJS
+Ketenagakerjaan invoice pays all four TK schemes.** Tying the cash line to a
+single scheme meant JHT claimed the whole payment and looked like an overcharge,
+while JP, JKK and JKM looked unpaid.
+
+The model was wrong in a specific and repeatable way: `scheme_code` was
+singular because each scheme has one rate, one roll and one expected figure —
+all true — and none of that is the unit the **money** moves in. The invoice is.
+
+So the audit groups by the cash line and the field became a list. What falls
+out of the regrouping is worth more than the fix: the unknowns had to be made
+to dominate. If any scheme on an invoice has no rate for the month, the
+invoice's expected total is **unknown**, not the sum of the ones that do have
+rates — because that sum is a confident figure missing a part of itself, and it
+would be compared against a payment that includes the missing part.
+
+The lesson generalises past this screen. **Group a comparison by the thing being
+compared, not by the thing being computed.** Contributions are computed per
+scheme; they are paid per invoice; the audit is about payment. Getting that
+backwards produces rows that are individually defensible and collectively a
+lie — the same shape as F69, where three lists each correct made one bill
+appear twice.

@@ -1293,6 +1293,7 @@ erDiagram
     employees ||--o{ attendance_scans : "tapped"
     employees ||--o{ day_marks : "marked for"
     employees ||--o{ allowance_withholdings : "lost a day of it"
+    employees ||--o{ enrolments : "registered in"
     employees ||--o{ overtime_lines : "worked"
     overtime_sheets ||--o{ overtime_lines : "lists"
     attendance_imports ||--o{ attendance_scans : "brought in"
@@ -1313,6 +1314,27 @@ erDiagram
         boolean active
         date left_on "records stay (A5)"
         text note
+    }
+    contribution_rates {
+        uuid id PK
+        contribution_scheme_t scheme "BPJS_KESEHATAN|JHT|JP|JKK|JKM|PPH21"
+        date effective_from "dated like the pay rules (D173)"
+        numeric employer_percent
+        numeric employee_percent
+        bigint wage_ceiling "NULL = none. BPJS resets these annually"
+        boolean confirmed "false = a stand-in this system chose, not a checked figure (Q49)"
+        text note "where the number comes from - required"
+    }
+    enrolments {
+        uuid id PK
+        uuid employee_id FK
+        contribution_scheme_t scheme
+        text member_no "masked on read (D196)"
+        date enrolled_on
+        date ended_on "NULL = still covered. The row NEVER goes (A5)"
+        text ended_reason "required - read when the name is still on next month's bill"
+        bigint declared_base "the wage BPJS was registered against, where it differs"
+        uuid by FK
     }
     allowance_withholdings {
         uuid id PK

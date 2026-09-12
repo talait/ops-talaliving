@@ -38,6 +38,12 @@ import type { DocKind } from "@/services/documents/contracts";
 import { REQUEST_SUPPORT_KINDS } from "@/services/documents/contracts";
 import { getActiveLocale } from "@/lib/format";
 import { officeToday, officeDay } from "@/lib/office";
+/* HR owns who is enrolled; accounting owns what was paid. The audit is
+   composed here rather than in either service's tables, and it reads HR's
+   **derived roll** rather than its rows (ADR-004). */
+import { contributionRoll } from "./hr-derive";
+import type { ContributionScheme, ContributionAuditGroup } from "@/services/hr/contracts";
+import { SCHEME_LABEL, COMPUTED_SCHEMES } from "@/services/hr/contracts";
 import { settingNumber } from "./settings";
 
 /** One definition, read from settings — never a literal repeated in three
@@ -2124,6 +2130,97 @@ export function transactionCoverage(state: DemoState, trxNo: string): Transactio
  *  not an infinite increase, and flagging it as one is how an anomaly list
  *  teaches people to ignore anomaly lists.
  */
+/** Accounting's audit of one statutory scheme, for one month (D259).
+ *
+ *  The comparison the owner asked for and nothing more: **daftar nama terdaftar
+ *  × biaya per orang**, against the money that actually left. The expected
+ *  figure comes from HR's enrolment register, the paid figure from the cash
+ *  calendar line the scheme is tied to — so this screen and the bills screen
+ *  cannot disagree about what was paid, because it is one calculation seen
+ *  twice (D228).
+ *
+ *  `difference` is null while the expected figure is unknown. A difference
+ *  against an unknown is not zero, and an audit that prints a reassuring nil
+ *  where it has no roll of names is the most dangerous screen in the building.
+ */
+export function contributionAudit(
+  state: DemoState,
+  month: string,
+  now = new Date(),
+): ContributionAuditGroup[] {
+  const plan = cashPlan(state, now, firstOf(month));
+  const tolerance = settingNumber(state, "ops.contribution_tolerance_idr", 50_000);
+
+  /* Group the schemes the way the money is grouped: by the invoice that pays
+     them. A scheme nobody has tied to a line lands in its own group with a
+     null component, which is a different sentence from a mismatch. */
+  const groups = new Map<string, { componentId: string | null; schemes: ContributionScheme[] }>();
+  for (const scheme of COMPUTED_SCHEMES) {
+    const comp = state.cash_components.find((c) => c.active && c.scheme_codes.includes(scheme));
+    const key = comp?.id ?? `__none__${scheme}`;
+    const g = groups.get(key) ?? { componentId: comp?.id ?? null, schemes: [] };
+    g.schemes.push(scheme);
+    groups.set(key, g);
+  }
+
+  return [...groups.values()].map((g) => {
+    const rolls = g.schemes.map((s) => contributionRoll(state, s, month));
+    const component = g.componentId
+      ? state.cash_components.find((c) => c.id === g.componentId)
+      : undefined;
+    const row = component ? plan.rows.find((r) => r.component.id === component.id) : undefined;
+    const cell = row?.cells.find((c) => c.month === month);
+    const paid = cell?.actual ?? 0;
+    const planned = cell?.planned ?? null;
+    const trx_nos = cell?.events.flatMap((e) => e.trx_nos) ?? [];
+
+    /* Unknown wins over zero. If **any** scheme on the invoice has no rate for
+       the month, the invoice's expected total is unknown — adding up the ones
+       that do have rates would produce a confident figure missing a part of
+       itself. */
+    const anyUnknown = rolls.some((r) => r.rate === null);
+    const headcount = new Set(rolls.flatMap((r) => r.lines.map((l) => l.employee_id))).size;
+    const expected = anyUnknown || headcount === 0
+      ? null
+      : rolls.reduce((a, r) => a + r.expected_total, 0);
+    const difference = expected === null ? null : paid - expected;
+    const unusual = difference !== null && Math.abs(difference) > tolerance;
+
+    const names = g.schemes.map((s) => SCHEME_LABEL[s]).join(", ");
+    let verdict: string;
+    if (anyUnknown) {
+      const missing = rolls.filter((r) => r.rate === null).map((r) => SCHEME_LABEL[r.scheme]).join(", ");
+      verdict = `Tarif ${missing} untuk bulan ini belum ada, jadi total tagihan ini tidak bisa dihitung. Bukan nol — belum diketahui.`;
+    } else if (headcount === 0) {
+      verdict = `Belum ada satu nama pun terdaftar di ${names}. Selama daftarnya kosong, tagihan apa pun tidak punya pembanding.`;
+    } else if (!component) {
+      verdict = `${headcount} orang terdaftar, seharusnya ${formatRupiah(expected!)}. Belum ada baris kalender kas untuk ${names}, jadi yang dibayar belum bisa ditarik.`;
+    } else if (paid === 0) {
+      verdict = `${headcount} orang terdaftar, seharusnya ${formatRupiah(expected!)}. Belum ada pembayaran tercatat bulan ini.`;
+    } else if (difference! > tolerance) {
+      verdict = `Dibayar ${formatRupiah(paid)} untuk ${headcount} orang yang seharusnya ${formatRupiah(expected!)} — lebih ${formatRupiah(difference!)}. Ini bentuk kebocoran yang dimaksud: tagihan yang lebih besar dari daftar namanya.`;
+    } else if (difference! < -tolerance) {
+      verdict = `Dibayar ${formatRupiah(paid)}, kurang ${formatRupiah(-difference!)} dari yang seharusnya. Kurang bayar iuran menimbulkan denda.`;
+    } else {
+      verdict = `Cocok: ${headcount} orang, ${formatRupiah(paid)} dibayar terhadap ${formatRupiah(expected!)} yang diharapkan.`;
+    }
+
+    return {
+      component_id: component?.id ?? null,
+      component_name: component?.name ?? null,
+      schemes: g.schemes,
+      expected, planned, paid, difference, unusual, headcount, trx_nos, verdict,
+    };
+  });
+}
+
+/** Plain rupiah for a sentence. The formatter proper follows the locale
+ *  setting, and these strings are built in the service rather than the screen,
+ *  so they use one spelling that does not move underneath a saved verdict. */
+function formatRupiah(n: number): string {
+  return `Rp ${Math.round(n).toLocaleString("id-ID")}`;
+}
+
 export function monthlyBills(
   state: DemoState,
   month: string,

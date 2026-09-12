@@ -14,12 +14,14 @@ import type {
   PayslipDay, AdjustmentKind,
   PayRules, PayRuleSet, OvertimeTier, OvertimePart, HourlyBasis,
   AllowanceWithholding, AllowanceWithholdingView,
+  ContributionScheme, ContributionRate, Enrolment, ContributionLine, ContributionRoll,
   EmployeeFileView, EmployeeDocSlot, EmployeeDocument, EmployeeDocumentView,
   LeaveBalance, LeaveRequest, LeaveRequestView,
 } from "@/services/hr/contracts";
 import {
   ADJUSTMENT_LABEL, DAY_MARK_SHORT,
   EMPLOYEE_DOC_CHECKLIST, EMPLOYEE_DOC_LABEL, SENSITIVE_DOC_KINDS, DOC_NO_DIGITS, maskDocNo,
+  SCHEME_LABEL, COMPUTED_SCHEMES,
 } from "@/services/hr/contracts";
 
 const HOURS = 3_600_000;
@@ -533,6 +535,16 @@ export function payrollLine(
 
   const gross = base_pay + allowance_pay + overtime_pay - under.amount - late_deduction;
 
+  /* The statutory half, and **only where HRD has entered an enrolment** (D259).
+     No enrolment, no deduction — the data is the switch, so nobody is short a
+     rupiah because software was updated. PPh 21 is never in here: it is
+     recorded as an enrolment and not computed (D140). */
+  const contributions = contributionsForPerson(state, employee, from.slice(0, 7));
+  const contribution_total = contributions.reduce((a, c) => a + c.employee, 0);
+  if (contributions.length === 0 && state.enrolments.some((en) => en.employee_id === employee.id)) {
+    warnings.push("Terdaftar di iuran wajib tapi tidak ada tarif yang berlaku untuk periode ini — tidak dipotong apa pun.");
+  }
+
   /* A hand-typed lateness deduction with no lateness behind it.
    *
    *  Not blocked — HRD may know something the machine does not, and the machine
@@ -596,6 +608,11 @@ export function payrollLine(
        gross plus what a person decided, and there is now one place that
        says so. */
     net: gross + adjustment_total,
+    contributions,
+    contribution_total,
+    /* What actually reaches a pocket. Equal to `net` for everybody HRD has not
+       registered, which is most of this payroll and is said on the slip. */
+    take_home: gross + adjustment_total - contribution_total,
     late_minutes,
     late_days,
     late_deduction,
@@ -697,6 +714,169 @@ export interface HourlyRate {
   annual: number;
   /** Pokok + tunjangan, or pokok alone (D250). */
   includes_allowance: boolean;
+}
+
+/* ── Iuran wajib: siapa terdaftar, berapa tarifnya ────────────────────────── */
+
+/** The rate version in force for a month — the latest one whose date is on or
+ *  before the month's **first day**, the same rule the pay rules follow (D173).
+ *  Null where none covers it, and null is not zero: an invoice of nil for a
+ *  scheme everybody is enrolled in would be the quietest possible lie. */
+export function rateFor(
+  state: DemoState,
+  scheme: ContributionScheme,
+  month: string,
+): ContributionRate | null {
+  const first = `${month}-01`;
+  return state.contribution_rates
+    .filter((r) => r.scheme === scheme && r.effective_from <= first)
+    .sort((a, b) => b.effective_from.localeCompare(a.effective_from))[0] ?? null;
+}
+
+/** Was this person in this scheme at any point in this month?
+ *
+ *  **At any point**, not on the first of the month — because BPJS charges the
+ *  month, so somebody who joined on the 20th is on that month's invoice. The
+ *  line says which case it is rather than leaving a full month's charge looking
+ *  like a full month's cover. */
+function enrolledIn(month: string, en: Enrolment): boolean {
+  const first = `${month}-01`;
+  const last = `${month}-31`;
+  if (en.enrolled_on > last) return false;
+  if (en.ended_on && en.ended_on < first) return false;
+  return true;
+}
+
+/** What a person's contribution is computed on.
+ *
+ *  The declared wage where one was registered, otherwise the pay record —
+ *  **pokok + tunjangan** (D250), converted to a month for people paid by the
+ *  day so that a daily worker and a salaried one are measured the same way. */
+function contributionBase(state: DemoState, employee: Employee, month: string, en: Enrolment): {
+  base: number;
+  source: "declared" | "pay_record";
+} {
+  if (en.declared_base != null) return { base: en.declared_base, source: "declared" };
+  const rules = activePayRules(state, `${month}-01`).rules;
+  const days = Math.max(rules.effective_days_per_year, 1) / 12;
+  const monthly = employee.pay_basis === "monthly"
+    ? employee.base_rate + employee.allowance_rate * days
+    : employee.pay_basis === "daily"
+      ? (employee.base_rate + employee.allowance_rate) * days
+      : employee.base_rate * employee.daily_hours * days + employee.allowance_rate * days;
+  return { base: Math.round(monthly), source: "pay_record" };
+}
+
+/** One scheme, one month, name by name — the owner's own audit: *daftar nama
+ *  terdaftar × biaya per orang* (D259). */
+export function contributionRoll(
+  state: DemoState,
+  scheme: ContributionScheme,
+  month: string,
+): ContributionRoll {
+  const rate = rateFor(state, scheme, month);
+  const prev = previousMonthKey(month);
+
+  const build = (m: string): ContributionLine[] => {
+    const r = rateFor(state, scheme, m);
+    return state.enrolments
+      .filter((en) => en.scheme === scheme && enrolledIn(m, en))
+      .map((en) => {
+        const emp = state.employees.find((x) => x.id === en.employee_id);
+        if (!emp) return null;
+        const { base, source } = contributionBase(state, emp, m, en);
+        const ceiling = r?.wage_ceiling ?? null;
+        const capped = ceiling != null && base > ceiling;
+        const applied = capped ? ceiling : base;
+        /* No rate for the month means no figure, not a figure of zero. */
+        const employer = r ? Math.round((applied * r.employer_percent) / 100) : 0;
+        const employee = r ? Math.round((applied * r.employee_percent) / 100) : 0;
+        const joinedHere = en.enrolled_on.slice(0, 7) === m;
+        const leftHere = en.ended_on?.slice(0, 7) === m;
+        return {
+          employee_id: emp.id,
+          employee_no: emp.employee_no,
+          full_name: emp.full_name,
+          scheme,
+          member_no_masked: en.member_no ? maskDocNo(en.member_no) : null,
+          base: applied,
+          base_source: source,
+          capped_from: capped ? base : null,
+          employer, employee, total: employer + employee,
+          /* BPJS charges the month whole, so a part-month is a full charge with
+             a sentence rather than a pro-rated figure nobody agreed. */
+          partial_month: joinedHere
+            ? `Masuk ${en.enrolled_on} — iuran tetap sebulan penuh.`
+            : leftHere
+              ? `Berhenti ${en.ended_on} — bulan ini masih ditagih penuh.`
+              : null,
+        } satisfies ContributionLine;
+      })
+      .filter((x): x is ContributionLine => x !== null)
+      .sort((a, b) => a.full_name.localeCompare(b.full_name));
+  };
+
+  const lines = build(month);
+  const before = build(prev);
+  const beforeNames = new Set(before.map((l) => l.employee_id));
+  const nowNames = new Set(lines.map((l) => l.employee_id));
+
+  const employer_total = lines.reduce((a, l) => a + l.employer, 0);
+  const employee_total = lines.reduce((a, l) => a + l.employee, 0);
+
+  return {
+    scheme, month, rate, lines,
+    headcount: lines.length,
+    employer_total, employee_total,
+    expected_total: employer_total + employee_total,
+    /* Null where last month had nobody at all — a first month is not a
+       hundred-per-cent increase (D228's rule, in a new place). */
+    last_month_total: before.length === 0 ? null : before.reduce((a, l) => a + l.total, 0),
+    joined: lines.filter((l) => !beforeNames.has(l.employee_id)).map((l) => l.full_name),
+    left: before.filter((l) => !nowNames.has(l.employee_id)).map((l) => l.full_name),
+  };
+}
+
+/** Every computed scheme for a month, for the screen that shows them together.
+ *  `PPH21` is excluded deliberately — it is an enrolment, never a figure. */
+export function allRolls(state: DemoState, month: string): ContributionRoll[] {
+  return COMPUTED_SCHEMES.map((s) => contributionRoll(state, s, month));
+}
+
+/** The employee half, for one person, for the month a payroll period falls in.
+ *
+ *  Only the schemes they are **actually enrolled in**. A person with no
+ *  enrolment row gets no deduction, and that is the gate: nothing appears on
+ *  anybody's payslip because software was updated (D140, D259). */
+export function contributionsForPerson(
+  state: DemoState,
+  employee: Employee,
+  month: string,
+): PayrollLine["contributions"] {
+  return state.enrolments
+    .filter((en) => en.employee_id === employee.id
+      && COMPUTED_SCHEMES.includes(en.scheme)
+      && enrolledIn(month, en))
+    .map((en) => {
+      const r = rateFor(state, en.scheme, month);
+      if (!r) return null;
+      const { base } = contributionBase(state, employee, month, en);
+      const applied = r.wage_ceiling != null && base > r.wage_ceiling ? r.wage_ceiling : base;
+      return {
+        scheme: en.scheme,
+        label: SCHEME_LABEL[en.scheme],
+        base: applied,
+        employee: Math.round((applied * r.employee_percent) / 100),
+        employer: Math.round((applied * r.employer_percent) / 100),
+      };
+    })
+    .filter((x): x is NonNullable<typeof x> => x !== null)
+    .sort((a, b) => a.label.localeCompare(b.label));
+}
+
+function previousMonthKey(month: string): string {
+  const [y, m] = month.split("-").map(Number);
+  return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, "0")}`;
 }
 
 /** What one ordinary hour of this person is worth — **both answers**, and which

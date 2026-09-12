@@ -67,6 +67,12 @@ const TRX_SEEDS: TrxSeed[] = [
   ["trx-26-09-08_002", "2026-09-08", "acc_bca271", "OUT", 3_680_000, "SUPPLIERS", "vnd_12", "prj_25009", "KAYU SUNGKAI PAPAN 2CM, 20 lembar", "POSTED"],
   ["trx-26-09-09_001", "2026-09-09", "acc_bni325", "OUT", 31_200_000, "RECCURING - PAYROLL", null, null, "Weekly payroll W37", "COMPLETED"],
   ["trx-26-09-09_002", "2026-09-09", "acc_petty", "OUT", 96_000, "OFFICE", null, null, "Refreshments, production meeting", "COMPLETED"],
+  /* The two statutory invoices, paid. Kesehatan is deliberately paid at
+     AUGUST's amount — still charging for Made Suparta, who came off the roll on
+     31 August. That is the leak the owner described, and it is the case the
+     audit screen exists to catch (D259). */
+  ["trx-26-09-10_001", "2026-09-10", "acc_bni325", "OUT", 1_525_000, "RECCURING - PAYROLL", "vnd_50", null, "BPJS Kesehatan September", "COMPLETED"],
+  ["trx-26-09-10_002", "2026-09-10", "acc_bni325", "OUT", 3_310_689, "RECCURING - PAYROLL", "vnd_51", null, "BPJS Ketenagakerjaan September", "COMPLETED"],
   /* HADI GLASS, five payments across three orders — including one transfer on
    * 19 August that closes three of them at once (D97). */
   ["trx-26-07-01_001", "2026-07-01", "acc_bca271", "OUT", 9_562_500, "SUPPLIERS", "vnd_13", "prj_25007", "HADI GLASS — DP 50% po-26-06-30_01", "COMPLETED"],

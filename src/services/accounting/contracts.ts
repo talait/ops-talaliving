@@ -604,6 +604,19 @@ export interface CashComponent {
   type_code: TransactionTypeCode | null;
   vendor_id: string | null;
   account_id: string | null;
+  /** The statutory schemes this line pays — **a list**, because one BPJS
+   *  Ketenagakerjaan invoice covers JHT, JP, JKK and JKM at once (D259).
+   *  Modelling it as one scheme made the other three read *no cash line tied to
+   *  this scheme* while their money was plainly going out on the line next to
+   *  them.
+   *
+   *  It is what lets accounting hold **the roll of names against the money**:
+   *  the expected figure comes from HR's enrolment register, the paid figure
+   *  from this line's own actuals, and the two screens cannot disagree about
+   *  what was paid because there is one calculation seen twice (D228). A
+   *  public code, resolved at the seam — accounting does not reach into HR's
+   *  tables (ADR-004). */
+  scheme_codes: string[];
   /** `YYYY-MM`, inclusive. `ends_on` null means it keeps going. */
   starts_on: string;
   ends_on: string | null;

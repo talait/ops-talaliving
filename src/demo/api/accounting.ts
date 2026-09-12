@@ -1,5 +1,6 @@
 /** Implements `/api/v1/accounting` from `03-api.md`. */
 import { ok, invalid, notFound, type Result } from "@/services/_shared/envelope";
+import type { ContributionAuditGroup } from "@/services/hr/contracts";
 import type {
   Account, AccountBalance, Transaction, TransactionView, TransactionTypeCode,
   IncomingMoney, TransactionDetail, AllocationView, TransactionLine, TransactionType,
@@ -17,7 +18,7 @@ import {
   accountBalances, transactionView, allocatedTotal, inboxHealth, lineCoverage,
   lineStatus, fundings, fundingView, cashPlan, cashDue, cashMonthDetail,
   bankStatementView, bankStatementViews, documentCoverage, transactionCoverage,
-  monthlyBills,
+  monthlyBills, contributionAudit,
 } from "../derive";
 import { latency, actingUser, requireAuthority, requireModule, requireLevel, conflict, replayed, remember, paged } from "./_kit";
 import { PRIMARY_DOC_KINDS, type DocKind } from "@/services/documents/contracts";
@@ -957,6 +958,7 @@ export async function addComponent(
       type_code: input.type_code ?? null,
       vendor_id: input.vendor_id ?? null,
       account_id: input.account_id ?? null,
+      scheme_codes: [],
       starts_on: frequency === "once"
         ? (input.due_date ?? thisMonth).slice(0, 7)
         : input.starts_on ?? thisMonth,
@@ -1497,6 +1499,21 @@ export async function coverageForTransaction(trxNo: string): Promise<Result<Tran
 
 /** The month's bills as a worklist (D227). The same computation the calendar
  *  draws, in the shape the person paying them needs. */
+/** Accounting's audit of the statutory invoices (D259).
+ *
+ *  *Daftar nama terdaftar × biaya per orang*, against what actually left — the
+ *  owner's own sentence, built here because it spans two services: HR owns who
+ *  is enrolled, accounting owns what was paid, and neither reaches into the
+ *  other's tables (ADR-004).
+ */
+export async function getContributionAudit(month?: string): Promise<Result<ContributionAuditGroup[]>> {
+  await latency();
+  const denied = requireModule(SERVICE, "accounting");
+  if (denied) return denied;
+  const m = month || officeToday().slice(0, 7);
+  return ok(SERVICE, contributionAudit(getState(), m));
+}
+
 export async function getMonthlyBills(month?: string): Promise<Result<MonthlyBills>> {
   await latency();
   const denied = requireModule(SERVICE, "accounting");

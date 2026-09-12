@@ -68,6 +68,16 @@ export const APP_SETTINGS: AppSetting[] = [
     updated_by: null, updated_at: null,
   },
   {
+    key: "ops.contribution_tolerance_idr", group: "operations",
+    label: "Selisih iuran yang masih dianggap wajar",
+    help: "Beda antara tagihan BPJS dan hitungan dari daftar nama × tarif. Di atas ini ditandai untuk dikejar. Pembulatan BPJS biasanya beberapa ribu rupiah; selisih ratusan ribu biasanya nama yang sudah tidak ada (D259).",
+    kind: "number", value: "50000", default_value: "50000",
+    unit: "Rp", choices: null, reach: "forward",
+    locked_reason: null, managed_at: null,
+    affects: ["Audit iuran wajib"],
+    updated_by: null, updated_at: null,
+  },
+  {
     key: "ops.doc_expiry_warning_days", group: "operations",
     label: "Peringatan dokumen kedaluwarsa",
     help: "Berapa hari sebelum masa berlaku habis sebuah kontrak atau sertifikat mulai ditandai di Berkas 201.",

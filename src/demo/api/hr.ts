@@ -1,5 +1,5 @@
 /** Implements `/api/v1/hr` from `03-api.md`. */
-import { ok, invalid, notFound, noop, type Result } from "@/services/_shared/envelope";
+import { ok, invalid, notFound, noop, refused, type Result } from "@/services/_shared/envelope";
 import type {
   Employee, AttendanceScan, TimesheetDay, DayMark, DayMarkKind,
   OvertimeSheet, OvertimeLine, OvertimeSheetView, OvertimeKind,
@@ -8,8 +8,9 @@ import type {
   PayRules, PayRuleSet, PayRuleSetView,
   EmployeeDocKind, EmployeeFileView, DocNoSource, LeaveBalance, LeaveKind, LeaveRequestView, LeaveStatus,
   AllowanceWithholding, AllowanceWithholdingView,
+  ContributionScheme, ContributionRate, ContributionRoll, Enrolment,
 } from "@/services/hr/contracts";
-import { SENSITIVE_DOC_KINDS } from "@/services/hr/contracts";
+import { SENSITIVE_DOC_KINDS, SCHEME_LABEL, maskDocNo } from "@/services/hr/contracts";
 import type { DocKind } from "@/services/documents/contracts";
 import type { DemoState } from "../state";
 import { getState, apply, newId, nextDocNumber, writeAudit, writeOutbox } from "../store";
@@ -17,6 +18,7 @@ import {
   timesheet, timesheetDay, payrollView, overtimeStage, overtimePayable, sheetEvidence,
   activePayRules, payrollLine, payrollLineWith,
   employeeFile, leaveBalance, leaveRequestView, datesBetween,
+  contributionRoll, allRolls,
 } from "../hr-derive";
 import { latency, actingUser, requireModule, requireLevel, requireAuthority, conflict, replayed, remember } from "./_kit";
 import { officeToday as sharedOfficeToday } from "@/lib/office";
@@ -1480,6 +1482,260 @@ function officeToday(): string {
  *  read the rule book and write the next version of it. What the rules *do* is
  *  in `payrollLine`, which is the only place that should know.
  */
+/* ── Iuran wajib ──────────────────────────────────────────────────────────── */
+
+/** The roll of names for one scheme and month — HRD's register, read. */
+export async function getContributionRoll(
+  input: { scheme: ContributionScheme; month: string },
+): Promise<Result<ContributionRoll>> {
+  await latency();
+  const denied = requireModule(SERVICE, "payroll");
+  if (denied) return denied;
+  return ok(SERVICE, contributionRoll(getState(), input.scheme, input.month));
+}
+
+/** Every computed scheme for a month, for the screen that shows them together.
+ *  **Accounting may read this**, because auditing the invoice against the roll
+ *  is the whole point (owner, D259) — and what it gets back carries masked
+ *  member numbers and no pay figures beyond the contribution base, which is
+ *  what the invoice is computed on anyway. */
+export async function listContributionRolls(
+  month: string,
+): Promise<Result<ContributionRoll[]>> {
+  await latency();
+  const user = actingUser();
+  const mayRead = user.modules.some((m) => m.module === "payroll" || m.module === "hrd" || m.module === "accounting");
+  if (!mayRead) {
+    return refused(
+      SERVICE, "module_required",
+      "Daftar iuran dibaca HRD, payroll dan akunting. Akunting ada di sini karena memeriksa tagihan terhadap daftar namanya memang tugasnya.",
+      { required: "payroll|hrd|accounting", acting_as: user.email },
+    );
+  }
+  return ok(SERVICE, allRolls(getState(), month));
+}
+
+export async function listEnrolments(
+  opts: { employee_no?: string; scheme?: ContributionScheme } = {},
+): Promise<Result<(Enrolment & { employee_no: string; full_name: string; member_no_masked: string | null })[]>> {
+  await latency();
+  const denied = requireModule(SERVICE, "hrd");
+  if (denied) return denied;
+  const state = getState();
+  const emp = opts.employee_no
+    ? state.employees.find((e) => e.employee_no === opts.employee_no)
+    : null;
+  const rows = state.enrolments
+    .filter((en) => (!emp || en.employee_id === emp.id) && (!opts.scheme || en.scheme === opts.scheme))
+    .map((en) => {
+      const e = state.employees.find((x) => x.id === en.employee_id);
+      return {
+        ...en,
+        /* Masked on read, like every other card number (D196). The full number
+           needs an explicit reveal and the reveal is logged. */
+        member_no: null,
+        member_no_masked: en.member_no ? maskDocNo(en.member_no) : null,
+        employee_no: e?.employee_no ?? "—",
+        full_name: e?.full_name ?? "—",
+      };
+    })
+    .sort((a, b) => a.full_name.localeCompare(b.full_name) || a.scheme.localeCompare(b.scheme));
+  return ok(SERVICE, rows);
+}
+
+/** Registering somebody. **HRD's act** (owner, D259). */
+export async function enrol(
+  input: {
+    employee_no: string;
+    scheme: ContributionScheme;
+    member_no?: string | null;
+    enrolled_on: string;
+    declared_base?: number | null;
+    note?: string | null;
+  },
+  idempotencyKey?: string,
+): Promise<Result<Enrolment>> {
+  await latency();
+  const cached = replayed<Enrolment>(SERVICE, "enrol", idempotencyKey);
+  if (cached) return cached;
+
+  const denied = requireModule(SERVICE, "hrd");
+  if (denied) return denied;
+
+  const state = getState();
+  const emp = state.employees.find((e) => e.employee_no === input.employee_no);
+  if (!emp) return notFound(SERVICE, "employee_not_found", `No employee ${input.employee_no}.`);
+  if (!input.enrolled_on) {
+    return invalid(
+      SERVICE, "date_required",
+      "Sejak kapan dia terdaftar? Tanpa tanggal, tidak ada yang bisa menjawab apakah bulan Maret dia sudah ditanggung.",
+      { field: "enrolled_on" },
+    );
+  }
+  if (input.enrolled_on < emp.joined_on) {
+    return invalid(
+      SERVICE, "before_joining",
+      `${emp.full_name} baru masuk ${emp.joined_on}; tidak bisa terdaftar sejak ${input.enrolled_on}.`,
+      { field: "enrolled_on" },
+    );
+  }
+  if (input.declared_base != null && input.declared_base <= 0) {
+    return invalid(SERVICE, "base_invalid", "Upah yang didaftarkan harus lebih dari nol.", { field: "declared_base" });
+  }
+  const open = state.enrolments.find(
+    (en) => en.employee_id === emp.id && en.scheme === input.scheme && en.ended_on === null,
+  );
+  if (open) {
+    return conflict(
+      SERVICE, "already_enrolled",
+      `${emp.full_name} sudah terdaftar di ${SCHEME_LABEL[input.scheme]} sejak ${open.enrolled_on}. Akhiri dulu yang lama kalau memang didaftarkan ulang.`,
+    );
+  }
+
+  const user = actingUser();
+  let row: Enrolment | null = null;
+  apply((draft) => {
+    row = {
+      id: newId("enr"),
+      employee_id: emp.id, scheme: input.scheme,
+      member_no: input.member_no?.trim() || null,
+      enrolled_on: input.enrolled_on,
+      ended_on: null, ended_reason: null,
+      declared_base: input.declared_base ?? null,
+      note: input.note?.trim() || null,
+      by: user.id, at: new Date().toISOString(),
+    };
+    draft.enrolments.push(row);
+    writeAudit(draft, {
+      service: SERVICE, entity: "enrolment", entity_no: `${emp.employee_no}/${input.scheme}`,
+      action: "enrol", outcome: "ok", reason: input.note?.trim() || null,
+      detail: { from: input.enrolled_on, declared_base: input.declared_base ?? null, by: user.email },
+    });
+  });
+  const saved = row as unknown as Enrolment;
+  remember(SERVICE, "enrol", idempotencyKey, saved);
+  return ok(SERVICE, saved);
+}
+
+/** Taking somebody off. **The row stays** — *was he covered in July* is the
+ *  question this register exists to answer (A5) — and the reason is required,
+ *  because an invoice that keeps charging for somebody who came off the roll is
+ *  the leak the owner described and the sentence is how it gets traced. */
+export async function endEnrolment(
+  input: { id: string; ended_on: string; reason: string },
+): Promise<Result<Enrolment>> {
+  await latency();
+  const denied = requireModule(SERVICE, "hrd");
+  if (denied) return denied;
+
+  if (!input.reason.trim()) {
+    return invalid(
+      SERVICE, "reason_required",
+      "Kenapa berhenti? Ini kalimat yang dibaca akunting waktu tagihan bulan depan ternyata masih memuat namanya.",
+      { field: "reason" },
+    );
+  }
+  const state = getState();
+  const found = state.enrolments.find((en) => en.id === input.id);
+  if (!found) return notFound(SERVICE, "enrolment_not_found", `No enrolment ${input.id}.`);
+  if (found.ended_on) {
+    return noop(SERVICE, found);
+  }
+  if (input.ended_on < found.enrolled_on) {
+    return invalid(
+      SERVICE, "before_enrolment",
+      `Tanggal berhenti ${input.ended_on} lebih awal dari tanggal daftar ${found.enrolled_on}.`,
+      { field: "ended_on" },
+    );
+  }
+
+  const user = actingUser();
+  apply((draft) => {
+    const row = draft.enrolments.find((en) => en.id === input.id);
+    if (!row) return;
+    row.ended_on = input.ended_on;
+    row.ended_reason = input.reason.trim();
+    const emp = draft.employees.find((e) => e.id === row.employee_id);
+    writeAudit(draft, {
+      service: SERVICE, entity: "enrolment",
+      entity_no: `${emp?.employee_no ?? row.employee_id}/${row.scheme}`,
+      action: "end", outcome: "ok", reason: input.reason.trim(),
+      detail: { ended_on: input.ended_on, by: user.email },
+    });
+  });
+  return ok(SERVICE, getState().enrolments.find((en) => en.id === input.id)!);
+}
+
+export async function listContributionRates(): Promise<Result<ContributionRate[]>> {
+  await latency();
+  const denied = requireModule(SERVICE, "payroll");
+  if (denied) return denied;
+  return ok(SERVICE, [...getState().contribution_rates]
+    .sort((a, b) => a.scheme.localeCompare(b.scheme) || b.effective_from.localeCompare(a.effective_from)));
+}
+
+/** A new dated rate. **IT writes, HRD reads** — the same split as the pay rule
+ *  book (D193), for the same reason: one number here moves every payslip and
+ *  every invoice at once. */
+export async function saveContributionRate(
+  input: {
+    scheme: ContributionScheme;
+    effective_from: string;
+    employer_percent: number;
+    employee_percent: number;
+    wage_ceiling?: number | null;
+    note: string;
+    confirmed?: boolean;
+  },
+): Promise<Result<ContributionRate>> {
+  await latency();
+  const denied = requireLevel(SERVICE, "it", "write");
+  if (denied) return denied;
+
+  if (!input.note.trim()) {
+    return invalid(SERVICE, "note_required", "Dari mana angkanya? Tarif tanpa sumber tidak bisa diperiksa.", { field: "note" });
+  }
+  if (input.employer_percent < 0 || input.employee_percent < 0) {
+    return invalid(SERVICE, "percent_invalid", "Persentase tidak bisa negatif.", { field: "employer_percent" });
+  }
+  const state = getState();
+  const latest = state.contribution_rates
+    .filter((r) => r.scheme === input.scheme)
+    .sort((a, b) => b.effective_from.localeCompare(a.effective_from))[0];
+  if (latest && input.effective_from <= latest.effective_from) {
+    return conflict(
+      SERVICE, "not_forward",
+      `Versi terakhir ${SCHEME_LABEL[input.scheme]} berlaku sejak ${latest.effective_from}. Versi baru harus mulai setelahnya — iuran bulan lalu dihitung dengan tarif bulan lalu.`,
+    );
+  }
+
+  const user = actingUser();
+  let row: ContributionRate | null = null;
+  apply((draft) => {
+    row = {
+      id: newId("crt"), scheme: input.scheme,
+      effective_from: input.effective_from,
+      employer_percent: input.employer_percent,
+      employee_percent: input.employee_percent,
+      wage_ceiling: input.wage_ceiling ?? null,
+      note: input.note.trim(),
+      confirmed: input.confirmed ?? false,
+      created_by: user.id, created_at: new Date().toISOString(),
+    };
+    draft.contribution_rates.push(row);
+    writeAudit(draft, {
+      service: SERVICE, entity: "contribution_rate", entity_no: input.scheme,
+      action: "create_version", outcome: "ok", reason: input.note.trim(),
+      detail: {
+        from: input.effective_from,
+        employer: input.employer_percent, employee: input.employee_percent,
+        by: user.email,
+      },
+    });
+  });
+  return ok(SERVICE, row as unknown as ContributionRate);
+}
+
 export async function listPayRules(): Promise<Result<PayRuleSetView[]>> {
   await latency();
   const state = getState();

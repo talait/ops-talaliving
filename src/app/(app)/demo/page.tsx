@@ -12,7 +12,7 @@ import { DataTable, type Column } from "@/components/ui/data-table";
 import { formatIDR } from "@/lib/format";
 import { useDemo, useDemoReset, useActingUser } from "@/demo/provider";
 import { accountBalances, prLineView, poStatus, inboxHealth } from "@/demo/derive";
-import { procurement, accounting, identity, production, isOk } from "@/demo/api";
+import { procurement, accounting, identity, production, hr, isOk } from "@/demo/api";
 import { officeToday } from "@/lib/office";
 import type { LineStatus } from "@/services/procurement/contracts";
 import { useToast } from "@/store/toast";
@@ -222,6 +222,28 @@ export default function DemoDiagnosticsPage() {
         ? `${walked.error.status} ${walked.error.code}`
         : `${walked.data.lines.length} baris, ${walked.data.sub_assemblies.length} sub-rakitan`,
       pass: hasSubMaterial,
+    });
+
+    /* The enrolment register (D259). HRD's to write; the register refuses a
+       second open row for the same person and scheme, because two would make
+       *is he covered* ambiguous. */
+    await identity.actAs("usr_wulan");
+    const twice = await hr.enrol({
+      employee_no: "K-004", scheme: "BPJS_KESEHATAN", enrolled_on: "2026-09-01",
+    });
+    results.push({
+      name: "D259 — enrolling somebody who is already in that scheme",
+      expect: "409 already_enrolled",
+      got: twice.error ? `${twice.error.status} ${twice.error.code}` : "accepted",
+      pass: twice.error?.status === 409 && twice.error.code === "already_enrolled",
+    });
+
+    const noReason = await hr.endEnrolment({ id: "enr_001", ended_on: "2026-09-30", reason: "" });
+    results.push({
+      name: "D259 — ending an enrolment with no reason",
+      expect: "422 reason_required",
+      got: noReason.error ? `${noReason.error.status} ${noReason.error.code}` : "accepted",
+      pass: noReason.error?.status === 422 && noReason.error.code === "reason_required",
     });
 
     await identity.actAs(original);

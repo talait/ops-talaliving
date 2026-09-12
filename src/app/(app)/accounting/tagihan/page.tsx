@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Receipt, AlertTriangle, ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Link2 } from "lucide-react";
+import { Receipt, AlertTriangle, ChevronLeft, ChevronRight, ShieldCheck, TrendingUp, TrendingDown, Link2 } from "lucide-react";
 import Link from "next/link";
 import { Badge, Button, Card, CardHeader, PageHeader } from "@/components/ui/primitives";
 import { Loaded, SourceBadge, useLoad } from "@/components/ui/loaded";
@@ -10,6 +10,7 @@ import { officeToday } from "@/lib/office";
 import { cn } from "@/lib/cn";
 import { accounting } from "@/demo/api";
 import type { CashCellState, MonthlyBill } from "@/services/accounting/contracts";
+import { SCHEME_LABEL } from "@/services/hr/contracts";
 
 const STATE_TONE: Record<CashCellState, "red" | "amber" | "green" | "slate" | "brand"> = {
   OVERDUE: "red", DUE: "amber", PAID: "green", PARTIAL: "amber", PLANNED: "slate", SKIPPED: "slate",
@@ -52,6 +53,7 @@ function shift(month: string, by: number): string {
 export default function BillsPage() {
   const [month, setMonth] = useState(() => officeToday().slice(0, 7));
   const [bills, reload] = useLoad(() => accounting.getMonthlyBills(month), [month]);
+  const [audit, reloadAudit] = useLoad(() => accounting.getContributionAudit(month), [month]);
   const isCurrent = month === officeToday().slice(0, 7);
 
   return (
@@ -117,6 +119,75 @@ export default function BillsPage() {
                   </span>
                 </p>
               )}
+
+              {/* The owner's own audit, on the screen where *what must I pay*
+                  already lives: names × rate against the money that left
+                  (D259). */}
+              <Loaded state={audit} onRetry={reloadAudit} skeletonRows={2}>
+                {(rows) => {
+                  const live = rows.filter((r) => r.headcount > 0 || r.paid > 0);
+                  if (live.length === 0) return null;
+                  const flagged = live.filter((r) => r.unusual);
+                  return (
+                    <Card className="mb-4">
+                      <CardHeader
+                        title="Iuran wajib — tagihan vs daftar nama"
+                        subtitle="Yang seharusnya dihitung dari karyawan yang terdaftar × tarifnya, bukan dari angka bulan lalu. Angka “dibayar” berasal dari baris kalender kas yang sama dengan daftar di bawah."
+                        icon={ShieldCheck}
+                        action={flagged.length > 0
+                          ? <Badge tone="red">{flagged.length} perlu dikejar</Badge>
+                          : <Badge tone="green">cocok</Badge>}
+                      />
+                      <ul className="divide-y divide-slate-100">
+                        {live.map((r) => (
+                          <li key={r.schemes.join()} className="px-5 py-2.5 text-[13px]">
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                              <span className="min-w-[180px] flex-1">
+                                <span className="block font-medium text-slate-800">
+                                  {r.component_name ?? r.schemes.map((x) => SCHEME_LABEL[x]).join(", ")}
+                                </span>
+                                {/* One invoice can pay four schemes; naming them
+                                    stops the total looking like it came from
+                                    one (D259). */}
+                                {r.component_name && r.schemes.length > 1 && (
+                                  <span className="block text-[11px] text-slate-400">
+                                    {r.schemes.map((x) => SCHEME_LABEL[x].replace("BPJS TK — ", "")).join(" · ")}
+                                  </span>
+                                )}
+                              </span>
+                              <span className="whitespace-nowrap text-[12px] text-slate-500">
+                                {r.headcount} orang
+                              </span>
+                              <span className="whitespace-nowrap tabular-nums text-slate-700">
+                                seharusnya {r.expected == null ? "—" : formatIDR(r.expected)}
+                              </span>
+                              <span className="whitespace-nowrap tabular-nums text-slate-700">
+                                dibayar {formatIDR(r.paid)}
+                              </span>
+                              {r.difference != null && r.difference !== 0 && (
+                                <Badge tone={r.unusual ? "red" : "slate"}>
+                                  {r.difference > 0 ? "+" : "−"}{formatIDR(Math.abs(r.difference))}
+                                </Badge>
+                              )}
+                            </div>
+                            <p className={cn("mt-0.5 text-[12px]",
+                              r.unusual ? "text-rose-800" : "text-slate-500")}>
+                              {r.verdict}
+                            </p>
+                          </li>
+                        ))}
+                      </ul>
+                      <p className="border-t border-slate-100 px-5 py-2 text-[11px] text-slate-500">
+                        Daftar namanya ada di{" "}
+                        <Link href="/hrd/iuran" className="font-medium text-brand-700 hover:underline">
+                          HRD · iuran wajib
+                        </Link>
+                        . PPh 21 tidak ada di sini: ia tercatat sebagai pendaftaran dan tidak pernah dihitung.
+                      </p>
+                    </Card>
+                  );
+                }}
+              </Loaded>
 
               {overdue.length > 0 && (
                 <Section title={`${overdue.length} lewat tempo`} icon={AlertTriangle} rows={overdue} tone="red" />

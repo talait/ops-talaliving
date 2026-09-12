@@ -352,15 +352,42 @@ function Slip({
             </tr>
           ))}
 
+          {/* The statutory half, and **only** where HRD registered this person
+              (D259). Nothing appears here because software was updated. */}
+          {/* Only the schemes that actually take something out of this wage.
+              JKK and JKM are paid entirely by the company, and printing them as
+              a deduction of *(Rp 0)* reads as a deduction rather than as cover
+              that costs the person nothing. They are named underneath instead. */}
+          {l.contributions.filter((c) => c.employee > 0).map((c) => (
+            <tr key={c.scheme}>
+              <td className="py-0.5">
+                {c.label}
+                <span className="block text-[8px] text-slate-500">
+                  Dari dasar upah {formatIDR(c.base)} · bagian perusahaan {formatIDR(c.employer)}
+                </span>
+              </td>
+              <td className="py-0.5 text-right tabular-nums">({formatIDR(c.employee)})</td>
+            </tr>
+          ))}
           <tr className="border-t-2 border-slate-900">
             <td className="py-1 text-[11px] font-bold">Diterima</td>
-            <td className="py-1 text-right text-[12px] font-bold tabular-nums">{formatIDR(l.net)}</td>
+            <td className="py-1 text-right text-[12px] font-bold tabular-nums">{formatIDR(l.take_home)}</td>
           </tr>
         </tbody>
       </table>
 
       <p className="mt-1 text-[8px] leading-snug text-slate-500">
-        Bruto sebelum potongan BPJS dan PPh 21, yang belum dihitung di sistem ini.
+        {l.contributions.length === 0
+          ? "Belum ada potongan iuran wajib: orang ini belum terdaftar di register BPJS. Yang belum ada kelihatan di slip; yang salah ditemukan karyawan yang uangnya kurang."
+          : "PPh 21 belum dihitung di sistem ini — tercatat sebagai pendaftaran saja."}
+        {/* What the company pays on this person's behalf and never takes off
+            their wage. Worth printing: it is part of what the job is worth, and
+            most people have never been told it exists. */}
+        {l.contributions.some((c) => c.employee === 0) && (
+          ` Perusahaan juga membayar ${l.contributions.filter((c) => c.employee === 0)
+            .map((c) => `${c.label.replace("BPJS TK — ", "")} ${formatIDR(c.employer)}`)
+            .join(" dan ")} — tidak dipotong dari gaji.`
+        )}
         {l.days_unpaid > 0 && ` ${formatNumber(l.days_unpaid)} hari tercatat tanpa dibayar.`}
         {" "}Satu jam biasa {formatIDR(l.hourly)} —{" "}
         {l.hourly_basis === "company"

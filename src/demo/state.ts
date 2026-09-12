@@ -24,7 +24,7 @@ import type {
 import type {
   Employee, AttendanceScan, DayMark, OvertimeSheet, OvertimeLine, PayrollRun,
   PayrollAdjustment, PayRuleSet, EmployeeDocument, LeaveRequest,
-  AllowanceWithholding,
+  AllowanceWithholding, ContributionRate, Enrolment,
 } from "@/services/hr/contracts";
 import type {
   WorkOrder, ProgressEntry, Product, BomComponent, BomRevision,
@@ -149,6 +149,12 @@ export interface DemoState {
   /** One person, one day, no tunjangan — HRD's decision, kept apart from what
    *  the day itself was (D250). */
   allowance_withholdings: AllowanceWithholding[];
+  /** The public percentages, dated — a contribution recomputed for March uses
+   *  March's rate (D259). */
+  contribution_rates: ContributionRate[];
+  /** Who is in which scheme, from when. HRD's to enter, accounting's to audit
+   *  (owner, D259). Append-only: ending an enrolment sets `ended_on`. */
+  enrolments: Enrolment[];
 
   /* --- production ------------------------------------------------- */
   /** What is being made, in what quantity, by when (D148). */

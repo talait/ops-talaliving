@@ -339,6 +339,19 @@ export const VENDORS: Vendor[] = [
   { id: "vnd_12", code: "V-0012", name: "CV KAYU MANIS SELATAN", aka: [], is_curated: false,
     phone: null, address: null, pic_name: null, pic_phone: null,
     bank_account: null, bank_account_secondary: null, npwp: null, supplied_categories: ["kayu", "panel"] },
+  /* The two statutory bodies. Counterparties rather than suppliers — they are
+     named here so the BPJS calendar lines can claim their own payments before
+     the plain payroll category sweeps them up (D110, D259). */
+  { id: "vnd_50", code: "V-0050", name: "BPJS KESEHATAN", aka: ["BPJS KES"], is_curated: true,
+    phone: "1500400", address: "Kantor Cabang Denpasar",
+    pic_name: null, pic_phone: null,
+    bank_account: null, bank_account_secondary: null,
+    npwp: null, supplied_categories: [] },
+  { id: "vnd_51", code: "V-0051", name: "BPJS KETENAGAKERJAAN", aka: ["BPJS TK", "BPJSTK"], is_curated: true,
+    phone: "175", address: "Kantor Cabang Denpasar",
+    pic_name: null, pic_phone: null,
+    bank_account: null, bank_account_secondary: null,
+    npwp: null, supplied_categories: [] },
 ];
 
 type ItemSeed = [string, string, string, Item["base_uom"], number | null, number | null, string | null, boolean, Item["kind"]];

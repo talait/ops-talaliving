@@ -280,6 +280,176 @@ export interface OvertimeLine {
   form_amount: number | null;
 }
 
+/* ------------------------------------------------------------------ */
+/* Statutory contributions: who is enrolled, at what rate               */
+/* ------------------------------------------------------------------ */
+
+/** The schemes this business is in.
+ *
+ *  Q30 asked *which statutory deductions apply, and at what rate*. The owner's
+ *  answer redefined the question, and redefined it better: **HRD enters who is
+ *  enrolled, accounting audits it** — because the rates are public and the roll
+ *  of names is not, and the leak he described is people who have left still
+ *  being paid for (D259).
+ *
+ *  `PPH21` is here as an **enrolment only**. Recorded — who has an NPWP, which
+ *  PTKP bracket — and **not computed**: PPh 21 is progressive over TER tables
+ *  nobody has given us, and D140's rule holds exactly as it did. A missing
+ *  deduction is obvious on a payslip; a wrong one is discovered by an employee
+ *  who is short.
+ */
+export type ContributionScheme =
+  | "BPJS_KESEHATAN"
+  | "JHT"
+  | "JP"
+  | "JKK"
+  | "JKM"
+  | "PPH21";
+
+export const SCHEME_LABEL: Record<ContributionScheme, string> = {
+  BPJS_KESEHATAN: "BPJS Kesehatan",
+  JHT: "BPJS TK — Jaminan Hari Tua",
+  JP: "BPJS TK — Jaminan Pensiun",
+  JKK: "BPJS TK — Jaminan Kecelakaan Kerja",
+  JKM: "BPJS TK — Jaminan Kematian",
+  PPH21: "PPh 21",
+};
+
+/** Schemes whose contribution this system will compute. `PPH21` is not one of
+ *  them, and the screens say so rather than showing a blank column. */
+export const COMPUTED_SCHEMES: ContributionScheme[] = [
+  "BPJS_KESEHATAN", "JHT", "JP", "JKK", "JKM",
+];
+
+/** One dated version of a scheme's rate.
+ *
+ *  Dated for the same reason the pay rules are (D173): a contribution
+ *  recomputed for March must use March's percentage. The percentages are
+ *  public; the **risk class behind JKK is not** — it is set per employer by
+ *  BPJS between 0,24% and 1,74%, and the seed carries a class-II figure marked
+ *  as needing confirmation rather than a number presented as fact (Q49).
+ */
+export interface ContributionRate {
+  id: string;
+  scheme: ContributionScheme;
+  effective_from: string;
+  /** Percent of the base. The employer's share is a company cost; the
+   *  employee's is a deduction on the payslip. Kept apart because they are two
+   *  different facts, and the invoice is the sum of both. */
+  employer_percent: number;
+  employee_percent: number;
+  /** Upper limit on the base, where the regulation sets one. Null means none.
+   *  BPJS resets these annually, so the screen says when it was last set. */
+  wage_ceiling: number | null;
+  note: string;
+  /** Set where the figure is the published national one, false where it is a
+   *  stand-in this system chose and somebody has to confirm. The screen shows
+   *  the difference — a rate nobody has checked must not look like one that
+   *  has been. */
+  confirmed: boolean;
+  created_by: string;
+  created_at: string;
+}
+
+/** One person, in one scheme, from one date.
+ *
+ *  **HRD's to enter** (owner). Append-only like everything else that records
+ *  something that happened: ending an enrolment sets `ended_on`, it does not
+ *  delete the row, because *was he covered in March* is the question this
+ *  exists to answer (A5).
+ */
+export interface Enrolment {
+  id: string;
+  employee_id: string;
+  scheme: ContributionScheme;
+  /** The number on the card. Sensitive like the 201 documents, so it is
+   *  **masked on read** and revealing it is logged (D196). */
+  member_no: string | null;
+  enrolled_on: string;
+  ended_on: string | null;
+  ended_reason: string | null;
+  /** The wage the contribution is computed on, where it differs from what the
+   *  person is actually paid.
+   *
+   *  It differs more often than not, and that is the point of the field rather
+   *  than an edge case: BPJS is registered against a **declared** wage, and the
+   *  gap between the declared wage and the real one is a thing the business
+   *  should be able to see rather than discover. Null means *use the pay
+   *  record* — pokok + tunjangan (D250). */
+  declared_base: number | null;
+  note: string | null;
+  by: string;
+  at: string;
+}
+
+/** What one person costs one scheme in one month. Computed on read (A3). */
+export interface ContributionLine {
+  employee_id: string;
+  employee_no: string;
+  full_name: string;
+  scheme: ContributionScheme;
+  /** Masked. The full number needs an explicit reveal, which is logged. */
+  member_no_masked: string | null;
+  /** What the contribution was computed on, and whether a ceiling cut it. */
+  base: number;
+  base_source: "declared" | "pay_record";
+  capped_from: number | null;
+  employer: number;
+  employee: number;
+  total: number;
+  /** Enrolled part-way through the month, or ended part-way through it. The
+   *  contribution is **not** pro-rated — BPJS charges the month — and the line
+   *  says so rather than quietly showing a full month as though the person had
+   *  been there for all of it. */
+  partial_month: string | null;
+}
+
+/** One scheme, one month: the roll of names, and what it should come to. */
+export interface ContributionRoll {
+  scheme: ContributionScheme;
+  month: string;
+  /** Null when no rate version covers this month — and null is not zero. The
+   *  screen says the rate is missing rather than showing an invoice of nil. */
+  rate: ContributionRate | null;
+  lines: ContributionLine[];
+  headcount: number;
+  employer_total: number;
+  employee_total: number;
+  /** What the invoice should say: employer + employee. */
+  expected_total: number;
+  /** Last month's figure and the names behind the change — the audit the owner
+   *  actually described: *bandingkan dengan transaksi sebelumnya* (D259). */
+  last_month_total: number | null;
+  joined: string[];
+  left: string[];
+}
+
+/** One **invoice**, audited: the schemes it pays, what the roll of names says
+ *  they should come to, and what actually left.
+ *
+ *  Grouped by the cash line rather than by scheme, because one BPJS
+ *  Ketenagakerjaan invoice covers JHT, JP, JKK and JKM at once. Auditing per
+ *  scheme made the other three read *no cash line tied to this* while their
+ *  money was going out on the line beside them — four red rows describing one
+ *  healthy payment (D259).
+ */
+export interface ContributionAuditGroup {
+  /** Null for schemes with nobody's invoice behind them yet. */
+  component_id: string | null;
+  component_name: string | null;
+  schemes: ContributionScheme[];
+  expected: number | null;
+  planned: number | null;
+  paid: number;
+  difference: number | null;
+  unusual: boolean;
+  /** Distinct people across the schemes on this invoice — a person in JHT and
+   *  JP is one person, not two. */
+  headcount: number;
+  trx_nos: string[];
+  verdict: string;
+}
+
 /** Something added to or taken off a payslip by a person, with a reason.
  *
  *  Distinct from the statutory deductions this system still refuses to invent
@@ -900,6 +1070,26 @@ export interface PayrollLine {
   /** `gross + adjustment_total`. Still before any statutory deduction, which
    *  this system does not compute (D140). */
   net: number;
+  /** The statutory deductions — the **employee half only**, and only for the
+   *  schemes this person is actually enrolled in (D259). Empty where HRD has
+   *  entered no enrolment, which is the honest state of most of this payroll
+   *  and is said on the slip rather than left as a blank line.
+   *
+   *  D140 still stands where it applies: nothing here is invented. A person
+   *  with no enrolment row gets no deduction, and PPh 21 is recorded as an
+   *  enrolment and never computed. */
+  contributions: {
+    scheme: ContributionScheme;
+    label: string;
+    base: number;
+    employee: number;
+    employer: number;
+  }[];
+  contribution_total: number;
+  /** `net − contribution_total`. The figure that actually reaches a pocket,
+   *  and null-free: it is only different from `net` where a real enrolment
+   *  exists. */
+  take_home: number;
   /** Minutes late across the period, from the taps — **past the grace period**,
    *  not past the start of the day. */
   late_minutes: number;

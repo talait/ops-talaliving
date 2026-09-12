@@ -226,12 +226,22 @@ export default function PoDetailPage({ params }: { params: { po: string } }) {
                   <span>
                     Confirmed by {d.approved_by_name ?? "leadership"} on {d.approved_at.slice(0, 10)} —
                     it can be issued and sent to the supplier.
+                    {/* Which road it came down is recorded, not inferred. A
+                        rubber stamp that looks like a second pair of eyes is
+                        worse than no stamp, so a self-confirmation says so on
+                        its face (D267). */}
+                    {d.self_confirmed && (
+                      <strong> Ditulis dan dikonfirmasi dalam satu tindakan — pembuatnya sendiri yang
+                      memegang wewenangnya, jadi tidak ada pihak kedua yang memeriksanya.</strong>
+                    )}
                   </span>
                 ) : d.approval_asked_at ? (
                   <span>
                     Waiting on leadership since {d.approval_asked_at.slice(0, 16).replace("T", " ")}
-                    {d.approval_asked_by_name ? `, asked by ${d.approval_asked_by_name}` : ""}. Nothing
-                    goes to the supplier until they answer.
+                    {d.approval_asked_by_name ? `, asked by ${d.approval_asked_by_name}` : ""}
+                    {d.approval_sent_to ? `, sent to ${d.approval_sent_to}` : ""}. Nothing
+                    goes to the supplier until they answer — from their own account, not from whoever&apos;s
+                    laptop the meeting is running on.
                   </span>
                 ) : (
                   <span>

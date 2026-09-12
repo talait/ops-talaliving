@@ -193,6 +193,19 @@ export async function byEntity(entity: LinkEntity, entityNo: string): Promise<Re
   return ok(SERVICE, state.attachments.filter((a) => ids.includes(a.id)).map(view));
 }
 
+/** One document, by id. Exists because a screen that *names* evidence should
+ *  be able to *show* it: a chip reading "photo of the goods" that nobody can
+ *  open is a label about evidence rather than a way to the evidence (B2, B3,
+ *  D268). */
+export async function getAttachment(id: string): Promise<Result<AttachmentView>> {
+  await latency();
+  const found = getState().attachments.find((a) => a.id === id);
+  if (!found) {
+    return notFound(SERVICE, "attachment_not_found", "Dokumen itu tidak ada — mungkin sudah dilepas dari catatan ini.");
+  }
+  return ok(SERVICE, view(found));
+}
+
 export async function listAttachments(): Promise<Result<AttachmentView[]>> {
   await latency();
   return ok(SERVICE, getState().attachments.map(view));

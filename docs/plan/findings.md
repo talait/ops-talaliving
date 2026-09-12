@@ -3638,3 +3638,56 @@ The cheap guard that comes with it: `StockMoveView.ref_missing` follows any
 `spk-` reference and the stock drawer marks it in amber. It has nothing to show
 in the demo now that the seed is clean, which is the point — a guard earns its
 place by what it would catch, not by what it currently displays.
+
+---
+
+## F87 — the message that described a road the order had not taken
+
+Creating a purchase order ended with a toast: *`po-26-09-13_01` drafted —
+HADI GLASS · Rp 6.000.000 — ask leadership to confirm it before it goes to the
+supplier.*
+
+Every word of it was correct until W2 shipped, and then it was wrong for
+exactly the orders W2 was built for. Leadership writing their own order now has
+it confirmed in the same act — the API says so, `self_confirmed` is true on the
+row, and the banner on the order itself says so. The toast, three lines away,
+still told them to go and ask.
+
+One fact — *has this been confirmed* — written in two places, and only one of
+them updated. That is F73 and F75 again in a third costume: there the two
+places were two sums and two booleans; here they are an API result and a
+sentence. The fix is the same shape it has been every time: **read the answer
+instead of assuming it.** The toast now branches on `res.data.self_confirmed`
+rather than on what the form knows about the world.
+
+What is worth noticing is how it was found. Not by reading the diff — the toast
+is in a different file from everything W2 touched, and nothing about it looked
+stale. It was found by **driving the feature end to end and reading what the
+screen actually said**, which is the same way F81 and F85 were found. A probe
+that stops at *the API returned 200* would have passed.
+
+---
+
+## F88 — a label nobody could open is a label nobody could check
+
+The vendor page carried a chip reading *photo of the goods* next to every
+delivery. B2 asked for it to be openable. Within a minute of it opening, the
+first one tried showed a file called **`tanda-terima-hadi-0708.jpg`** — a
+receipt acknowledgement, filed as the photo of the goods, on two seeded
+receipts.
+
+The link kind said `Receiving Item`, the filename said tanda terima, and the
+screen had been confidently printing *photo of the goods* over the top of it
+for however long. Nothing could have caught it: a boolean `has_photo` is true
+whether the file behind it is a photograph, a receipt, or a blank page.
+
+This is the same shape as F84 and F86 one level up. Those were keys nothing
+dereferenced; this is a **claim nothing opened**. In all three cases the data
+was displayed and never followed, and in all three the first feature that
+followed it found the error immediately.
+
+The corollary is worth stating as a rule, because it keeps recurring in this
+codebase: **anything a screen asserts about a file should be one tap from the
+file.** Not because users want to click, but because a claim that can be
+checked is a claim that gets checked — by whoever is reading the screen, for
+free, every day.

@@ -160,6 +160,25 @@ export const PAYMENT_ALLOCATIONS: PaymentAllocation[] = [
  * resolved to a note, one that produced a transaction. If this list grows,
  * people are routing around the normal road. */
 export const EVIDENCE_INBOX: EvidenceInboxRow[] = [
+  /* Two decisions from months back, which exist so the history has a **shape**
+     rather than a length (B4, D269). A window that never has anything outside
+     it proves nothing: these are what makes *3 dari 5 keputusan, 2 lagi lebih
+     lama dari itu* a real sentence, and they are also the honest content of
+     this list — *what did we do with that photo* is asked months later, which
+     is exactly why the history is kept at all (A16). */
+  {
+    id: "inb_07", ref_id: "upl_26-04-17_01~x0", origin: "chat", status: "REJECTED",
+    attachment_id: "att_13", reported_by: "usr_shared", reported_at: "2026-04-17T20:10:00+08:00",
+    extracted: { vendor_name: null, document_date: "2026-04-17", amount_idr: null, doc_type: null, confidence: 22, note: "Foto pribadi, masuk ke grup chat yang salah. Ditolak, filenya tetap disimpan." },
+    produced_trx_id: null, produced_pr_line_no: null, similar_trx_nos: [],
+  },
+  {
+    id: "inb_08", ref_id: "upl_26-06-05_01~x0", origin: "web", status: "CONFIRMED",
+    attachment_id: "att_06", reported_by: "usr_anggun", reported_at: "2026-06-05T16:30:00+08:00",
+    extracted: { vendor_name: "JASA POTONG RUMPUT", document_date: "2026-06-05", amount_idr: 350_000, doc_type: "Receipt / Invoice / Nota", confidence: 78, note: "Kwitansi tulis tangan, dibayar tunai dari kas kecil." },
+    produced_trx_id: null, produced_pr_line_no: null, similar_trx_nos: [],
+    money_direction: "OUT",
+  },
   /* Decided, and the most instructive row in the queue's history: one nota
      that ended up standing behind **two** ledger rows, because the plywood was
      paid in two goes — cash at the counter, the balance transferred the next

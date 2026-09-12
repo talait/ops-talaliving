@@ -11,6 +11,7 @@ import { MoneyInput } from "@/components/ui/money-input";
 import { NumberInput } from "@/components/ui/number-input";
 import { formatIDR } from "@/lib/format";
 import { cn } from "@/lib/cn";
+import { officeToday } from "@/lib/office";
 import { accounting, documents, procurement } from "@/demo/api";
 import { DocumentPreview } from "@/components/ui/doc-preview";
 import type { EvidenceInboxRow, TransactionTypeCode, Direction, DocumentCoverage } from "@/services/accounting/contracts";
@@ -69,9 +70,32 @@ export default function InboxPage() {
     rows.status === "ready" ? rows.data : [],
     12,
   );
-  const decided = everything.status === "ready"
+  /* B4's other half. Paging made the history usable; it never answered *how
+     far back is worth showing*, and a list that quietly stops somewhere is a
+     list that lies by omission.
+
+     The answer is a window with an honest edge: ninety days by default,
+     because the question this list gets asked — *what did we do with that
+     photo* — is an accounting-rhythm question and a quarter covers last month
+     and the month before. What makes the window safe rather than a hiding
+     place is that the card **always says what is outside it**, and names the
+     date the history actually starts, so nothing is invisible without being
+     counted (D269). */
+  const [windowDays, setWindowDays] = useState<number | null>(90);
+  const allDecided = everything.status === "ready"
     ? everything.data.filter((r) => r.status !== "PENDING")
     : [];
+  const cutoff = windowDays === null ? null : (() => {
+    const d = new Date(`${officeToday()}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() - windowDays);
+    return d.toISOString().slice(0, 10);
+  })();
+  const decided = cutoff === null
+    ? allDecided
+    : allDecided.filter((r) => r.reported_at.slice(0, 10) >= cutoff);
+  const olderCount = allDecided.length - decided.length;
+  const oldest = allDecided.reduce<string | null>(
+    (acc, r) => (acc === null || r.reported_at < acc ? r.reported_at : acc), null);
   const { shown: decidedPage, pager: decidedPager } = usePaged(decided, 12);
   const mayResolve = hasAuthority("resolve_inbox");
 
@@ -212,8 +236,40 @@ export default function InboxPage() {
             <Card className="mt-4">
               <CardHeader
                 title="Already decided"
-                subtitle="Kept, whichever road they took — including the ones that never reached the ledger."
+                subtitle={
+                  <>
+                    Kept, whichever road they took — including the ones that never reached the ledger.{" "}
+                    {windowDays === null
+                      ? `Semuanya: ${allDecided.length} keputusan${oldest ? `, sejak ${oldest.slice(0, 10)}` : ""}.`
+                      : <>
+                          {decided.length} dari {allDecided.length} keputusan, dalam {windowDays} hari terakhir.{" "}
+                          {olderCount > 0
+                            ? <span className="text-amber-700">
+                                {olderCount} lagi lebih lama dari itu{oldest ? `, yang tertua ${oldest.slice(0, 10)}` : ""} — belum ditampilkan.
+                              </span>
+                            : "Tidak ada yang lebih lama dari itu."}
+                        </>}
+                  </>
+                }
                 icon={StickyNote}
+                action={
+                  <div className="flex flex-wrap items-center gap-1">
+                    {([[30, "30 hari"], [90, "90 hari"], [365, "1 tahun"], [null, "Semua"]] as const).map(([d, label]) => (
+                      <button
+                        key={label}
+                        onClick={() => setWindowDays(d)}
+                        className={cn(
+                          "rounded-lg px-2.5 py-1 text-[12px] transition-colors",
+                          windowDays === d
+                            ? "bg-brand-600 text-white"
+                            : "border border-slate-200 text-slate-600 hover:bg-slate-50",
+                        )}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                }
               />
               <ul className="divide-y divide-slate-100">
                 {decidedPage.map((r) => {
@@ -274,6 +330,12 @@ export default function InboxPage() {
                   );
                 })}
               </ul>
+              {decided.length === 0 && (
+                <p className="px-5 py-4 text-[13px] text-slate-500">
+                  Tidak ada keputusan dalam {windowDays} hari terakhir. {allDecided.length} keputusan lain
+                  ada di luar jendela ini — lebarkan jendelanya untuk melihatnya.
+                </p>
+              )}
               {decidedPager}
             </Card>
           );

@@ -271,6 +271,36 @@ export default function DemoDiagnosticsPage() {
        module, and a 403 from the guard would hide the rule underneath it. */
     await identity.actAs("usr_made");
 
+    /* D267 — the whole reason the chat road exists: a leadership meeting runs
+       on one laptop, and an answer given from somebody else's account recorded
+       as theirs is the mistake this route was built to prevent (D69, one level
+       up from a request line). */
+    const wrongHands = await procurement.answerPoFromChat({
+      token: "potok_seed_02",
+      answered_by_email: "putri@talaliving.com",
+      approved: true,
+    });
+    results.push({
+      name: "D267 — confirming a purchase order from somebody else's chat account",
+      expect: "403 not_the_addressee",
+      got: wrongHands.error ? `${wrongHands.error.status} ${wrongHands.error.code}` : "accepted",
+      pass: wrongHands.error?.status === 403 && wrongHands.error.code === "not_the_addressee",
+    });
+
+    /* Turning an order down needs a sentence: somebody has to tell the
+       supplier something. */
+    const blindDecline = await procurement.answerPoFromChat({
+      token: "potok_seed_02",
+      answered_by_email: "evin@talaliving.com",
+      approved: false,
+    });
+    results.push({
+      name: "D267 — declining a purchase order with nothing to tell the supplier",
+      expect: "422 reason_required",
+      got: blindDecline.error ? `${blindDecline.error.status} ${blindDecline.error.code}` : "accepted",
+      pass: blindDecline.error?.status === 422 && blindDecline.error.code === "reason_required",
+    });
+
     /* D266 — the BOM proposes and the storeman disposes, so an issue with
        every line at zero is a trip nobody made. Refused rather than posted as
        an empty document. */

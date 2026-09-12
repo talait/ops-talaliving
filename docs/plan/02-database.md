@@ -554,6 +554,13 @@ fill the column is a wrong number in a costing report (D204).
 `inv.log_purchases.nota_attachment_id` links the load to the paper it was
 entered from (D201). Nullable only for loads recorded before that rule.
 
+`procure.purchase_orders` carries `approval_sent_to` and `approval_token` for
+the chat road, and **`self_confirmed` as a stored column** (D267). It is not
+derived from `created_by = approved_by`: *approved by Evin* and *written and
+approved by Evin in one act* are different facts about how a decision was
+taken, and reconstructing the second from the first later would be a guess
+about history in the one table that exists to be trusted.
+
 `inv.stock_moves.ref_no` is a **text reference, not a foreign key** across the
 service seam (ADR-004) — and that is exactly why nine seeded issues pointed at
 two work orders that had never existed for six milestones (F86). Nothing

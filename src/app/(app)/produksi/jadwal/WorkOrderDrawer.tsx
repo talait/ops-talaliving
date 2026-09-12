@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, CheckCircle2, Hammer, Plus, ShoppingCart } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Factory, Hammer, PackageCheck, Plus, ShoppingCart } from "lucide-react";
 import Link from "next/link";
 import { Drawer } from "@/components/ui/drawer";
 import { Badge, Button } from "@/components/ui/primitives";
@@ -10,7 +10,7 @@ import { NumberInput } from "@/components/ui/number-input";
 import { formatIDR, formatNumber } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { procurement, production } from "@/demo/api";
-import { PROCESS_STAGES, STAGE_NAME, type WorkOrderView } from "@/services/production/contracts";
+import { STAGE_NAME, type WorkOrderView } from "@/services/production/contracts";
 import { useSession } from "@/store/session";
 import { useToast } from "@/store/toast";
 import { officeToday } from "@/lib/office";
@@ -55,7 +55,49 @@ export function WorkOrderDrawer({
   const [closing, setClosing] = useState(false);
   const [prBusy, setPrBusy] = useState(false);
   const [closeReason, setCloseReason] = useState("");
+  /* The vendor leg (D254). Vendors come from procurement, by public id, read
+     at the screen because it spans two services (ADR-004). */
+  const [vendorList] = useLoad(() => procurement.listVendors(), []);
+  const vendors = vendorList.status === "ready" ? vendorList.data : [];
+  const [vendorId, setVendorId] = useState("");
+  const [expectBack, setExpectBack] = useState("");
+  const [backOn, setBackOn] = useState(officeToday());
+  const [subNote, setSubNote] = useState("");
+  const vendorName = wo.status === "ready" && wo.data.subcon_vendor_id
+    ? vendors.find((v) => v.id === wo.data.subcon_vendor_id)?.name ?? null
+    : null;
   const mayEdit = can("production.update");
+
+  async function sendOut() {
+    setBusy(true);
+    const res = await production.sendToSubcon({
+      wo_no: woNo, vendor_id: vendorId,
+      expected_back: expectBack || null, note: subNote || null,
+    });
+    setBusy(false);
+    if (res.error) {
+      toast(res.error.status === 403 ? "critical" : "warning", "Tidak tercatat", res.error.message);
+      return;
+    }
+    toast("success", "Dikirim ke vendor", vendors.find((v) => v.id === vendorId)?.name ?? "");
+    setSubNote("");
+    reload(); onChanged();
+  }
+
+  async function receiveBack() {
+    setBusy(true);
+    const res = await production.receiveFromSubcon({
+      wo_no: woNo, returned_on: backOn, note: subNote || null,
+    });
+    setBusy(false);
+    if (res.error) {
+      toast(res.error.status === 403 ? "critical" : "warning", "Tidak tercatat", res.error.message);
+      return;
+    }
+    toast("success", "Barang kembali", `Tahap finishing dan seterusnya sekarang bisa dicatat.`);
+    setSubNote("");
+    reload(); onChanged();
+  }
 
   async function report() {
     setBusy(true);
@@ -139,9 +181,12 @@ export function WorkOrderDrawer({
             <div className="flex flex-wrap items-center gap-2">
               {w.status === "DONE"
                 ? <Badge tone="slate" dot>selesai</Badge>
-                : w.late
-                  ? <Badge tone="red" dot>terlambat {Math.abs(w.days_left)} hari</Badge>
-                  : <Badge tone={w.days_left <= 3 ? "amber" : "green"} dot>{w.days_left} hari lagi</Badge>}
+                : w.subcon_overdue
+                  ? <Badge tone="red" dot>vendor telat</Badge>
+                  : w.late
+                    ? <Badge tone="red" dot>terlambat {Math.abs(w.days_left)} hari</Badge>
+                    : <Badge tone={w.days_left <= 3 ? "amber" : "green"} dot>{w.days_left} hari lagi</Badge>}
+              <Badge tone={w.route === "SUBCON" ? "violet" : "slate"}>{w.route_name}</Badge>
               <span className="text-[12px] text-slate-600">
                 {formatNumber(w.completed)}/{formatNumber(w.qty)} {w.uom} selesai · {w.percent}% keseluruhan · sekarang di {w.current_stage_name}
               </span>
@@ -164,7 +209,20 @@ export function WorkOrderDrawer({
               {w.stages.map((s) => (
                 <li key={s.stage} className="flex items-center gap-3 px-3 py-2">
                   <span className="w-5 text-[11px] tabular-nums text-slate-400">{s.seq}</span>
-                  <span className="flex-1 text-[13px] text-slate-700">{s.name}</span>
+                  <span className="flex-1">
+                    <span className="block text-[13px] text-slate-700">{s.name}</span>
+                    {/* The old seven-stage entries that rolled up here, with
+                        their own totals — so the minimum can be checked rather
+                        than believed (F74). */}
+                    {s.parts.length > 0 ? (
+                      <span className="block text-[11px] text-slate-400">
+                        {s.parts.map((x) => `${x.name} ${formatNumber(x.done)}`).join(" · ")}
+                        {" → yang selesai sepenuhnya "}{formatNumber(s.done)}
+                      </span>
+                    ) : (
+                      <span className="block text-[11px] text-slate-400">{s.covers}</span>
+                    )}
+                  </span>
                   <span className="w-32">
                     <span className="block h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
                       <span
@@ -180,7 +238,88 @@ export function WorkOrderDrawer({
               ))}
             </ul>
 
-            {mayEdit && w.status === "OPEN" && (
+            {/* The vendor leg. Present on every SUBCON order, editable while it
+                is open — where the goods physically are decides what may be
+                reported against them (D255). */}
+            {w.route === "SUBCON" && (
+              <div className={cn(
+                "rounded-xl border px-4 py-3",
+                w.subcon_overdue ? "border-rose-200 bg-rose-50/60" : "border-violet-200 bg-violet-50/50",
+              )}>
+                <p className="flex items-center gap-2 text-[13px] font-medium text-slate-800">
+                  <Factory className="h-4 w-4 text-violet-500" /> Dikerjakan vendor
+                </p>
+                <p className="mt-0.5 text-[12px] text-slate-600">
+                  {w.subcon_vendor_id
+                    ? vendorName ?? w.subcon_vendor_id
+                    : "Vendor belum ditentukan"}
+                  {w.subcon_sent_on && <> · dikirim {w.subcon_sent_on}</>}
+                  {w.subcon_expected_back && (
+                    <> · dijanjikan kembali <span className="text-amber-700">± {w.subcon_expected_back}</span></>
+                  )}
+                  {w.subcon_returned_on
+                    ? <> · <span className="text-emerald-700">kembali {w.subcon_returned_on}</span></>
+                    : w.at_vendor && <> · sudah {w.days_at_vendor} hari di sana</>}
+                </p>
+                {w.subcon_note && <p className="mt-0.5 text-[12px] text-slate-500">{w.subcon_note}</p>}
+                {w.at_vendor && (
+                  <p className="mt-1 text-[12px] text-violet-900">
+                    Barangnya tidak ada di bengkel, jadi tidak ada tahap yang bisa dilaporkan sampai
+                    ia kembali.
+                  </p>
+                )}
+                {mayEdit && w.status === "OPEN" && (
+                  <div className="mt-2">
+                    {w.at_vendor ? (
+                      <div className="flex flex-wrap items-end gap-2">
+                        <label className="text-[11px] text-slate-500">
+                          Tanggal kembali
+                          <input
+                            type="date" value={backOn} onChange={(e) => setBackOn(e.target.value)}
+                            className="mt-0.5 block h-9 rounded-lg border border-slate-200 px-2 text-sm focus:border-brand-400 focus:outline-none"
+                          />
+                        </label>
+                        <input
+                          value={subNote} onChange={(e) => setSubNote(e.target.value)}
+                          placeholder="Catatan penerimaan — kondisi, kekurangan"
+                          className="h-9 min-w-[200px] flex-1 rounded-lg border border-slate-200 px-2 text-sm focus:border-brand-400 focus:outline-none"
+                        />
+                        <Button size="sm" icon={PackageCheck} disabled={busy} onClick={receiveBack}>
+                          Catat barang kembali
+                        </Button>
+                      </div>
+                    ) : !w.subcon_sent_on && (
+                      <div className="flex flex-wrap items-end gap-2">
+                        <label className="text-[11px] text-slate-500">
+                          Vendor
+                          <select
+                            value={vendorId} onChange={(e) => setVendorId(e.target.value)}
+                            className="mt-0.5 block h-9 min-w-[200px] rounded-lg border border-slate-200 px-2 text-sm focus:border-brand-400 focus:outline-none"
+                          >
+                            <option value="">Pilih vendor…</option>
+                            {vendors.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+                          </select>
+                        </label>
+                        <label className="text-[11px] text-slate-500">
+                          Dijanjikan kembali
+                          <input
+                            type="date" value={expectBack} onChange={(e) => setExpectBack(e.target.value)}
+                            className="mt-0.5 block h-9 rounded-lg border border-slate-200 px-2 text-sm focus:border-brand-400 focus:outline-none"
+                          />
+                        </label>
+                        <Button size="sm" icon={Factory} disabled={busy || !vendorId} onClick={sendOut}>
+                          Catat dikirim ke vendor
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Gated on the **same predicate the API refuses on** (F75), not on
+                a lookalike condition that drifts away from it. */}
+            {mayEdit && w.status === "OPEN" && w.goods_on_site && (
               <div className="rounded-xl border border-slate-200 px-4 py-3">
                 <p className="flex items-center gap-2 text-[13px] font-medium text-slate-800">
                   <Hammer className="h-4 w-4 text-slate-400" /> Catat hasil kerja
@@ -192,8 +331,10 @@ export function WorkOrderDrawer({
                     className="h-9 rounded-lg border border-slate-200 px-2 text-sm focus:border-brand-400 focus:outline-none"
                   >
                     <option value="">Tahap…</option>
-                    {PROCESS_STAGES.map((s) => (
-                      <option key={s.code} value={s.code}>{s.seq}. {s.name}</option>
+                    {/* Only what this order's route contains. Offering a stage
+                        the API will refuse is a trap, not a choice (D254). */}
+                    {w.stages.map((s) => (
+                      <option key={s.stage} value={s.stage}>{s.seq}. {s.name}</option>
                     ))}
                   </select>
                   <NumberInput value={qty} min={-999} max={9999} onChange={setQty} />

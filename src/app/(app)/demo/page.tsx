@@ -12,7 +12,8 @@ import { DataTable, type Column } from "@/components/ui/data-table";
 import { formatIDR } from "@/lib/format";
 import { useDemo, useDemoReset, useActingUser } from "@/demo/provider";
 import { accountBalances, prLineView, poStatus, inboxHealth } from "@/demo/derive";
-import { procurement, accounting, identity, isOk } from "@/demo/api";
+import { procurement, accounting, identity, production, isOk } from "@/demo/api";
+import { officeToday } from "@/lib/office";
 import type { LineStatus } from "@/services/procurement/contracts";
 import { useToast } from "@/store/toast";
 import { FLOW_B, tourHref } from "@/lib/tour";
@@ -131,6 +132,31 @@ export default function DemoDiagnosticsPage() {
       expect: "422 pr_line_not_found (validated at the seam)",
       got: badLine.error ? `${badLine.error.status} ${badLine.error.code}` : "accepted",
       pass: badLine.error?.code === "pr_line_not_found",
+    });
+
+    /* The two the production routes added (D254, D255). Both are about a
+       **place**, not a number, which is why they refuse where the rest of
+       production merely warns: nobody sanded ten shelves that are in somebody
+       else's workshop. */
+    await identity.actAs("usr_made");
+    const offRoute = await production.recordProgress({
+      wo_no: "spk-26-09-02_01", stage: "PEMBUATAN", qty: 1, work_date: officeToday(),
+    });
+    results.push({
+      name: "D254 — reporting a stage the order's route does not contain",
+      expect: "422 stage_not_on_route",
+      got: offRoute.error ? `${offRoute.error.status} ${offRoute.error.code}` : "accepted",
+      pass: offRoute.error?.status === 422 && offRoute.error.code === "stage_not_on_route",
+    });
+
+    const atVendor = await production.recordProgress({
+      wo_no: "spk-26-09-01_01", stage: "FINISHING", qty: 1, work_date: officeToday(),
+    });
+    results.push({
+      name: "D255 — reporting work on goods still at the vendor",
+      expect: "409 still_at_vendor",
+      got: atVendor.error ? `${atVendor.error.status} ${atVendor.error.code}` : "accepted",
+      pass: atVendor.error?.status === 409 && atVendor.error.code === "still_at_vendor",
     });
 
     await identity.actAs(original);

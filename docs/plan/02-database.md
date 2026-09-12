@@ -1665,6 +1665,12 @@ erDiagram
         text uom
         text project_code "public code, validated at the seam"
         date due_date "the promise, not the plan"
+        route_t route "IN_HOUSE|SUBCON - a list of stages, not a flag (D254)"
+        uuid subcon_vendor_id FK "the vendor who builds it, at the seam"
+        date subcon_sent_on "three dates and no status field: at_vendor is derived"
+        date subcon_expected_back "the vendor's PROMISE - prints with a +/-"
+        date subcon_returned_on
+        text subcon_note
         wo_status_t status "OPEN|DONE|CANCELLED"
         uuid created_by FK
         text note
@@ -1672,7 +1678,7 @@ erDiagram
     progress_entries {
         uuid id PK
         uuid wo_id FK
-        text stage FK
+        text stage FK "four stages since D253; the seven old codes stay and roll up on read (A5, F74)"
         numeric qty "may be negative - a correction is an entry"
         date work_date "the office day it happened"
         text worked_by "a name: a subcontractor is a valid answer"

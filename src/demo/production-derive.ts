@@ -9,7 +9,8 @@
 import { officeDay } from "@/lib/office";
 import type { DemoState } from "./state";
 import {
-  PROCESS_STAGES, type WorkOrder, type WorkOrderView, type StageProgress,
+  PROCESS_STAGES, STAGE_SOURCES, ROUTE, goodsOnSite,
+  type WorkOrder, type WorkOrderView, type StageProgress,
   type Product, type ProductView, type BomLineView, type ProductDrawing,
   type DesignTask, type DesignTaskView, type DesignKind,
 } from "@/services/production/contracts";
@@ -33,17 +34,43 @@ export function workOrderView(
   today = officeToday(),
 ): WorkOrderView {
   const entries = state.production_progress.filter((p) => p.wo_id === wo.id);
+  const route = ROUTE(wo.route);
+  const total = (code: string) =>
+    entries.filter((p) => p.stage === code).reduce((a, p) => a + p.qty, 0);
 
-  const stages: StageProgress[] = PROCESS_STAGES.map((s) => {
-    const done = entries.filter((p) => p.stage === s.code).reduce((a, p) => a + p.qty, 0);
-    return {
-      stage: s.code,
-      name: s.name,
-      seq: s.seq,
-      done,
-      percent: wo.qty > 0 ? Math.round((done / wo.qty) * 100) : 0,
-    };
-  });
+  /* Only the stages this order actually goes through. A subcontracted order
+     has no `PEMBUATAN` row at all — not a row reading 0%, which would say
+     *nobody has started building this* about goods a vendor has already built
+     (D254). */
+  const stages: StageProgress[] = PROCESS_STAGES
+    .filter((s) => route.stages.includes(s.code))
+    .map((s) => {
+      /* **A minimum over every source that carried a figure, never a sum.**
+         Four chairs cut, four planed and four assembled is four chairs made,
+         not twelve; four sanded and three finished is three finished, not
+         seven. A piece has passed the stage when it has passed every step
+         inside it, so the count is the smallest of the steps actually
+         recorded. A step nobody recorded is a step this order never used, and
+         it does not drag the whole stage to zero.
+
+         The stage's own code is one of the sources (F74): `FINISHING` names
+         one of the four *and* one of the seven, so "direct" and "rolled up"
+         cannot be told apart — and must not be added together. */
+      const parts = (STAGE_SOURCES[s.code] ?? [{ code: s.code, name: s.name }])
+        .map((x) => ({ code: x.code, name: x.name, done: total(x.code) }))
+        .filter((p) => p.done !== 0);
+      const done = parts.length > 0 ? Math.min(...parts.map((p) => p.done)) : 0;
+      return {
+        stage: s.code,
+        name: s.name,
+        seq: s.seq,
+        covers: s.covers,
+        done,
+        percent: wo.qty > 0 ? Math.round((done / wo.qty) * 100) : 0,
+        /* Only interesting where more than one source spoke. */
+        parts: parts.length > 1 ? parts : [],
+      };
+    });
 
   const started = stages.filter((s) => s.done > 0);
   const current = started.length > 0 ? started[started.length - 1] : null;
@@ -59,6 +86,42 @@ export function workOrderView(
 
   const days_left = daysBetween(today, wo.due_date);
   const warnings: string[] = [];
+
+  /* Where the goods physically are. `at_vendor` is derived from the two dates
+     rather than stored, for the reason every status here is derived: a flag is
+     a field somebody forgets to move while the lorry is still on the road. */
+  const at_vendor = wo.route === "SUBCON"
+    && wo.subcon_sent_on !== null
+    && wo.subcon_returned_on === null;
+  const days_at_vendor = wo.subcon_sent_on === null
+    ? null
+    : daysBetween(wo.subcon_sent_on, wo.subcon_returned_on ?? today);
+  const subcon_overdue = at_vendor
+    && wo.subcon_expected_back !== null
+    && wo.subcon_expected_back < today;
+
+  /* Steps **inside** one stage that disagree.
+   *
+   *  The minimum resolves the count, and resolving it silently would be the
+   *  worse half of the fix: eleven doors reported finished when four were
+   *  sanded is not a rounding difference, it is seven doors somebody has to
+   *  explain. The stage counts four; the sentence says why it is not eleven
+   *  (F74). */
+  for (const s of stages) {
+    for (let i = 1; i < s.parts.length; i += 1) {
+      const before = s.parts[i - 1];
+      const after = s.parts[i];
+      /* A later step **lagging** the one before it is not a fault, it is work
+         in progress: six cut and two assembled is four waiting on the bench.
+         A later step **ahead** of the one before it cannot have happened. */
+      if (after.done <= before.done) continue;
+      warnings.push(
+        `${s.name}: ${after.name} tercatat ${after.done} padahal ${before.name} baru ${before.done} — ${
+          after.done - before.done
+        } ${wo.uom} melewati satu langkah. Yang dihitung selesai ${s.done}, angka yang lebih kecil, sampai ada yang membetulkan salah satunya.`,
+      );
+    }
+  }
 
   /* A stage ahead of the one before it. Physically impossible, so it is either
      a mis-keyed number or work that skipped a step — both worth a sentence,
@@ -80,18 +143,43 @@ export function workOrderView(
   }
   if (wo.status === "OPEN" && days_left < 0 && completed < wo.qty) {
     warnings.push(`Lewat tenggat ${Math.abs(days_left)} hari, sisa ${wo.qty - completed} ${wo.uom}.`);
-  } else if (wo.status === "OPEN" && days_left >= 0 && days_left <= 3 && percent < 70) {
+  } else if (wo.status === "OPEN" && days_left >= 0 && days_left <= 3 && percent < 70 && !at_vendor) {
+    /* Not while the goods are at the vendor. `percent` counts **our** stages,
+       and none of them can have happened yet — so *baru 0% selesai* would read
+       as the workshop being behind on work it is not allowed to start. The
+       vendor-overdue sentence above says the true thing instead. */
     warnings.push(`Tinggal ${days_left} hari dan baru ${percent}% selesai.`);
   }
-  if (wo.status === "OPEN" && started.length === 0) {
-    warnings.push("Belum ada satu tahap pun yang dikerjakan.");
+  if (wo.status === "OPEN" && started.length === 0 && !at_vendor) {
+    warnings.push(
+      wo.route === "SUBCON" && wo.subcon_sent_on === null
+        ? "Belum dikirim ke vendor, dan belum ada tahap yang dikerjakan."
+        : "Belum ada satu tahap pun yang dikerjakan.",
+    );
+  }
+  if (subcon_overdue) {
+    warnings.push(
+      `Vendor menjanjikan kembali ${wo.subcon_expected_back}, sudah lewat ${
+        Math.abs(daysBetween(today, wo.subcon_expected_back!))
+      } hari dan barangnya belum sampai.`,
+    );
+  }
+  if (wo.route === "SUBCON" && wo.subcon_sent_on === null && days_left <= 3) {
+    warnings.push("Tenggatnya dekat dan barangnya belum berangkat ke vendor.");
   }
 
   return {
     ...wo,
     stages,
+    route_name: route.name,
+    at_vendor,
+    goods_on_site: goodsOnSite(wo),
+    days_at_vendor,
+    subcon_overdue,
     current_stage: current?.stage ?? null,
-    current_stage_name: current?.name ?? "Belum mulai",
+    current_stage_name: at_vendor
+      ? "Di vendor"
+      : current?.name ?? (wo.route === "SUBCON" ? "Belum dikirim" : "Belum mulai"),
     completed,
     percent,
     days_left,

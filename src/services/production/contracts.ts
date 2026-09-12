@@ -16,31 +16,136 @@
 /** The stages a piece goes through, in order.
  *
  *  Seeded rather than typed by somebody, so that "which stage is it in" has
- *  the same answer on every screen and in every report. The list itself is our
- *  reading of a furniture workshop and is the one thing here most likely to be
- *  wrong in detail — Q35 asks the owner to correct it. Changing it is a seed
- *  edit, not a schema change, which is exactly why it is data.
+ *  the same answer on every screen and in every report. Changing the list is a
+ *  seed edit, not a schema change, which is exactly why it is data.
+ *
+ *  **Four, down from seven** (D253). The owner's answer to Q35 was
+ *  *sederhanakan, karena ada item yang dilempar ke vendor dan kita tinggal
+ *  finishing dan packing* — and the second half of that sentence is what
+ *  decided the shape of the first. Seven stages could only describe a
+ *  subcontracted piece as *four stages mysteriously skipped*; four stages, with
+ *  the making of the piece as **one** of them, describe it as what it is: a
+ *  different route through the same workshop, one stage shorter.
+ *
+ *  The collapsed detail is not thrown away — see `LEGACY_STAGES`.
  */
 export interface ProcessStage {
   code: string;
   name: string;
-  /** 1-based. A piece cannot be sanded before it is cut, and the order is what
-   *  makes that checkable. */
+  /** 1-based. A piece cannot be finished before it is built, and the order is
+   *  what makes that checkable. */
   seq: number;
+  /** What the workshop actually does inside it, for the screen. Not stages:
+   *  nobody reports against these, they are here so *Pembuatan* is not a word
+   *  somebody has to interpret. */
+  covers: string;
 }
 
 export const PROCESS_STAGES: ProcessStage[] = [
-  { code: "POTONG", name: "Potong", seq: 1 },
-  { code: "SERUT", name: "Serut / bentuk", seq: 2 },
-  { code: "RAKIT", name: "Rakit", seq: 3 },
-  { code: "AMPLAS", name: "Amplas", seq: 4 },
-  { code: "FINISHING", name: "Finishing", seq: 5 },
-  { code: "QC", name: "QC", seq: 6 },
-  { code: "PACKING", name: "Packing", seq: 7 },
+  { code: "PEMBUATAN", name: "Pembuatan", seq: 1, covers: "potong · serut / bentuk · rakit" },
+  { code: "FINISHING", name: "Finishing", seq: 2, covers: "amplas · cat / coating" },
+  { code: "QC", name: "QC", seq: 3, covers: "periksa sebelum dibungkus" },
+  { code: "PACKING", name: "Packing", seq: 4, covers: "bungkus, siap kirim" },
 ];
 
+/** Every stage code that counts towards each of the four, old and new.
+ *
+ *  Progress already recorded **keeps its own stage code** — that was the
+ *  condition attached to Q35 from the day it was asked, and it is the ordinary
+ *  rule here anyway: nothing that happened is rewritten (A5). So the old codes
+ *  stay in the data and are rolled up on read.
+ *
+ *  Two things about the roll-up, and the second one is the trap.
+ *
+ *  **It is a minimum, not a sum.** Four chairs cut, four planed and four
+ *  assembled is four chairs made, not twelve. A piece has finished *Pembuatan*
+ *  when it has finished every step inside it, so the count is the smallest of
+ *  the steps that were actually recorded.
+ *
+ *  **A stage is a source of itself.** `FINISHING` is the name of one of the
+ *  four *and* the name of one of the seven that collapsed into it, so an entry
+ *  reading `FINISHING` cannot be told apart from a new one — and adding "the
+ *  direct entries" to "the rolled-up ones" counted the same pieces twice, as
+ *  amplas 4 + finishing 3 = 7 of an order for 4 (F74). Listing every source,
+ *  the stage's own code included, removes the distinction rather than trying
+ *  to guess it.
+ */
+export const STAGE_SOURCES: Record<string, { code: string; name: string }[]> = {
+  PEMBUATAN: [
+    { code: "POTONG", name: "Potong" },
+    { code: "SERUT", name: "Serut / bentuk" },
+    { code: "RAKIT", name: "Rakit" },
+    { code: "PEMBUATAN", name: "Pembuatan" },
+  ],
+  FINISHING: [
+    { code: "AMPLAS", name: "Amplas" },
+    { code: "FINISHING", name: "Finishing" },
+  ],
+  QC: [{ code: "QC", name: "QC" }],
+  PACKING: [{ code: "PACKING", name: "Packing" }],
+};
+
+const ALL_SOURCES = Object.values(STAGE_SOURCES).flat();
+
 export const STAGE_NAME = (code: string) =>
-  PROCESS_STAGES.find((s) => s.code === code)?.name ?? code;
+  PROCESS_STAGES.find((s) => s.code === code)?.name
+  ?? ALL_SOURCES.find((s) => s.code === code)?.name
+  ?? code;
+
+/** How a piece gets made.
+ *
+ *  A route is a **list of stages**, not a flag, because the thing that differs
+ *  between them is exactly which stages apply. A subcontracted order does not
+ *  have *Pembuatan at 0%* — it does not have Pembuatan. Rendering a stage that
+ *  is not on the route as an empty bar would say *nobody has started building
+ *  this*, which is false about goods a vendor has already built (D254).
+ */
+export type RouteCode = "IN_HOUSE" | "SUBCON";
+
+export interface ProductionRoute {
+  code: RouteCode;
+  name: string;
+  /** Said in the workshop's own terms, for the picker. */
+  description: string;
+  stages: string[];
+}
+
+export const ROUTES: ProductionRoute[] = [
+  {
+    code: "IN_HOUSE",
+    name: "Dikerjakan sendiri",
+    description: "Dibuat dari bahan di bengkel sendiri, sampai dibungkus.",
+    stages: ["PEMBUATAN", "FINISHING", "QC", "PACKING"],
+  },
+  {
+    code: "SUBCON",
+    name: "Dilempar ke vendor",
+    description: "Barangnya dibuat vendor. Kembali ke bengkel untuk finishing dan packing.",
+    stages: ["FINISHING", "QC", "PACKING"],
+  },
+];
+
+export const ROUTE = (code: RouteCode) =>
+  ROUTES.find((r) => r.code === code) ?? ROUTES[0];
+
+/** Are the goods physically in the workshop?
+ *
+ *  **One predicate, read by both the API and the screen.** The first version
+ *  had the rule twice — the API refused on *sent and not back* and on *never
+ *  sent*, and the drawer hid its reporting form on `at_vendor`, which is only
+ *  the first of those. So an order the vendor had not even been given yet
+ *  offered a form that the API would refuse on submit (F75). Offering
+ *  something that will be refused is a trap, not a choice, and two conditions
+ *  written separately will always drift into being two different conditions.
+ *
+ *  An in-house order is always on site: there is nowhere else for it to be.
+ */
+export function goodsOnSite(
+  wo: Pick<WorkOrder, "route" | "subcon_sent_on" | "subcon_returned_on">,
+): boolean {
+  if (wo.route !== "SUBCON") return true;
+  return wo.subcon_sent_on !== null && wo.subcon_returned_on !== null;
+}
 
 export type WorkOrderStatus = "OPEN" | "DONE" | "CANCELLED";
 
@@ -67,6 +172,23 @@ export interface WorkOrder {
   project_code: string | null;
   /** Deadline. Not a plan — a promise somebody made to a customer. */
   due_date: string;
+  /** Which stages this order actually goes through (D254). */
+  route: RouteCode;
+  /** The vendor building it, on a `SUBCON` order. A public id validated at the
+   *  seam, like every other cross-service reference (ADR-004). */
+  subcon_vendor_id: string | null;
+  /** When it left, when it was promised back, when it actually came back.
+   *
+   *  Three dates and not one status, for the reason every status ladder in
+   *  this system is derived: *at the vendor* is `sent && !returned`, and a
+   *  stored flag is a field somebody forgets to move while the goods sit in a
+   *  lorry. `subcon_expected_back` is the vendor's promise — the same shape as
+   *  a PO's expected delivery (D234), and marked as a promise wherever it is
+   *  printed. */
+  subcon_sent_on: string | null;
+  subcon_expected_back: string | null;
+  subcon_returned_on: string | null;
+  subcon_note: string | null;
   status: WorkOrderStatus;
   created_at: string;
   created_by: string;
@@ -106,14 +228,34 @@ export interface StageProgress {
   stage: string;
   name: string;
   seq: number;
-  /** Cumulative, from the entries. */
+  covers: string;
+  /** Cumulative, from the entries. Where old seven-stage entries rolled up
+   *  into this one it is the **smallest** of them, never their sum (F74). */
   done: number;
   /** Of the order's quantity. */
   percent: number;
+  /** Every source that carried a figure, with its own total, so the minimum
+   *  above can be checked instead of believed. Only worth printing when there
+   *  is more than one — a stage with a single source **is** that source. */
+  parts: { code: string; name: string; done: number }[];
 }
 
 export interface WorkOrderView extends WorkOrder {
+  /** **Only the stages on this order's route.** A stage the route does not
+   *  contain is absent, not zero (D254). */
   stages: StageProgress[];
+  route_name: string;
+  /** Sent to the vendor and not back yet. Derived, never stored. */
+  at_vendor: boolean;
+  /** Whether any stage may be reported at all — the goods are in the building.
+   *  The same predicate the API refuses on, so the screen cannot offer what
+   *  the API will reject (F75). */
+  goods_on_site: boolean;
+  /** Days since it left. Null when it has not been sent. */
+  days_at_vendor: number | null;
+  /** Past the date the vendor promised, and still not back. The workshop is
+   *  not late here; the vendor is, and the board must not say otherwise. */
+  subcon_overdue: boolean;
   /** The furthest stage with anything finished — "sampai mana". */
   current_stage: string | null;
   current_stage_name: string;

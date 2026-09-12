@@ -3156,3 +3156,79 @@ because the duplication is invisible at the point of editing: the two lines do
 not look like the same formula, they look like two correct formulas. The tell is
 that every component of the shorter one appears in the longer one. Where that is
 true, one of them is a definition and the other should be a reference.
+
+## F74 — a stage that is also one of the things collapsed into it
+
+Collapsing seven stages into four meant deciding what happens to the progress
+already recorded against the seven. The answer was easy and the arithmetic was
+not.
+
+**First mistake: summing.** Four chairs cut, four planed and four assembled
+became twelve chairs made, against an order for four. Obvious once seen, and
+the fix is obvious too — a piece has finished *Pembuatan* when it has finished
+every step inside it, so the count is the **minimum** of the steps, not their
+sum.
+
+**Second mistake, and the one worth the entry.** `FINISHING` is the name of one
+of the four new stages *and* the name of one of the seven old ones that
+collapsed into it. So the code tried to be careful:
+
+```ts
+const rolled = min(legacy sub-steps);          // AMPLAS
+const done   = total("FINISHING") + rolled;    // direct + rolled
+```
+
+Which reads as *the entries written against the new stage, plus the old ones
+rolled up* — and there is no such distinction. An entry reading `FINISHING` is
+the same string whether it was typed last year under the seven or last week
+under the four. The board printed **Finishing 7 of 4**: four sanded plus three
+finished, the same three pieces counted twice.
+
+It produced a second, quieter lie on top. The over-count tripped the existing
+*a stage cannot be ahead of the one before it* warning, so every order with any
+finishing on it carried a red sentence about a mis-keyed number that nobody had
+mis-keyed. A bug that manufactures warnings is worse than one that stays quiet:
+it teaches people that the warnings are noise.
+
+The fix removes the distinction instead of trying to guess it. Every stage has
+a list of **sources** — every code that counts towards it, its own included —
+and `done` is the minimum over the sources that actually carried a figure.
+`QC` has one source and is therefore itself. The rule generalises: **when a
+collapsed thing keeps one of its parts' names, the name is no longer a
+discriminator**, and any code that treats it as one is counting something
+twice.
+
+**Third, after the numbers were right.** The minimum silently *resolved* a
+disagreement the seed had deliberately planted — eleven doors reported finished
+where four had been sanded. The count 4 is the honest one; hiding the other 7 is
+not. So a later step overtaking an earlier one inside a stage now says so, in
+the units of the order, and says which number it used. But only overtaking:
+six cut and two assembled is four units on the bench, which is what a workshop
+looks like on a Tuesday, and warning about it would bury the real one.
+
+## F75 — the same rule, written twice, in two places that drifted
+
+The API refuses progress on a subcontracted order in two situations: the goods
+are at the vendor, or they were never sent. The drawer hid its reporting form
+when `at_vendor` — the first of those.
+
+So an order created and not yet given to the vendor showed a full reporting
+form, complete with a stage picker, that the API rejected on submit. The probe
+found it on the first order it created, which is the only kind of order that
+exhibits it: the seeded ones were all either already sent or in-house.
+
+Two conditions describing one rule will drift, and the drift is invisible
+because neither side is wrong on its own — `at_vendor` is a perfectly good flag,
+and the API's pair of refusals is right. What is wrong is that the screen asked
+a *similar* question instead of the *same* one.
+
+It is now one exported predicate, `goodsOnSite(wo)`, read by the API and by the
+screen. The general form is the rule this codebase already applies to figures
+and had not applied to conditions: **derive it once and reference it**, because
+the second hand-written copy is the one that will be a version behind. F73 was
+this with two sums; this is the same mistake with two booleans, found four
+hours apart.
+
+Worth noting what *found* it: not a test of the rule, but building a work order
+through the interface like a person would. The seeded data could not express
+the failing state, so nothing that read the seed could have caught it.

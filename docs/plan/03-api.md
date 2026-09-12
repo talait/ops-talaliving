@@ -425,11 +425,13 @@ somebody outside the module needs to know about.
 | DELETE | `/products/{product_code}/components/{id}` | audited like any other act — the BOM is what a purchase request gets built from |
 | GET | `/products/{product_code}/materials?qty=12` | what a run of that size needs, **waste included**, with a total and a count of what could not be priced |
 | GET | `/work-orders` | `?include_done=1`. **Late first, then by due date** — the board's job is to put the thing somebody has to deal with at the top |
-| GET | `/work-orders/{wo_no}` | the order with per-stage progress, `current_stage`, `percent`, `days_left`, `late`, and the warnings in words |
-| POST | `/work-orders` | `{item_name, qty, uom, due_date, project_code?}`. **422 with no due date**: an order that cannot be late is one nobody can tell is late |
+| GET | `/work-orders/{wo_no}` | the order with per-stage progress, `current_stage`, `percent`, `days_left`, `late`, and the warnings in words. `stages` holds **only the stages on this order's route** — a stage the route does not contain is absent, not zero (D254). Also `at_vendor`, `days_at_vendor`, `subcon_overdue` and `goods_on_site`, all derived |
+| POST | `/work-orders/{wo_no}/subcon/send` | `{vendor_id, expected_back?, note?}` — the goods go out to the vendor who builds them. 422 on an `IN_HOUSE` order (change the route, do not bolt a send date onto an order that says it is built here); 409 if it is already there. `expected_back` is the vendor's **promise** and prints with a `±` |
+| POST | `/work-orders/{wo_no}/subcon/receive` | `{returned_on?, note?}` — the goods are back, and the stages on the route open up. 409 if it was never sent; `noop` if it is already back; 422 if the return date precedes the send date |
+| POST | `/work-orders` | `{item_name, qty, uom, due_date, project_code?, route?}`. **422 with no due date**: an order that cannot be late is one nobody can tell is late. `route` is `IN_HOUSE` (default) or `SUBCON` — chosen, never inferred (D254) |
 | GET | `/work-orders/{wo_no}/materials` | what the whole run needs, waste included — the list a PR gets built from (D151) |
 | GET | `/work-orders/{wo_no}/progress` | every entry, newest first — including the ones a signed lembur sheet posted |
-| POST | `/work-orders/{wo_no}/progress` | `{stage, qty, work_date, worked_by?, note?, source?, source_ref?}`. Append-only; a correction is a **negative qty with a note**. 422 over the ordered quantity; a stage ahead of the previous one is accepted and **warned about** (A6). Idempotent on `(source_ref, wo, stage)` |
+| POST | `/work-orders/{wo_no}/progress` | `{stage, qty, work_date, worked_by?, note?, source?, source_ref?}`. Append-only; a correction is a **negative qty with a note**. 422 over the ordered quantity; a stage ahead of the previous one is accepted and **warned about** (A6). **422 `stage_not_on_route`** for a stage this order's route does not contain, and **409 `still_at_vendor` / `not_sent_yet`** when the goods are not in the building — the one place production refuses rather than warns, because that refusal is about a place rather than a number (D255). Idempotent on `(source_ref, wo, stage)` |
 | POST | `/work-orders/{wo_no}/close` | 422 with no reason when the quantity is not finished |
 
 Writes need `production.update` — **except** an entry whose `source` is

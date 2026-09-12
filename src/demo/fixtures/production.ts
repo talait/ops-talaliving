@@ -21,6 +21,8 @@ export const WORK_ORDERS: WorkOrder[] = [
     qty: 4, uom: "set", project_code: "25007",
     due_date: "2026-09-05", status: "OPEN",
     created_at: "2026-08-24T08:00:00+08:00", created_by: "usr_made",
+    route: "IN_HOUSE", subcon_vendor_id: null,
+    subcon_sent_on: null, subcon_expected_back: null, subcon_returned_on: null, subcon_note: null,
     cancelled_reason: null, note: null,
   },
   {
@@ -30,6 +32,8 @@ export const WORK_ORDERS: WorkOrder[] = [
     qty: 24, uom: "pcs", project_code: "25007",
     due_date: "2026-09-12", status: "OPEN",
     created_at: "2026-08-24T08:05:00+08:00", created_by: "usr_made",
+    route: "IN_HOUSE", subcon_vendor_id: null,
+    subcon_sent_on: null, subcon_expected_back: null, subcon_returned_on: null, subcon_note: null,
     cancelled_reason: null, note: null,
   },
   {
@@ -39,6 +43,8 @@ export const WORK_ORDERS: WorkOrder[] = [
     qty: 6, uom: "unit", project_code: "25009",
     due_date: "2026-09-09", status: "OPEN",
     created_at: "2026-08-28T09:10:00+08:00", created_by: "usr_made",
+    route: "IN_HOUSE", subcon_vendor_id: null,
+    subcon_sent_on: null, subcon_expected_back: null, subcon_returned_on: null, subcon_note: null,
     cancelled_reason: null, note: null,
   },
   {
@@ -48,7 +54,14 @@ export const WORK_ORDERS: WorkOrder[] = [
     qty: 10, uom: "unit", project_code: "25004",
     due_date: "2026-09-15", status: "OPEN",
     created_at: "2026-09-01T08:30:00+08:00", created_by: "usr_made",
-    cancelled_reason: null, note: "Menunggu rangka besi dari Makmur Sentosa.",
+    /* Rangka besinya dibuat vendor; bengkel tinggal finishing dan packing.
+       Sudah lewat tanggal janji vendor — dan itu keterlambatan vendor, bukan
+       keterlambatan bengkel, yang papan tidak boleh mencampuradukkannya. */
+    route: "SUBCON", subcon_vendor_id: "vnd_06",
+    subcon_sent_on: "2026-09-01", subcon_expected_back: "2026-09-09",
+    subcon_returned_on: null,
+    subcon_note: "Rangka besi dilas di Karya Logam, kayunya ikut dikirim ke sana.",
+    cancelled_reason: null, note: "Menunggu rangka besi dari Karya Logam Abadi.",
   },
   {
     id: "wo_05", product_code: "PRD-NK-KCL", wo_no: "spk-26-08-10_01",
@@ -57,6 +70,8 @@ export const WORK_ORDERS: WorkOrder[] = [
     qty: 8, uom: "unit", project_code: "25009",
     due_date: "2026-08-29", status: "DONE",
     created_at: "2026-08-10T08:00:00+08:00", created_by: "usr_made",
+    route: "IN_HOUSE", subcon_vendor_id: null,
+    subcon_sent_on: null, subcon_expected_back: null, subcon_returned_on: null, subcon_note: null,
     cancelled_reason: null, note: null,
   },
   {
@@ -66,6 +81,23 @@ export const WORK_ORDERS: WorkOrder[] = [
     qty: 12, uom: "daun", project_code: "25009",
     due_date: "2026-09-08", status: "OPEN",
     created_at: "2026-08-30T08:00:00+08:00", created_by: "usr_made",
+    route: "IN_HOUSE", subcon_vendor_id: null,
+    subcon_sent_on: null, subcon_expected_back: null, subcon_returned_on: null, subcon_note: null,
+    cancelled_reason: null, note: null,
+  },
+  {
+    id: "wo_07", product_code: null, wo_no: "spk-26-09-02_01",
+    item_name: "Kusen aluminium + kaca, 8 bukaan",
+    description: "VILLA SEMINYAK — dibuat vendor, kembali untuk finishing & packing.",
+    qty: 8, uom: "unit", project_code: "25009",
+    due_date: "2026-09-16", status: "OPEN",
+    created_at: "2026-09-02T08:00:00+08:00", created_by: "usr_made",
+    /* Sudah kembali, jadi finishing boleh dicatat. Selama masih di vendor,
+       API menolak pencatatan tahap apa pun (D255). */
+    route: "SUBCON", subcon_vendor_id: "vnd_06",
+    subcon_sent_on: "2026-09-02", subcon_expected_back: "2026-09-08",
+    subcon_returned_on: "2026-09-08",
+    subcon_note: "Kembali tepat janji, satu unit lecet dan sudah diganti vendor.",
     cancelled_reason: null, note: null,
   },
 ];
@@ -117,3 +149,11 @@ export const PRODUCTION_PROGRESS: ProgressEntry[] = [
   e("prg_24", "wo_06", "AMPLAS", 4, "2026-09-04", "Sumiati"),
   e("prg_25", "wo_06", "FINISHING", 7, "2026-09-04", "Sakirin", "Dilaporkan sore, angka menyusul dari mandor."),
 ];
+
+/* wo_07 — dicatat langsung ke empat tahap yang baru, bukan ke tujuh yang lama.
+   Ini yang membuat roll-up bisa dilihat kerjanya: entri baru dihitung apa
+   adanya, entri lama dilipat dengan minimum (F74). */
+PRODUCTION_PROGRESS.push(
+  e("prg_23", "wo_07", "FINISHING", 5, "2026-09-10", "Sakirin"),
+  e("prg_24", "wo_07", "QC", 3, "2026-09-11", "Made Suparta"),
+);

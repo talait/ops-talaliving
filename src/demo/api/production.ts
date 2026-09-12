@@ -1,9 +1,9 @@
 /** Implements `/api/v1/production` from `03-api.md`. */
-import { refused, ok, invalid, notFound, type Result } from "@/services/_shared/envelope";
+import { refused, ok, invalid, notFound, noop, type Result } from "@/services/_shared/envelope";
 import {
-  PROCESS_STAGES, DESIGN_KIND_LABEL,
+  PROCESS_STAGES, DESIGN_KIND_LABEL, ROUTE, STAGE_NAME, goodsOnSite,
   type WorkOrder, type WorkOrderView, type ProgressEntry, type ProductView,
-  type DesignKind, type DesignTaskView,
+  type DesignKind, type DesignTaskView, type RouteCode,
 } from "@/services/production/contracts";
 import { getState, apply, newId, nextDocNumber, writeAudit, writeOutbox } from "../store";
 import {
@@ -54,6 +54,10 @@ export async function createWorkOrder(
     uom: string;
     project_code?: string | null;
     due_date: string;
+    /** Which stages this order goes through (D254). Defaults to in-house,
+     *  which is what most orders are; a subcontracted one is chosen, never
+     *  inferred. */
+    route?: RouteCode;
     note?: string | null;
   },
   idempotencyKey?: string,
@@ -92,6 +96,10 @@ export async function createWorkOrder(
       uom: input.uom.trim() || "unit",
       project_code: input.project_code?.trim() || null,
       due_date: input.due_date,
+      route: input.route ?? "IN_HOUSE",
+      subcon_vendor_id: null,
+      subcon_sent_on: null, subcon_expected_back: null, subcon_returned_on: null,
+      subcon_note: null,
       status: "OPEN",
       created_at: new Date().toISOString(), created_by: user.id,
       cancelled_reason: null,
@@ -100,12 +108,134 @@ export async function createWorkOrder(
     writeAudit(draft, {
       service: SERVICE, entity: "work_order", entity_no: woNo,
       action: "create", outcome: "ok", reason: null,
-      detail: { item: input.item_name.trim(), qty: input.qty, due: input.due_date, by: user.email },
+      detail: { item: input.item_name.trim(), qty: input.qty, due: input.due_date, route: input.route ?? "IN_HOUSE", by: user.email },
     });
   });
   const view = await getWorkOrder(woNo);
   if (view.data) remember(SERVICE, "createWorkOrder", idempotencyKey, view.data);
   return view;
+}
+
+/** Sending a subcontracted order out, and taking it back (D254).
+ *
+ *  Two acts, two dates, no status field. *Di vendor* is `sent && !returned`,
+ *  derived on read like every other state here — a stored flag is one somebody
+ *  forgets to move while the lorry is still on the road.
+ *
+ *  `expected_back` is the **vendor's promise**, the same shape as a purchase
+ *  order's expected delivery (D234) and marked as a promise wherever it is
+ *  printed. What it buys is the thing a subcontracted order otherwise has no
+ *  way to say: *this is late, and it is not the workshop that is late*.
+ */
+export async function sendToSubcon(
+  input: { wo_no: string; vendor_id: string; expected_back?: string | null; note?: string | null },
+  idempotencyKey?: string,
+): Promise<Result<WorkOrderView>> {
+  await latency();
+  const cached = replayed<WorkOrderView>(SERVICE, "sendToSubcon", idempotencyKey);
+  if (cached) return cached;
+
+  const denied = requireModule(SERVICE, "production");
+  if (denied) return denied;
+
+  const state = getState();
+  const wo = state.work_orders.find((w) => w.wo_no === input.wo_no);
+  if (!wo) return notFound(SERVICE, "wo_not_found", `No work order ${input.wo_no}.`);
+  if (wo.route !== "SUBCON") {
+    return invalid(
+      SERVICE, "not_a_subcon_order",
+      `${wo.wo_no} dikerjakan sendiri. Kalau memang dilempar ke vendor, rutenya yang diubah dulu — bukan tanggal kirimnya yang ditambahkan ke pesanan yang bilang dibuat di sini.`,
+      { field: "route" },
+    );
+  }
+  if (wo.status !== "OPEN") {
+    return conflict(SERVICE, "wo_not_open", `${wo.wo_no} is ${wo.status}.`);
+  }
+  if (wo.subcon_sent_on && !wo.subcon_returned_on) {
+    return conflict(
+      SERVICE, "already_at_vendor",
+      `${wo.wo_no} sudah di vendor sejak ${wo.subcon_sent_on}.`,
+    );
+  }
+  /* Validated at the seam, by public id, never by reaching into another
+     service's tables (ADR-004). */
+  const vendor = state.vendors.find((v) => v.id === input.vendor_id);
+  if (!vendor) {
+    return invalid(SERVICE, "vendor_not_found", `No vendor ${input.vendor_id}.`, { field: "vendor_id" });
+  }
+
+  const user = actingUser();
+  apply((draft) => {
+    const row = draft.work_orders.find((w) => w.wo_no === input.wo_no);
+    if (!row) return;
+    row.subcon_vendor_id = input.vendor_id;
+    row.subcon_sent_on = officeToday();
+    row.subcon_expected_back = input.expected_back || null;
+    /* A second trip clears the first return, and keeps the note. */
+    row.subcon_returned_on = null;
+    row.subcon_note = input.note?.trim() || row.subcon_note;
+    writeAudit(draft, {
+      service: SERVICE, entity: "work_order", entity_no: row.wo_no,
+      action: "send_to_subcon", outcome: "ok", reason: input.note?.trim() || null,
+      detail: { vendor: vendor.name, expected_back: row.subcon_expected_back, by: user.email },
+    });
+  });
+  const view = await getWorkOrder(input.wo_no);
+  if (view.data) remember(SERVICE, "sendToSubcon", idempotencyKey, view.data);
+  return view;
+}
+
+/** The goods are back in the building, and the stages on the route open up. */
+export async function receiveFromSubcon(
+  input: { wo_no: string; returned_on?: string; note?: string | null },
+): Promise<Result<WorkOrderView>> {
+  await latency();
+  const denied = requireModule(SERVICE, "production");
+  if (denied) return denied;
+
+  const state = getState();
+  const wo = state.work_orders.find((w) => w.wo_no === input.wo_no);
+  if (!wo) return notFound(SERVICE, "wo_not_found", `No work order ${input.wo_no}.`);
+  if (wo.route !== "SUBCON" || !wo.subcon_sent_on) {
+    return conflict(
+      SERVICE, "never_sent",
+      `${wo.wo_no} tidak pernah dikirim ke vendor, jadi tidak ada yang kembali.`,
+    );
+  }
+  if (wo.subcon_returned_on) {
+    /* Already back. Nothing to do, and nothing wrong — the answer is the
+       order as it stands, marked `noop`. */
+    return noop(SERVICE, workOrderView(state, wo));
+  }
+  const returned = input.returned_on || officeToday();
+  if (returned < wo.subcon_sent_on) {
+    return invalid(
+      SERVICE, "returned_before_sent",
+      `Tanggal kembali ${returned} lebih awal dari tanggal kirim ${wo.subcon_sent_on}.`,
+      { field: "returned_on" },
+    );
+  }
+
+  const user = actingUser();
+  apply((draft) => {
+    const row = draft.work_orders.find((w) => w.wo_no === input.wo_no);
+    if (!row) return;
+    row.subcon_returned_on = returned;
+    if (input.note?.trim()) row.subcon_note = input.note.trim();
+    writeAudit(draft, {
+      service: SERVICE, entity: "work_order", entity_no: row.wo_no,
+      action: "receive_from_subcon", outcome: "ok", reason: input.note?.trim() || null,
+      detail: {
+        returned_on: returned,
+        promised: row.subcon_expected_back,
+        late_days: row.subcon_expected_back && returned > row.subcon_expected_back
+          ? Math.round((Date.parse(`${returned}T00:00:00+08:00`) - Date.parse(`${row.subcon_expected_back}T00:00:00+08:00`)) / 86_400_000)
+          : 0,
+        by: user.email,
+      },
+    });
+  });
+  return getWorkOrder(input.wo_no);
 }
 
 /** Reporting work done.
@@ -152,6 +282,37 @@ export async function recordProgress(
   if (!wo) return notFound(SERVICE, "wo_not_found", `No work order ${input.wo_no}.`);
   if (!PROCESS_STAGES.some((s) => s.code === input.stage)) {
     return invalid(SERVICE, "unknown_stage", `No stage called ${input.stage}.`, { field: "stage" });
+  }
+  /* A stage this order's route does not contain. Reporting *Pembuatan* against
+     an order the vendor builds is not a mis-keyed number, it is a claim about
+     a stage that does not exist here — so it is refused rather than warned
+     about, and the refusal names the route (D254). */
+  const route = ROUTE(wo.route);
+  if (!route.stages.includes(input.stage)) {
+    return invalid(
+      SERVICE, "stage_not_on_route",
+      `${wo.wo_no} berjalan lewat rute "${route.name}" — tahap ${STAGE_NAME(input.stage)} tidak ada di rute itu. Tahapnya: ${route.stages.map(STAGE_NAME).join(" → ")}.`,
+      { field: "stage", route: wo.route, stages: route.stages },
+    );
+  }
+  /* Work reported on goods that are physically at the vendor.
+   *
+   *  Refused, not warned, and this is the line where warn-don't-block stops:
+   *  every other refusal here is about a number that cannot be true, and this
+   *  one is about a **place**. Nobody sanded eight window frames that are in
+   *  somebody else's workshop. The fix is one click and the refusal names it,
+   *  so nothing goes unrecorded — the work simply gets recorded after the fact
+   *  it depends on (D255). */
+  if (!goodsOnSite(wo)) {
+    return wo.subcon_sent_on
+      ? conflict(
+        SERVICE, "still_at_vendor",
+        `${wo.wo_no} masih di vendor sejak ${wo.subcon_sent_on} — barangnya belum ada di bengkel, jadi tahap ${STAGE_NAME(input.stage)} belum bisa dikerjakan. Catat dulu barangnya kembali, baru laporkan pekerjaannya.`,
+      )
+      : conflict(
+        SERVICE, "not_sent_yet",
+        `${wo.wo_no} dibuat vendor dan belum pernah dikirim ke sana. Barangnya belum ada.`,
+      );
   }
   if (!input.qty) {
     return invalid(SERVICE, "qty_required", "Nothing to report.", { field: "qty" });

@@ -12,7 +12,7 @@ import { DataTable, type Column } from "@/components/ui/data-table";
 import { formatIDR } from "@/lib/format";
 import { useDemo, useDemoReset, useActingUser } from "@/demo/provider";
 import { accountBalances, prLineView, poStatus, inboxHealth } from "@/demo/derive";
-import { procurement, accounting, identity, production, hr, delivery, isOk } from "@/demo/api";
+import { procurement, accounting, identity, production, hr, delivery, inventory, isOk } from "@/demo/api";
 import { officeToday } from "@/lib/office";
 import type { LineStatus } from "@/services/procurement/contracts";
 import { useToast } from "@/store/toast";
@@ -270,6 +270,33 @@ export default function DemoDiagnosticsPage() {
     /* Back to the workshop manager: the box endpoints sit behind the `project`
        module, and a 403 from the guard would hide the rule underneath it. */
     await identity.actAs("usr_made");
+
+    /* D266 — the BOM proposes and the storeman disposes, so an issue with
+       every line at zero is a trip nobody made. Refused rather than posted as
+       an empty document. */
+    const emptyIssue = await inventory.issueForWorkOrder({
+      wo_no: "spk-26-08-28_01", location: "GUDANG",
+      lines: [{ item_code: "ITM-0007", qty: 0 }],
+    });
+    results.push({
+      name: "D266 — issuing a work order's material with every line at zero",
+      expect: "422 nothing_to_issue",
+      got: emptyIssue.error ? `${emptyIssue.error.status} ${emptyIssue.error.code}` : "accepted",
+      pass: emptyIssue.error?.status === 422 && emptyIssue.error.code === "nothing_to_issue",
+    });
+
+    /* Every line is checked before any is written: half an issue posted and
+       half refused would leave the rack describing a trip that did not happen. */
+    const notStocked = await inventory.issueForWorkOrder({
+      wo_no: "spk-26-08-28_01", location: "GUDANG",
+      lines: [{ item_code: "ITM-0007", qty: 1 }, { item_code: "ITM-0039", qty: 1 }],
+    });
+    results.push({
+      name: "D266 — issuing a mixed list where one line is a service, not stock",
+      expect: "422 not_stocked",
+      got: notStocked.error ? `${notStocked.error.status} ${notStocked.error.code}` : "accepted",
+      pass: notStocked.error?.status === 422 && notStocked.error.code === "not_stocked",
+    });
 
     /* D264 — one name cannot be both a person and not a person. Refused rather
        than silently preferring one, because either choice would be the software

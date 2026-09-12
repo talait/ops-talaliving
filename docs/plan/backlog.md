@@ -20,7 +20,7 @@ that only shows what is left teaches nobody anything.
 
 | # | What | Note |
 |---|---|---|
-| S1 | ~~**Stock: materials and hardware, properly categorised**~~ | **built 2026-09-11 (M27)** — `/inventory/material` and `/inventory/penyesuaian`, D169–D172. Confirming a receipt now stocks the goods. What is still open is the other half of Q40: nothing draws stock down from a BOM automatically — an issue is recorded by the person who carried it out, against the SPK |
+| S1 | ~~**Stock: materials and hardware, properly categorised**~~ | **built 2026-09-11 (M27)**, D169–D172; **the other half of Q40 closed 2026-09-13 (M54)**, D266. Confirming a receipt stocks the goods; issuing draws them down against the SPK, from a list the BOM proposes and a person confirms. Nothing deducts automatically, and that is the decision rather than an omission |
 | S2 | ~~**Berkas 201 and Cuti & Izin**~~ | **built 2026-09-11 (M29)** — D177, D178. Compliance removed from the menu |
 | S3 | ~~**Desain, for the drafters**~~ | **built 2026-09-11 (M30)** — `/produksi/desain`, D179 |
 | S4 | ~~**Pay schemes as configuration**~~ | **built 2026-09-11 (M28)** — `/it/aturan-gaji`, D173–D176. Overtime now follows the national ladder (Q31 answered); undertime is built and off by default |

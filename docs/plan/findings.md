@@ -3602,3 +3602,39 @@ The lesson is not about string matching. **A guard that never fires on the
 data it was written for has not been tested, it has been assumed** — and the
 way to find out is to look at what the screen actually says about the row you
 wrote the guard for, which took one probe and no reasoning at all.
+
+---
+
+## F86 — nine stock issues pointing at two work orders that never existed
+
+Every `issue` move in the seed carried `ref_no: "spk-26-08-05_01"` or
+`"spk-26-08-12_01"`. Neither is a work order. The seven that exist are
+`spk-26-08-10_01`, `-24_01`, `-24_02`, `-28_01`, `-30_01`, `spk-26-09-01_01`
+and `-09-02_01`.
+
+Nine issues and one return, written in M27, pointing at nothing for six
+milestones — and **no screen could have said so**, because until D266 nothing
+in the system ever joined a stock move to a work order. The column was
+displayed, never dereferenced. The stock drawer printed `spk-26-08-12_01` in
+grey mono next to the move and had no reason to ask whether it resolved.
+
+This is F84 again, two commits later and in a different table: a **key nothing
+follows is a key nothing checks.** F84 was two rows sharing a primary key,
+invisible because nothing looked entries up by id. This is a foreign key with
+no referent, invisible because nothing looked the referent up. Both survived
+typechecking, builds and every probe run, and both were found by the first
+feature that actually needed the reference to work.
+
+The seed is repointed — the lemari issues to `spk-26-08-28_01`, the meja
+finishing issues to `spk-26-08-24_01` — and **the quantities are deliberately
+unchanged.** They were written as plausible workshop activity with no BOM to
+check them against, and now that there is one the comparison says they do not
+match: 85 sheets of amplas against a list calling for 32, engsel at 96 against
+36. That is not a defect of the seed. It is exactly what this business will see
+on its first day with a BOM behind the rack, and the panel is careful to call
+it *in progress* rather than *overrun* until the run is actually finished.
+
+The cheap guard that comes with it: `StockMoveView.ref_missing` follows any
+`spk-` reference and the stock drawer marks it in amber. It has nothing to show
+in the demo now that the seed is clean, which is the point — a guard earns its
+place by what it would catch, not by what it currently displays.

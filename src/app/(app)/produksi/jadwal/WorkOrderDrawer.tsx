@@ -9,7 +9,7 @@ import { Loaded, useLoad } from "@/components/ui/loaded";
 import { NumberInput } from "@/components/ui/number-input";
 import { formatIDR, formatNumber } from "@/lib/format";
 import { cn } from "@/lib/cn";
-import { procurement, production, hr } from "@/demo/api";
+import { procurement, production, hr, inventory } from "@/demo/api";
 import { Combobox } from "@/components/ui/combobox";
 import { STAGE_NAME, attributionOf, ATTRIBUTION_LABEL, type WorkOrderView } from "@/services/production/contracts";
 import { UNITS, type UomCode } from "@/services/procurement/contracts";
@@ -628,6 +628,11 @@ export function WorkOrderDrawer({
               )}
             </Loaded>
 
+            {/* What the run should take against what actually left the rack.
+                Nothing here deducts automatically: the BOM proposes and the
+                storeman disposes, because he is the one who carried it (D266). */}
+            <MaterialPanel woNo={woNo} onChanged={onChanged} />
+
             {/* The entries themselves — including the ones a signed lembur
                 sheet posted. */}
             <Loaded state={entries} onRetry={reloadEntries} skeletonRows={3}>
@@ -672,5 +677,192 @@ export function WorkOrderDrawer({
         )}
       </Loaded>
     </Drawer>
+  );
+}
+
+/* ── Material against the SPK ─────────────────────────────────────────── */
+
+function MaterialPanel({ woNo, onChanged }: { woNo: string; onChanged: () => void }) {
+  const { can } = useSession();
+  const { toast } = useToast();
+  const mayIssue = can("inventory.update");
+  const [plan, reloadPlan] = useLoad(() => inventory.materialForWorkOrder(woNo), [woNo]);
+  const [locations] = useLoad(() => inventory.listStockLocations(), []);
+  const [open, setOpen] = useState(false);
+  const [location, setLocation] = useState("");
+  const [qty, setQty] = useState<Record<string, number>>({});
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function issue() {
+    const lines = Object.entries(qty)
+      .filter(([, n]) => n > 0)
+      .map(([item_code, n]) => ({ item_code, qty: n }));
+    setBusy(true);
+    const res = await inventory.issueForWorkOrder({
+      wo_no: woNo, location, lines, note: note || null,
+    });
+    setBusy(false);
+    if (res.error) {
+      toast(res.error.status === 409 ? "critical" : "warning", "Tidak dikeluarkan", res.error.message);
+      return;
+    }
+    if (res.data.negative.length > 0) {
+      /* Recorded, and said out loud. The wood is off the rack whatever the
+         screen thought; what must not happen is silence (A6). */
+      toast("warning", `${res.data.issued} barang keluar — stok tercatat minus`,
+        res.data.negative.map((n) => `${n.item_name} ${n.on_hand_after}`).join(" · "));
+    } else {
+      toast("success", `${res.data.issued} barang keluar`, `Dicatat atas ${woNo}.`);
+    }
+    setQty({}); setNote(""); setOpen(false);
+    reloadPlan(); onChanged();
+  }
+
+  return (
+    <Loaded state={plan} onRetry={reloadPlan} skeletonRows={3}>
+      {(p) => (
+        <div>
+          <p className="mb-1.5 flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-wide text-slate-400">
+            {/* Not just "Bahan": the drawer already has a *Bahan* figure a few
+                centimetres above it, and that one is the BOM's rupiah. This one
+                is stock that physically left the rack. */}
+            Bahan yang keluar ke bengkel
+            {p.rev !== null && <Badge tone="slate">BOM rev {p.rev}</Badge>}
+            {p.variance_readable
+              ? <Badge tone="green">selesai — selisih bisa dibaca</Badge>
+              : <Badge tone="slate">{p.completed}/{p.ordered} jadi</Badge>}
+          </p>
+
+          {p.no_plan_reason ? (
+            <p className="rounded-xl border border-slate-200 px-3 py-2.5 text-[13px] text-slate-500">
+              {p.no_plan_reason}
+              {p.lines.length > 0 && " Yang sudah dikeluarkan tetap tercatat di bawah."}
+            </p>
+          ) : null}
+
+          {p.lines.length === 0 ? (
+            !p.no_plan_reason && (
+              <p className="rounded-xl border border-slate-200 px-3 py-2.5 text-[13px] text-slate-500">
+                Belum ada bahan yang dikeluarkan atas SPK ini.
+              </p>
+            )
+          ) : (
+            <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200">
+              {p.lines.map((l) => (
+                <li key={l.item_code} className="flex flex-wrap items-center gap-x-3 gap-y-0.5 px-3 py-2 text-[12px]">
+                  <span className="min-w-[160px] flex-1">
+                    <span className="block text-slate-700">{l.item_name}</span>
+                    <span className="block text-[10px] text-slate-400">
+                      {l.item_code} · rak {formatNumber(l.on_hand)} {l.uom}
+                    </span>
+                  </span>
+                  <span className="w-20 text-right tabular-nums text-slate-500">
+                    {/* Missing, never zero: a BOM that does not mention this
+                        item has no expectation of it (F60). */}
+                    {l.expected === null ? "—" : formatNumber(l.expected)}
+                  </span>
+                  <span className="w-20 text-right tabular-nums text-slate-800">{formatNumber(l.issued)}</span>
+                  <span className={cn("w-20 text-right tabular-nums",
+                    l.remaining === null ? "text-slate-400"
+                      : l.remaining < 0 ? "text-amber-700" : "text-slate-500")}>
+                    {l.remaining === null ? "—" : formatNumber(l.remaining)}
+                  </span>
+                  {l.off_bom && <Badge tone="amber">di luar BOM</Badge>}
+                  {mayIssue && open && (
+                    <NumberInput
+                      value={qty[l.item_code] ?? 0} min={0} max={99_999}
+                      onChange={(n) => setQty((q) => ({ ...q, [l.item_code]: n }))}
+                    />
+                  )}
+                </li>
+              ))}
+              <li className="flex flex-wrap items-center gap-x-3 px-3 py-1.5 text-[10px] uppercase tracking-wide text-slate-400">
+                <span className="min-w-[160px] flex-1" />
+                <span className="w-20 text-right">seharusnya</span>
+                <span className="w-20 text-right">keluar</span>
+                <span className="w-20 text-right">sisa</span>
+              </li>
+            </ul>
+          )}
+
+          {!p.variance_readable && p.lines.some((l) => l.remaining !== null) && (
+            <p className="mt-1 text-[11px] text-slate-500">
+              Selisihnya belum berarti apa-apa selama pesanan belum selesai — separuh pesanan baru
+              mengambil separuh bahannya, dan menyebut itu penghematan mengajarkan orang mengabaikan
+              angkanya.
+            </p>
+          )}
+
+          {mayIssue && (
+            <div className="mt-2">
+              {!open ? (
+                <Button size="sm" variant="outline" icon={PackageCheck} onClick={() => {
+                  setOpen(true);
+                  /* Pre-filled with what is left, because that is the usual
+                     trip — and editable, because the list is a proposal and
+                     what actually went to the bench is the record. */
+                  setQty(Object.fromEntries(p.lines
+                    .filter((l) => (l.remaining ?? 0) > 0)
+                    .map((l) => [l.item_code, l.remaining as number])));
+                }}>
+                  Keluarkan bahan
+                </Button>
+              ) : (
+                <div className="rounded-xl border border-slate-200 p-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <select
+                      value={location} onChange={(e) => setLocation(e.target.value)}
+                      aria-label="Lokasi"
+                      className="h-9 rounded-lg border border-slate-200 px-2 text-sm focus:border-brand-400 focus:outline-none"
+                    >
+                      <option value="">Dari lokasi…</option>
+                      {locations.status === "ready" && locations.data.filter((l) => l.is_active).map((l) => (
+                        <option key={l.code} value={l.code}>{l.name}</option>
+                      ))}
+                    </select>
+                    <input
+                      value={note} onChange={(e) => setNote(e.target.value)}
+                      placeholder="Catatan (opsional)"
+                      className="h-9 flex-1 rounded-lg border border-slate-200 px-2 text-sm focus:border-brand-400 focus:outline-none"
+                    />
+                  </div>
+                  {/* Said before the confirm, not only after it. The issue is
+                      still allowed — the wood is off the rack or it is not, and
+                      refusing to record it teaches people to stop recording
+                      (A6) — but a storeman about to send the count negative
+                      should find that out while he can still change the number. */}
+                  {(() => {
+                    const short = p.lines.filter((l) => (qty[l.item_code] ?? 0) > l.on_hand);
+                    if (short.length === 0) return null;
+                    return (
+                      <p className="mt-2 rounded-lg bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-800">
+                        {short.length} barang akan membuat stok tercatat minus:{" "}
+                        {short.map((l) => `${l.item_name} (rak ${formatNumber(l.on_hand)}, diambil ${formatNumber(qty[l.item_code] ?? 0)})`).join(" · ")}.
+                        Tetap boleh dicatat — kalau memang barangnya dibawa, catatannya yang harus
+                        menyesuaikan, bukan sebaliknya.
+                      </p>
+                    );
+                  })()}
+                  <p className="mt-2 text-[11px] text-slate-500">
+                    Angkanya sudah diisi dari BOM sebagai <strong>usulan</strong>. Ubah ke jumlah yang
+                    benar-benar dibawa ke bengkel — yang dicatat adalah barang yang keluar, bukan barang
+                    yang seharusnya keluar. Stok tidak pernah berkurang sendiri dari laporan produksi.
+                  </p>
+                  <div className="mt-2 flex justify-end gap-2">
+                    <Button size="sm" variant="ghost" onClick={() => { setOpen(false); setQty({}); }}>
+                      Batal
+                    </Button>
+                    <Button size="sm" icon={PackageCheck} onClick={issue} disabled={busy || !location}>
+                      Catat keluar
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </Loaded>
   );
 }

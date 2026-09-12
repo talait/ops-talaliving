@@ -16,9 +16,10 @@ import {
   type BomExplosion, type BomExplodedLine,
   type BomComponent,
   type DesignTask, type DesignTaskView, type DesignKind,
-  type WorkAttribution,
+  type WorkAttribution, type MaterialPlan, type MaterialLine,
 } from "@/services/production/contracts";
 import { attributionOf } from "@/services/production/contracts";
+import { stockItems } from "./inventory-derive";
 
 /** Today, as an office day. The board is about deadlines, so "what day is it"
  *  has to be the workshop's day rather than UTC's (F17, F39). One definition
@@ -1020,5 +1021,82 @@ export function personWork(
     }).sort((a, b) => b.qty - a.qty),
     first: dates[0],
     last: dates[dates.length - 1],
+  };
+}
+
+/* ── What a run should take, against what left the rack ────────────────
+ *
+ *  Nothing here deducts stock. The BOM proposes, a person disposes: the
+ *  storeman records what actually went out, against the SPK, because he is the
+ *  one who carried it (D266). Stock that moves because somebody typed a
+ *  progress entry is stock nobody counted, and the rack then disagrees with
+ *  the screen in a way only a stock-take can find.
+ */
+export function materialPlan(state: DemoState, wo: WorkOrder): MaterialPlan {
+  const view = workOrderView(state, wo);
+  const product = state.products.find((p) => p.product_code === wo.product_code);
+
+  /* The order's **own** pinned revision, not whatever the catalogue says now
+     (D256). An order written against rev 1 is measured against rev 1. */
+  const explosion = product
+    ? explodeBom(state, product, wo.qty, wo.bom_rev ?? currentBomRev(state, product))
+    : null;
+
+  let no_plan_reason: string | null = null;
+  if (!product) no_plan_reason = "Produk pesanan ini tidak ada di katalog.";
+  else if (!explosion || explosion.lines.length === 0) {
+    no_plan_reason = "Produk ini belum punya bill of material, jadi tidak ada daftar bahan yang bisa dibandingkan.";
+  } else if (explosion.cycle) {
+    no_plan_reason = `BOM produk ini berputar (${explosion.cycle.join(" → ")}), jadi kebutuhannya belum bisa dihitung.`;
+  }
+
+  const expected = new Map<string, { qty: number; uom: string }>();
+  if (!no_plan_reason && explosion) {
+    for (const l of explosion.lines) expected.set(l.ref_code, { qty: l.qty, uom: l.uom });
+  }
+
+  /* Issues minus returns against this SPK. A return is not a smaller issue —
+     it is its own row — but for *how much is out there* the two net off. */
+  const moved = new Map<string, number>();
+  for (const m of state.stock_moves) {
+    if (m.ref_no !== wo.wo_no) continue;
+    if (m.kind !== "issue" && m.kind !== "return") continue;
+    /* `qty` is signed: an issue is negative off the rack, so the amount that
+       went *out* is its negation. */
+    moved.set(m.item_code, (moved.get(m.item_code) ?? 0) - m.qty);
+  }
+
+  const onHand = new Map(stockItems(state).map((r) => [r.item_code, r.on_hand]));
+  const codes = [...new Set([...expected.keys(), ...moved.keys()])];
+
+  const lines: MaterialLine[] = codes.map((code) => {
+    const exp = expected.get(code);
+    const issued = Math.round((moved.get(code) ?? 0) * 1000) / 1000;
+    const item = state.items.find((i) => i.code === code);
+    return {
+      item_code: code,
+      item_name: item?.name ?? code,
+      uom: exp?.uom ?? item?.base_uom ?? "",
+      expected: exp ? Math.round(exp.qty * 1000) / 1000 : null,
+      issued,
+      remaining: exp ? Math.round((exp.qty - issued) * 1000) / 1000 : null,
+      on_hand: onHand.get(code) ?? 0,
+      off_bom: !exp,
+    };
+  }).sort((a, b) =>
+    Number(a.off_bom) - Number(b.off_bom)
+    || (b.remaining ?? -Infinity) - (a.remaining ?? -Infinity)
+    || a.item_name.localeCompare(b.item_name));
+
+  return {
+    wo_no: wo.wo_no,
+    rev: no_plan_reason ? null : (wo.bom_rev ?? (product ? currentBomRev(state, product) : null)),
+    no_plan_reason,
+    lines,
+    /* Only once the run is finished. Half a run has taken half its material,
+       and calling that a 50% underrun teaches people to ignore the figure. */
+    variance_readable: view.completed >= wo.qty || wo.status === "DONE",
+    completed: view.completed,
+    ordered: wo.qty,
   };
 }

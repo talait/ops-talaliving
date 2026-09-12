@@ -554,6 +554,13 @@ fill the column is a wrong number in a costing report (D204).
 `inv.log_purchases.nota_attachment_id` links the load to the paper it was
 entered from (D201). Nullable only for loads recorded before that rule.
 
+`inv.stock_moves.ref_no` is a **text reference, not a foreign key** across the
+service seam (ADR-004) — and that is exactly why nine seeded issues pointed at
+two work orders that had never existed for six milestones (F86). Nothing
+dereferenced the column until D266, so nothing checked it. It stays text, and
+the check is now done on read: `ref_missing` follows any `spk-` reference and
+the screen marks it. A key nothing follows is a key nothing checks.
+
 `prod.production_progress` carries **two** columns for who did the work and
 they are not redundant (D264). `worked_by` is the name as the mandor wrote it,
 kept verbatim for ever, because a record that rewrites itself when somebody is

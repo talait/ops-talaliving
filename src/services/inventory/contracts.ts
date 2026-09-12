@@ -420,6 +420,13 @@ export interface StockMoveView extends StockMove {
   item_name: string;
   location_name: string;
   by_name: string;
+  /** Set where `ref_no` names an SPK that **does not exist** (F86).
+   *
+   *  Nothing dereferenced this column until D266, so nine seeded issues
+   *  pointed at two work orders that had never been created and no screen
+   *  could say so. A reference nothing follows is a reference nothing checks,
+   *  and the cheapest guard is to follow it where it is already displayed. */
+  ref_missing: boolean;
 }
 
 /** What a storeman needs on top of the item itself: how low is too low. */

@@ -515,6 +515,57 @@ export interface BomExplodedLine {
   depth: number;
 }
 
+/** What a run should consume, against what actually left the rack (D266).
+ *
+ *  The two halves are deliberately produced by different people. The BOM says
+ *  what the run *ought* to take; the storeman says what *did* go out, because
+ *  he is the one who carried it. Nothing here is deducted automatically, and
+ *  that is the decision rather than an omission: stock that moves because a
+ *  progress entry was typed is stock nobody counted, and the rack then
+ *  disagrees with the screen in a way only a stock-take can find.
+ *
+ *  The gap between the two is the number this business has never been able to
+ *  see: *did this run use more plywood than it should have.*
+ */
+export interface MaterialLine {
+  item_code: string;
+  item_name: string;
+  uom: string;
+  /** From the pinned BOM revision × the whole order, waste included at every
+   *  level. Null for something issued that the BOM does not mention — which is
+   *  not an error, it is the case worth looking at. */
+  expected: number | null;
+  /** Issues minus returns against this SPK. */
+  issued: number;
+  /** `expected − issued`, and null while `expected` is. Negative means more
+   *  went out than the list called for. */
+  remaining: number | null;
+  /** What is on the rack now, across every location. */
+  on_hand: number;
+  /** True where this item was issued against the order and the BOM never
+   *  named it. The screen says so rather than folding it into a variance. */
+  off_bom: boolean;
+}
+
+export interface MaterialPlan {
+  wo_no: string;
+  /** The revision the expectation was computed from. Null where the order
+   *  predates versioning or the product has no BOM — and then every
+   *  `expected` is null too, never zero (F60). */
+  rev: number | null;
+  /** Why there is no expectation, where there is none. */
+  no_plan_reason: string | null;
+  lines: MaterialLine[];
+  /** Set once the order is finished. A variance read mid-run is not a
+   *  variance — it is a run that has not finished drawing its material yet,
+   *  and calling it an overrun teaches people to ignore the figure. */
+  variance_readable: boolean;
+  /** Pieces completed against ordered, so the reader can see how far in the
+   *  order is without leaving the panel. */
+  completed: number;
+  ordered: number;
+}
+
 export interface BomExplosion {
   product_code: string;
   qty: number;

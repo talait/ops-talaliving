@@ -18,6 +18,8 @@ import {
   stockItems, stockItemDetail, stockMoveViews,
   boardStock, boardMoveViews,
 } from "../inventory-derive";
+import { materialPlan } from "../production-derive";
+import type { MaterialPlan } from "@/services/production/contracts";
 import { scanNota } from "../nota-kayu";
 import { STOCKED_CATEGORIES } from "../fixtures/reference";
 import { latency, actingUser, requireModule, conflict, replayed, remember } from "./_kit";
@@ -762,4 +764,114 @@ export async function moveBoards(
 export async function readNota(text: string): Promise<Result<NotaScan>> {
   await latency();
   return ok(SERVICE, scanNota(text));
+}
+
+/* ── Issuing a whole run's material against its SPK ────────────────────
+ *
+ *  The gap S1 left open since M27: nothing draws stock down from a BOM, so an
+ *  issue was recorded item by item and never against the list it came from.
+ *
+ *  What this endpoint deliberately is **not** is automatic. Stock does not
+ *  move when somebody types a progress entry, and the BOM does not deduct
+ *  itself. The list is a **proposal**; the storeman edits it to what he
+ *  actually carried out and confirms (D266). Stock that moves because a form
+ *  was submitted somewhere else is stock nobody counted, and the rack then
+ *  disagrees with the screen in a way only a stock-take can find.
+ *
+ *  Issuing more than the record shows stays allowed and flagged, exactly as
+ *  the single-item endpoint does (A6): the wood is off the rack or it is not,
+ *  and refusing to record what somebody just carried teaches him to stop
+ *  recording. The response names every line that went negative.
+ */
+export async function issueForWorkOrder(
+  input: {
+    wo_no: string;
+    location: string;
+    lines: { item_code: string; qty: number }[];
+    note?: string | null;
+    idempotency_key?: string;
+  },
+): Promise<Result<{
+  wo_no: string;
+  move_nos: string[];
+  issued: number;
+  negative: { item_code: string; item_name: string; on_hand_after: number }[];
+}>> {
+  await latency();
+  const cached = replayed<{
+    wo_no: string; move_nos: string[]; issued: number;
+    negative: { item_code: string; item_name: string; on_hand_after: number }[];
+  }>(SERVICE, "issueForWorkOrder", input.idempotency_key);
+  if (cached) return cached;
+
+  const denied = requireModule(SERVICE, "inventory");
+  if (denied) return denied;
+
+  const state = getState();
+  const wo = state.work_orders.find((w) => w.wo_no === input.wo_no);
+  if (!wo) return notFound(SERVICE, "wo_not_found", `Tidak ada SPK ${input.wo_no}.`);
+  if (wo.status === "CANCELLED") {
+    return conflict(SERVICE, "wo_cancelled", `${wo.wo_no} sudah dibatalkan.`, {});
+  }
+  if (!state.stock_locations.some((l) => l.code === input.location && l.is_active)) {
+    return invalid(SERVICE, "location_required", "Bahan ini keluar dari lokasi mana?", { field: "location" });
+  }
+
+  const wanted = (input.lines ?? []).filter((l) => l.qty > 0);
+  if (wanted.length === 0) {
+    return invalid(
+      SERVICE, "nothing_to_issue",
+      "Tidak ada barang yang dikeluarkan. Isi jumlah yang benar-benar dibawa ke bengkel — daftar dari BOM hanya usulan.",
+      { field: "lines" },
+    );
+  }
+
+  /* Every line is checked before any is written: half an issue posted and half
+     refused would leave the rack describing a trip that did not happen. */
+  const bad = wanted.map((l) => ({ l, check: stockable(state, l.item_code) })).filter((r) => !r.check.ok);
+  if (bad.length > 0) {
+    return invalid(
+      SERVICE, "not_stocked",
+      bad.map((b) => b.check.ok ? "" : b.check.why).join(" "),
+      { field: "lines", items: bad.map((b) => b.l.item_code) },
+    );
+  }
+
+  const before = new Map(stockItems(state).map((r) => [r.item_code, r.on_hand]));
+  const user = actingUser();
+  const moveNos: string[] = [];
+  const negative: { item_code: string; item_name: string; on_hand_after: number }[] = [];
+
+  apply((draft) => {
+    for (const l of wanted) {
+      const item = draft.items.find((i) => i.code === l.item_code)!;
+      const move = writeMove(draft, {
+        item_code: l.item_code, location: input.location, kind: "issue",
+        qty: -Math.abs(l.qty), uom: item.base_uom,
+        ref_no: wo.wo_no, reason: input.note?.trim() || null,
+      }, user.id, user.email);
+      moveNos.push(move.move_no);
+
+      const after = Math.round(((before.get(l.item_code) ?? 0) - l.qty) * 1000) / 1000;
+      if (after < 0) negative.push({ item_code: l.item_code, item_name: item.name, on_hand_after: after });
+    }
+    writeOutbox(draft, {
+      service: SERVICE, event_type: "inventory.stock.issued_for_wo",
+      payload: { wo_no: wo.wo_no, lines: wanted.length, location: input.location },
+    });
+  });
+
+  const result = { wo_no: wo.wo_no, move_nos: moveNos, issued: wanted.length, negative };
+  remember(SERVICE, "issueForWorkOrder", input.idempotency_key, result);
+  return ok(SERVICE, result);
+}
+
+/** The list beside the record: what the run should take, what has gone out,
+ *  and what is left — read from the order's **own** pinned BOM revision. */
+export async function materialForWorkOrder(woNo: string): Promise<Result<MaterialPlan>> {
+  await latency();
+  const state = getState();
+  const wo = state.work_orders.find((w) => w.wo_no === woNo);
+  if (!wo) return notFound(SERVICE, "wo_not_found", `Tidak ada SPK ${woNo}.`);
+  return ok(SERVICE, materialPlan(state, wo));
 }

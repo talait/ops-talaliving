@@ -226,6 +226,11 @@ function moveView(state: DemoState, m: StockMove): StockMoveView {
     item_name: state.items.find((i) => i.code === m.item_code)?.name ?? m.item_code,
     location_name: state.stock_locations.find((l) => l.code === m.location)?.name ?? m.location,
     by_name: state.users.find((u) => u.id === m.moved_by)?.full_name ?? "—",
+    /* Only SPK references are checked, because they are the only ones this
+       state can resolve: `rcv-…` and an opname reference live elsewhere. */
+    ref_missing: m.ref_no != null
+      && m.ref_no.startsWith("spk-")
+      && !state.work_orders.some((w) => w.wo_no === m.ref_no),
   };
 }
 

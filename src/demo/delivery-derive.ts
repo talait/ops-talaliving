@@ -8,7 +8,9 @@ import type { DemoState } from "./state";
 import type {
   Delivery, DeliveryView, Installation, InstallationView,
   Snag, SnagView, FulfilmentView, FulfilmentLine, FulfilmentStage,
+  PackingBox, BoxView,
 } from "@/services/delivery/contracts";
+import { BOX_STATUS_LABEL } from "@/services/delivery/contracts";
 import { workOrderView } from "./production-derive";
 
 const DAY = 86_400_000;
@@ -263,5 +265,84 @@ export function snagView(state: DemoState, s: Snag, today: string): SnagView {
     project_name: project?.name ?? s.project_code,
     line_description: line?.description ?? null,
     age_days: daysBetween(s.raised_on, s.fixed_on ?? today),
+  };
+}
+
+/* ── Packing boxes ────────────────────────────────────────────────────
+ *
+ *  `position` — *3 dari 5* — is the only figure here the box row does not
+ *  carry, and it is deliberately not stored. A box's place in a consignment
+ *  changes when another box is added to the same lorry, and a number printed
+ *  on a label that is no longer true is worse than no number. It is computed
+ *  from the consignment every time it is read, and a box that is not on a
+ *  consignment yet has none at all.
+ */
+
+export function boxView(state: DemoState, b: PackingBox): BoxView {
+  const lines = state.box_lines.filter((l) => l.box_id === b.id);
+  const delivery = b.delivery_id
+    ? state.deliveries.find((d) => d.id === b.delivery_id)
+    : undefined;
+
+  let position: string | null = null;
+  if (b.delivery_id) {
+    const siblings = state.packing_boxes
+      .filter((x) => x.delivery_id === b.delivery_id)
+      .sort((x, y) => x.box_no.localeCompare(y.box_no));
+    const at = siblings.findIndex((x) => x.id === b.id);
+    if (at >= 0) position = `${at + 1} dari ${siblings.length}`;
+  }
+
+  const warnings: string[] = [];
+  if (lines.length === 0) warnings.push("Peti ini tercatat tanpa isi.");
+  if ((b.status === "ON_SITE" || b.status === "INSTALLED") && !delivery) {
+    warnings.push("Tercatat sampai di site, tapi tidak menempel pada pengiriman mana pun.");
+  }
+  if (delivery && delivery.status === "ARRIVED" && b.scanned_at == null) {
+    warnings.push("Pengirimannya sudah tercatat sampai, tapi peti ini belum ada yang scan.");
+  }
+  if (b.status === "PROBLEM" && !b.problem_note) {
+    warnings.push("Ditandai bermasalah tanpa keterangan.");
+  }
+
+  return {
+    ...b,
+    lines,
+    warnings,
+    status_label: BOX_STATUS_LABEL[b.status],
+    delivery_no: delivery?.delivery_no ?? null,
+    project_name: state.projects.find((p) => p.code === b.project_code)?.name ?? null,
+    packed_by_name: state.users.find((u) => u.id === b.packed_by)?.full_name ?? b.packed_by,
+    scanned_by_name: b.scanned_by
+      ? state.users.find((u) => u.id === b.scanned_by)?.full_name ?? b.scanned_by
+      : null,
+    piece_count: lines.reduce((sum, l) => sum + l.qty, 0),
+    position,
+  };
+}
+
+export function boxViews(state: DemoState): BoxView[] {
+  return state.packing_boxes
+    .map((b) => boxView(state, b))
+    .sort((a, b) => b.box_no.localeCompare(a.box_no));
+}
+
+/** The one sentence a delivery screen needs about its boxes.
+ *
+ *  Returns `null` when the consignment has no boxes recorded — which is not
+ *  the same fact as *nol peti* and must not be rendered as one. Deliveries
+ *  from before the labels existed are the ordinary case, not an error (F60).
+ */
+export function boxSummary(state: DemoState, deliveryId: string): {
+  total: number; on_site: number; installed: number; problem: number; unscanned: number;
+} | null {
+  const boxes = state.packing_boxes.filter((b) => b.delivery_id === deliveryId);
+  if (boxes.length === 0) return null;
+  return {
+    total: boxes.length,
+    on_site: boxes.filter((b) => b.status === "ON_SITE").length,
+    installed: boxes.filter((b) => b.status === "INSTALLED").length,
+    problem: boxes.filter((b) => b.status === "PROBLEM").length,
+    unscanned: boxes.filter((b) => b.scanned_at == null).length,
   };
 }

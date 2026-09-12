@@ -31,7 +31,7 @@ import type {
   DesignTask, DesignRevision, DesignQuestion,
 } from "@/services/production/contracts";
 import type {
-  Delivery, DeliveryLine, Installation, InstallationLine, Snag, Handover,
+  Delivery, DeliveryLine, PackingBox, BoxLine, Installation, InstallationLine, Snag, Handover,
 } from "@/services/delivery/contracts";
 
 export interface DemoUser extends User {
@@ -198,6 +198,9 @@ export interface DemoState {
   /* The last leg: what left the yard, what was fitted, what was found wrong,
      and the one record that says a job is finished (D209). */
   deliveries: Delivery[];
+  /** One packed box, labelled with a code the crew scans on site (D262). */
+  packing_boxes: PackingBox[];
+  box_lines: BoxLine[];
   delivery_lines: DeliveryLine[];
   installations: Installation[];
   installation_lines: InstallationLine[];

@@ -13,15 +13,15 @@
  *    the client accepted the work, and the client is the one person who cannot
  *    correct our record of that.
  */
-import { ok, invalid, notFound, type Result } from "@/services/_shared/envelope";
+import { ok, invalid, notFound, noop, isOk, type Result } from "@/services/_shared/envelope";
 import type {
   DeliveryView, InstallationView, SnagView, FulfilmentView,
-  SnagSeverity,
+  SnagSeverity, BoxView,
 } from "@/services/delivery/contracts";
 import { getState, apply, newId, nextDocNumber, writeAudit } from "../store";
 import {
   fulfilmentView, fulfilmentViews, deliveryView, installationView, snagView,
-  deliveredFor, installedFor,
+  deliveredFor, installedFor, boxView, boxViews,
 } from "../delivery-derive";
 import { latency, actingUser, requireModule, conflict, replayed, remember } from "./_kit";
 import { officeToday } from "@/lib/office";
@@ -449,4 +449,281 @@ export async function recordHandover(
   });
 
   return getFulfilment(input.project_code);
+}
+
+/* ── Packing boxes ─────────────────────────────────────────────────────
+ *
+ *  The scan is the point. Everything here is written so that a person holding
+ *  a phone in a stairwell, one-handed, can do it: the box code is the whole
+ *  identity, there is no form to fill in to say *it is here*, and the only
+ *  thing that is ever compulsory is the sentence explaining a problem.
+ *
+ *  One refusal, and it is the same rule the installation endpoint already
+ *  holds one level up: **a box cannot be fitted before anybody has seen it**.
+ *  Everything else warns. A box scanned on site that the delivery record says
+ *  never left is a paperwork gap, not a lie — the box is in the person's
+ *  hands, and refusing the scan would only mean it is never recorded at all.
+ */
+
+export async function listBoxes(
+  filter: { project_code?: string; delivery_no?: string; status?: string } = {},
+): Promise<Result<BoxView[]>> {
+  await latency();
+  const state = getState();
+  return ok(SERVICE, boxViews(state).filter((b) =>
+    (!filter.project_code || b.project_code === filter.project_code) &&
+    (!filter.delivery_no || b.delivery_no === filter.delivery_no) &&
+    (!filter.status || b.status === filter.status)));
+}
+
+/** What the QR resolves to. Not found is the ordinary answer here — a label
+ *  from another job, or a code typed by hand with a digit wrong. */
+export async function getBox(boxNo: string): Promise<Result<BoxView>> {
+  await latency();
+  const state = getState();
+  const b = state.packing_boxes.find((x) => x.box_no === boxNo.trim());
+  if (!b) return notFound(SERVICE, "box_not_found", `Tidak ada peti dengan kode ${boxNo}.`);
+  return ok(SERVICE, boxView(state, b));
+}
+
+/** Packing one box. The destination is compulsory and the contents are
+ *  compulsory, because a label carrying neither is a label nobody can use —
+ *  which is exactly the crate the crew has to open to find out. */
+export async function packBox(
+  input: {
+    project_code: string;
+    destination: string;
+    lines: { project_line_id?: string | null; description: string; qty: number; uom: string }[];
+    delivery_no?: string | null;
+    note?: string | null;
+    idempotency_key?: string;
+  },
+): Promise<Result<BoxView>> {
+  await latency();
+  const denied = requireModule(SERVICE, "project");
+  if (denied) return denied;
+  const dup = replayed<BoxView>(SERVICE, "packBox", input.idempotency_key);
+  if (dup) return dup;
+
+  const state = getState();
+  const project = state.projects.find((p) => p.code === input.project_code);
+  if (!project) return notFound(SERVICE, "project_not_found", `Tidak ada proyek ${input.project_code}.`);
+  if (!input.destination?.trim()) {
+    return invalid(SERVICE, "destination_required", "Peti ini untuk ruangan mana? Tanpa itu, label ini tidak menolong siapa pun di lokasi.", { field: "destination" });
+  }
+  const lines = (input.lines ?? []).filter((l) => l.description?.trim() && l.qty > 0);
+  if (lines.length === 0) {
+    return invalid(SERVICE, "contents_required", "Tulis isi petinya. Label tanpa isi hanya memindahkan pekerjaan membuka peti ke lokasi.", { field: "lines" });
+  }
+
+  const delivery = input.delivery_no
+    ? state.deliveries.find((d) => d.delivery_no === input.delivery_no)
+    : undefined;
+  if (input.delivery_no && !delivery) {
+    return notFound(SERVICE, "delivery_not_found", `Tidak ada pengiriman ${input.delivery_no}.`);
+  }
+  if (delivery && delivery.project_code !== input.project_code) {
+    return conflict(SERVICE, "wrong_project", `Pengiriman ${delivery.delivery_no} untuk proyek ${delivery.project_code}, bukan ${input.project_code}.`, { delivery_project: delivery.project_code });
+  }
+
+  const user = actingUser();
+  const now = new Date();
+  let boxNo = "";
+  apply((draft) => {
+    boxNo = nextDocNumber(draft, "kol", now);
+    const id = newId("box");
+    draft.packing_boxes.push({
+      id, box_no: boxNo, project_code: input.project_code,
+      delivery_id: delivery?.id ?? null,
+      destination: input.destination.trim(),
+      packed_by: user.id, packed_at: now.toISOString(),
+      status: delivery && delivery.status !== "DRAFT" ? "IN_TRANSIT" : "PACKED",
+      scanned_by: null, scanned_at: null,
+      problem_note: null, note: input.note?.trim() || null,
+    });
+    for (const l of lines) {
+      draft.box_lines.push({
+        id: newId("bxl"), box_id: id,
+        project_line_id: l.project_line_id ?? null,
+        description: l.description.trim(), qty: l.qty, uom: l.uom,
+      });
+    }
+    writeAudit(draft, {
+      service: SERVICE, entity: "packing_box", entity_no: boxNo,
+      action: "pack", outcome: "ok", reason: null,
+      detail: { project_code: input.project_code, destination: input.destination.trim(), pieces: lines.length, by: user.email },
+    });
+  });
+
+  const result = await getBox(boxNo);
+  if (isOk(result)) remember(SERVICE, "packBox", input.idempotency_key, result.data);
+  return result;
+}
+
+/** Loading packed boxes onto a consignment that is going out. */
+export async function loadBoxes(
+  input: { delivery_no: string; box_nos: string[] },
+): Promise<Result<BoxView[]>> {
+  await latency();
+  const denied = requireModule(SERVICE, "project");
+  if (denied) return denied;
+
+  const state = getState();
+  const d = state.deliveries.find((x) => x.delivery_no === input.delivery_no);
+  if (!d) return notFound(SERVICE, "delivery_not_found", `Tidak ada pengiriman ${input.delivery_no}.`);
+  if (d.status === "CANCELLED") {
+    return conflict(SERVICE, "cancelled", "Pengiriman ini dibatalkan.", { reason: d.cancelled_reason });
+  }
+
+  const boxes = input.box_nos.map((n) => state.packing_boxes.find((b) => b.box_no === n.trim()));
+  const missing = input.box_nos.filter((_, i) => !boxes[i]);
+  if (missing.length > 0) {
+    return notFound(SERVICE, "box_not_found", `Tidak ada peti: ${missing.join(", ")}.`);
+  }
+  const wrongProject = boxes.filter((b) => b!.project_code !== d.project_code);
+  if (wrongProject.length > 0) {
+    return conflict(SERVICE, "wrong_project", `Peti ${wrongProject.map((b) => b!.box_no).join(", ")} bukan untuk proyek ${d.project_code}.`, { delivery_project: d.project_code });
+  }
+  const alreadyGone = boxes.filter((b) => b!.delivery_id && b!.delivery_id !== d.id);
+  if (alreadyGone.length > 0) {
+    return conflict(SERVICE, "already_loaded", `Peti ${alreadyGone.map((b) => b!.box_no).join(", ")} sudah ikut pengiriman lain.`, {});
+  }
+
+  const user = actingUser();
+  apply((draft) => {
+    for (const b of boxes) {
+      const row = draft.packing_boxes.find((x) => x.id === b!.id)!;
+      row.delivery_id = d.id;
+      if (row.status === "PACKED") row.status = "IN_TRANSIT";
+      writeAudit(draft, {
+        service: SERVICE, entity: "packing_box", entity_no: row.box_no,
+        action: "load", outcome: "ok", reason: null,
+        detail: { delivery_no: d.delivery_no, by: user.email },
+      });
+    }
+  });
+  return listBoxes({ delivery_no: d.delivery_no });
+}
+
+/** *It is here.* One tap after the scan, nothing to fill in.
+ *
+ *  Scanning a box the record says never left does not refuse — it records the
+ *  scan and lets the view say the two records disagree. */
+export async function scanBox(
+  input: { box_no: string; idempotency_key?: string },
+): Promise<Result<BoxView>> {
+  await latency();
+  const denied = requireModule(SERVICE, "project");
+  if (denied) return denied;
+  const dup = replayed<BoxView>(SERVICE, "scanBox", input.idempotency_key);
+  if (dup) return dup;
+
+  const state = getState();
+  const b = state.packing_boxes.find((x) => x.box_no === input.box_no.trim());
+  if (!b) return notFound(SERVICE, "box_not_found", `Tidak ada peti dengan kode ${input.box_no}.`);
+  /* Already fitted, already flagged: the scan adds nothing and must not undo
+     the more specific fact that is already recorded. */
+  if (b.status === "INSTALLED" || b.status === "PROBLEM" || b.status === "ON_SITE") {
+    const view = boxView(state, b);
+    return noop(SERVICE, view);
+  }
+
+  const user = actingUser();
+  apply((draft) => {
+    const row = draft.packing_boxes.find((x) => x.id === b.id)!;
+    row.status = "ON_SITE";
+    row.scanned_by = user.id;
+    row.scanned_at = new Date().toISOString();
+    writeAudit(draft, {
+      service: SERVICE, entity: "packing_box", entity_no: b.box_no,
+      action: "scan", outcome: "ok", reason: null,
+      detail: { by: user.email },
+    });
+  });
+
+  const result = await getBox(b.box_no);
+  if (isOk(result)) remember(SERVICE, "scanBox", input.idempotency_key, result.data);
+  return result;
+}
+
+/** Its contents are in. The one refusal: nobody has seen this box yet. */
+export async function markBoxInstalled(
+  input: { box_no: string; idempotency_key?: string },
+): Promise<Result<BoxView>> {
+  await latency();
+  const denied = requireModule(SERVICE, "project");
+  if (denied) return denied;
+  const dup = replayed<BoxView>(SERVICE, "markBoxInstalled", input.idempotency_key);
+  if (dup) return dup;
+
+  const state = getState();
+  const b = state.packing_boxes.find((x) => x.box_no === input.box_no.trim());
+  if (!b) return notFound(SERVICE, "box_not_found", `Tidak ada peti dengan kode ${input.box_no}.`);
+  if (b.status === "INSTALLED") {
+    return noop(SERVICE, boxView(state, b));
+  }
+  if (b.scanned_at == null) {
+    return conflict(
+      SERVICE, "not_on_site",
+      "Peti ini belum ada yang scan di lokasi. Scan dulu sebagai tanda barangnya benar-benar sampai, baru tandai terpasang.",
+      { status: b.status },
+    );
+  }
+
+  const user = actingUser();
+  apply((draft) => {
+    const row = draft.packing_boxes.find((x) => x.id === b.id)!;
+    row.status = "INSTALLED";
+    writeAudit(draft, {
+      service: SERVICE, entity: "packing_box", entity_no: b.box_no,
+      action: "install", outcome: "ok", reason: null,
+      detail: { by: user.email, had_problem: b.problem_note },
+    });
+  });
+
+  const result = await getBox(b.box_no);
+  if (isOk(result)) remember(SERVICE, "markBoxInstalled", input.idempotency_key, result.data);
+  return result;
+}
+
+/** Damaged, short, or wrong. The sentence is compulsory: a box flagged red
+ *  with nothing written on it is a box nobody in the workshop can act on, and
+ *  the person holding it is the only one who will ever know what was wrong. */
+export async function flagBoxProblem(
+  input: { box_no: string; problem_note: string; idempotency_key?: string },
+): Promise<Result<BoxView>> {
+  await latency();
+  const denied = requireModule(SERVICE, "project");
+  if (denied) return denied;
+  const dup = replayed<BoxView>(SERVICE, "flagBoxProblem", input.idempotency_key);
+  if (dup) return dup;
+
+  const state = getState();
+  const b = state.packing_boxes.find((x) => x.box_no === input.box_no.trim());
+  if (!b) return notFound(SERVICE, "box_not_found", `Tidak ada peti dengan kode ${input.box_no}.`);
+  if (!input.problem_note?.trim()) {
+    return invalid(SERVICE, "problem_note_required", "Tulis apa yang salah. Tanda merah tanpa keterangan tidak bisa ditindaklanjuti siapa pun di workshop.", { field: "problem_note" });
+  }
+
+  const user = actingUser();
+  const now = new Date();
+  apply((draft) => {
+    const row = draft.packing_boxes.find((x) => x.id === b.id)!;
+    row.status = "PROBLEM";
+    row.problem_note = input.problem_note.trim();
+    /* Flagging is also a sighting: the box is in somebody's hands. */
+    if (row.scanned_at == null) {
+      row.scanned_by = user.id;
+      row.scanned_at = now.toISOString();
+    }
+    writeAudit(draft, {
+      service: SERVICE, entity: "packing_box", entity_no: b.box_no,
+      action: "flag_problem", outcome: "ok", reason: input.problem_note.trim(),
+      detail: { by: user.email, was: b.status },
+    });
+  });
+
+  const result = await getBox(b.box_no);
+  if (isOk(result)) remember(SERVICE, "flagBoxProblem", input.idempotency_key, result.data);
+  return result;
 }

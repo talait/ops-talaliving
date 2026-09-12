@@ -3468,3 +3468,81 @@ somebody was actually paid for. The screen now takes a date range and defaults
 to the last run's, and 24 of 40 people score over the window the data covers.
 A rule that makes a screen look broken is sometimes telling you the screen was
 asking the wrong question.
+
+---
+
+## F82 — half of "the QR work" was never waiting on a backend
+
+The QR work had sat in the backlog since Q29 as one item, filed under Phase 2
+with a clear reason: a QR is only useful if somebody can scan it and land
+somewhere, and landing somewhere needs a public read route and a token, which
+needs a backend.
+
+That is true of exactly half of it, and the half it is true of is the smaller
+half.
+
+The reason it needs a public route is that **a vendor has no account here**.
+Print a QR on the PO PDF, the supplier scans it, and they must reach a page
+that shows them the status of their own order without logging in — a public
+route, a token per order, scoped so one supplier cannot read another's. All of
+that is real, and all of it waits.
+
+But the other QR in the backlog is on a **packing box**, and the person who
+scans a packing box is our own installer. They have an account. They are
+already signed in on the phone in their hand. The scan opens a page inside the
+application, behind the ordinary login, exactly like every other page they use.
+There is nothing public about it and nothing to wait for.
+
+The two had been filed together because they are both "QR", which is a fact
+about the technology and not about the problem. **The question that separates
+them is not what the label is made of, it is who is holding it** — and that
+question was never asked, because the two items looked alike on the shelf.
+
+So the box half was built in this phase, and the vendor half is still Phase 2:
+the PO screen renders its QR with a note saying what it does and does not do,
+and it is deliberately **not** printed on the PDF the vendor receives. A QR
+that fails for the person holding it is worse than no QR — they photograph it
+three times before deciding the company is careless.
+
+---
+
+## F83 — the well-argued decision that never asked who was holding the phone
+
+The QR encoded the box code, `kol-26-09-02_01`, and the file said why at
+length: a label is glued to a wooden crate and travels for months, a URL
+printed on it is a promise about a hostname we would have to keep for ever, and
+the code is the thing that is true whatever the address turns out to be.
+
+Every sentence of that is correct. The conclusion was still wrong, and it took
+building the print sheet to see why.
+
+**The scanner is a stock phone camera.** Not our app — the camera the installer
+already has open, the way anybody scans anything. A camera that reads a URL
+opens the box's page. A camera that reads `kol-26-09-02_01` shows a line of
+text, and the person retypes it into a search box. The QR has then saved them
+nothing at all.
+
+The code-only design only pays off if we ship a camera scanner *inside* the
+app, and that is where it collapses: `BarcodeDetector` does not exist on iOS
+Safari, so an in-app scanner means a WASM decoder in the bundle. The simple
+design needed the complicated dependency to work, and the complicated design
+needed nothing.
+
+The hostname objection survives and is answered **by the label rather than by
+the QR**: the code is printed under it in mono, large enough to type. A moved
+domain degrades a label to exactly what the code-only design would have given
+us on its best day. And because the URL is built from whatever host the label
+is printed from, it is right for as long as that host is.
+
+Then it was measured rather than argued. At the 31.7 mm the label gives it, a
+URL on our own domain is 33 modules — 0.86 mm each, against the ~0.5 mm a phone
+needs at arm's length. Even an 84-character Vercel preview hostname stays at
+0.58 mm. **The thing the whole argument was protecting the label from costs it
+nothing.**
+
+Two things worth keeping. A decision can be internally sound and still wrong,
+because soundness is about the argument and correctness is about the world —
+and the way to tell is to name the person and the object in their hand. And
+when a trade-off is about a physical quantity, **measure it before writing the
+paragraph**: one script that prints millimetres per module would have settled
+this before the first doc comment was written.

@@ -3,7 +3,7 @@ import {
   ShoppingCart, ClipboardList, FileText, PackageCheck, Boxes, TreePine,
   Landmark, BookOpen, TrendingUp, PiggyBank, Receipt,
   Megaphone, UserRound, Target, HandCoins, MessageSquare,
-  FolderKanban, Hammer, Truck, Wrench, Stamp,
+  FolderKanban, Hammer, Truck, Wrench, Stamp, Package,
   PencilRuler, ListTree, CalendarClock, CalendarRange,
   Cpu, ScrollText, Activity, UserCog, KeyRound, Clock, Scale,
   Settings, FlaskConical, MessagesSquare, Route, ShieldCheck, Gauge, type LucideIcon,
@@ -135,6 +135,7 @@ export const NAV: NavSection[] = [
       { label: "Projects", labelKey: "orders", href: "/proyek/order", icon: FolderKanban, permission: "project.read", badge: "core" },
       { label: "Cost vs projection", labelKey: "costVsPlan", href: "/proyek/produksi", icon: Scale, permission: "project.read", badge: "new" },
       { label: "Delivery", labelKey: "delivery", href: "/proyek/pengiriman", icon: Truck, permission: "project.read", badge: "new" },
+      { label: "Packing boxes & labels", labelKey: "boxes", href: "/proyek/peti", icon: Package, permission: "project.read", badge: "new" },
       { label: "Installation", labelKey: "installation", href: "/proyek/instalasi", icon: Wrench, permission: "project.read", badge: "new" },
       /* Readable by anyone on the project; signing needs `project.handover`,
        * which the screen gates separately (D211). */

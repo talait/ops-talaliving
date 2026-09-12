@@ -555,8 +555,8 @@ fill the column is a wrong number in a costing report (D204).
 entered from (D201). Nullable only for loads recorded before that rule.
 
 **Schema `dlv`** — the last leg (D209): `deliveries` + `delivery_lines`,
-`installations` + `installation_lines`, `snags`, `handovers`. Three things
-about it are load-bearing:
+`packing_boxes` + `box_lines`, `installations` + `installation_lines`, `snags`,
+`handovers`. Four things about it are load-bearing:
 
 - **nothing stores a quantity delivered or installed.** Both are sums over the
   line tables, filtered by the parent's status — and `delivered` (left the
@@ -569,6 +569,32 @@ about it are load-bearing:
 - `handovers.bast_attachment_id` is **NOT NULL**. It is the only evidence
   column in this schema that is, because it is the only one backing a claim
   about what somebody else agreed to (D211).
+
+`dlv.packing_boxes` is what physically leaves the yard, and it exists because a
+delivery line and a crate are not the same object: *2 set meja makan* arrives as
+four boxes, and a dining table whose top arrived and whose legs did not is worth
+nothing (D262). Four columns carry the weight:
+
+- **`destination` is NOT NULL** — where the crate goes *inside the building*.
+  It is the one fact `delivery_lines` structurally cannot hold, and it is the
+  whole reason the table exists. A box row with a blank destination is a label
+  that moves the job of opening the crate to the site;
+- **`problem_note` is required to set `status = 'PROBLEM'`**, enforced at the
+  API rather than by a constraint, because the check is conditional on a value
+  and the message matters more than the rejection. A red flag with nothing
+  written on it cannot be acted on by anybody in the workshop;
+- **`delivery_id` is nullable.** A box is packed and labelled before anybody
+  books a lorry, and that gap is a state the workshop is in every day, not a
+  missing foreign key;
+- **there is no `position` column.** *3 dari 5* is computed from the
+  consignment on read: it changes the moment another box joins the same lorry,
+  and a number printed on a label that is no longer true is worse than none.
+
+`box_lines.project_line_id` is nullable for the same reason `dlv` is careful
+elsewhere: a box of handles and screws belongs to no line the client ordered by
+name, and forcing it onto one would make the fitted count wrong. A consignment
+that predates the labels has **no** box rows at all, and that is read as *no
+boxes recorded* rather than *nol peti* (F60's rule again).
 
 **Schema `asst`** — `assistant_turns`: the prompt verbatim, what it was
 understood as, the tools it ran, the facts it returned, and the draft plus its

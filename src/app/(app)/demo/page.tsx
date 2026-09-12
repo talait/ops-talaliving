@@ -12,7 +12,7 @@ import { DataTable, type Column } from "@/components/ui/data-table";
 import { formatIDR } from "@/lib/format";
 import { useDemo, useDemoReset, useActingUser } from "@/demo/provider";
 import { accountBalances, prLineView, poStatus, inboxHealth } from "@/demo/derive";
-import { procurement, accounting, identity, production, hr, isOk } from "@/demo/api";
+import { procurement, accounting, identity, production, hr, delivery, isOk } from "@/demo/api";
 import { officeToday } from "@/lib/office";
 import type { LineStatus } from "@/services/procurement/contracts";
 import { useToast } from "@/store/toast";
@@ -265,6 +265,44 @@ export default function DemoDiagnosticsPage() {
       expect: "422 due_date_required",
       got: noDate.error ? `${noDate.error.status} ${noDate.error.code}` : "accepted",
       pass: noDate.error?.status === 422 && noDate.error.code === "due_date_required",
+    });
+
+    /* Back to the workshop manager: the box endpoints sit behind the `project`
+       module, and a 403 from the guard would hide the rule underneath it. */
+    await identity.actAs("usr_made");
+
+    /* D262 — a box cannot be fitted before anybody has seen it. The same rule
+       the installation endpoint holds one level up, and the one refusal in the
+       whole box flow: everything else about a box warns. */
+    const notSeen = await delivery.markBoxInstalled({ box_no: "kol-26-09-08_01" });
+    results.push({
+      name: "D262 — marking a box installed that nobody has scanned on site",
+      expect: "409 not_on_site",
+      got: notSeen.error ? `${notSeen.error.status} ${notSeen.error.code}` : "accepted",
+      pass: notSeen.error?.status === 409 && notSeen.error.code === "not_on_site",
+    });
+
+    /* A red flag with no sentence on it cannot be acted on by anybody in the
+       workshop, and the person who saw the problem is the only one who knows. */
+    const blindFlag = await delivery.flagBoxProblem({ box_no: "kol-26-09-08_01", problem_note: "" });
+    results.push({
+      name: "D262 — flagging a box as a problem with nothing written on it",
+      expect: "422 problem_note_required",
+      got: blindFlag.error ? `${blindFlag.error.status} ${blindFlag.error.code}` : "accepted",
+      pass: blindFlag.error?.status === 422 && blindFlag.error.code === "problem_note_required",
+    });
+
+    /* A label with no room on it moves the job of opening the crate to the
+       site, which is the entire thing this record exists to stop. */
+    const noRoom = await delivery.packBox({
+      project_code: "25009", destination: "",
+      lines: [{ description: "Nakas jati kecil", qty: 1, uom: "unit" }],
+    });
+    results.push({
+      name: "D262 — packing a box with no destination inside the building",
+      expect: "422 destination_required",
+      got: noRoom.error ? `${noRoom.error.status} ${noRoom.error.code}` : "accepted",
+      pass: noRoom.error?.status === 422 && noRoom.error.code === "destination_required",
     });
 
     await identity.actAs(original);

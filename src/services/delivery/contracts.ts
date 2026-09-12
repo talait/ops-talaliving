@@ -67,6 +67,96 @@ export interface DeliveryLine {
   note: string | null;
 }
 
+/* ── Koli: what is in the box, and where it goes ──────────────────────── */
+
+/** One packed box, with a code somebody can scan on site (D262).
+ *
+ *  The owner's second sentence on Q29: *nantinya kita akan sering pakai QR
+ *  untuk penanda instalasi item per box nya*. It was filed as Phase 2 beside
+ *  the vendor-PO QR, and that was wrong — **only the vendor one needs a public
+ *  route**. The person scanning a box is our own installer, who has a login, so
+ *  none of this waits on anything (F82).
+ *
+ *  A box is not a delivery line. A delivery line says *six chairs went*; a box
+ *  says *these two chairs, in this box, go to the first-floor dining room* —
+ *  which is the question somebody standing in a hallway full of cardboard is
+ *  actually asking.
+ */
+export type BoxStatus =
+  /** Packed and labelled, still in the workshop. */
+  | "PACKED"
+  /** On a delivery that has left. */
+  | "IN_TRANSIT"
+  /** Somebody on site scanned it and said it is here. */
+  | "ON_SITE"
+  /** Its contents are installed. */
+  | "INSTALLED"
+  /** Scanned and found damaged or short, with what is wrong. */
+  | "PROBLEM";
+
+export const BOX_STATUS_LABEL: Record<BoxStatus, string> = {
+  PACKED: "Dikemas",
+  IN_TRANSIT: "Di jalan",
+  ON_SITE: "Sampai di site",
+  INSTALLED: "Terpasang",
+  PROBLEM: "Bermasalah",
+};
+
+export interface PackingBox {
+  id: string;
+  /** `kol-26-09-13_01`. The QR points at `/box/<box_no>`; this code is also
+   *  printed in mono beside it, so a label outlives the hostname (F83). */
+  box_no: string;
+  project_code: string;
+  /** The consignment it rides on. Null while it is packed and waiting. */
+  delivery_id: string | null;
+  /** Where it goes **inside the building** — *Lantai 2, kamar tidur utama*.
+   *  The whole point of labelling per box rather than per delivery: a lorry
+   *  arrives with forty boxes and the crew needs to know which floor each one
+   *  is for without opening it. */
+  destination: string;
+  /** Packed by whom, when. */
+  packed_by: string;
+  packed_at: string;
+  status: BoxStatus;
+  /** Set when somebody scans it on site. */
+  scanned_by: string | null;
+  scanned_at: string | null;
+  /** What is wrong, when the status is `PROBLEM`. Required to set it — a box
+   *  flagged with no sentence is one nobody can act on. */
+  problem_note: string | null;
+  note: string | null;
+}
+
+export interface BoxLine {
+  id: string;
+  box_id: string;
+  /** The client's order line this belongs to, where there is one. */
+  project_line_id: string | null;
+  description: string;
+  qty: number;
+  uom: string;
+}
+
+export interface BoxView extends PackingBox {
+  lines: BoxLine[];
+  status_label: string;
+  delivery_no: string | null;
+  project_name: string | null;
+  packed_by_name: string;
+  scanned_by_name: string | null;
+  /** Total pieces inside, for the label. */
+  piece_count: number;
+  /** `3 dari 12` — which box of the consignment this is, for the label and for
+   *  the crew counting them off the lorry. */
+  position: string | null;
+  /** Where the box record and the consignment record disagree. A box scanned
+   *  on site whose delivery was never marked dispatched is not an error to
+   *  refuse — the box is standing there — it is a gap in the paperwork, and
+   *  saying so is the whole job. */
+  warnings: string[];
+}
+
 /* ── Installation ─────────────────────────────────────────────────────── */
 
 export type InstallationStatus = "SCHEDULED" | "DONE" | "CANCELLED";

@@ -59,6 +59,7 @@ export const MESSAGES = {
     orders: m("Client orders", "Pesanan klien"),
     costVsPlan: m("Cost vs projection", "Biaya vs proyeksi"),
     delivery: m("Delivery", "Pengiriman"),
+    boxes: m("Packing boxes & labels", "Peti & label"),
     installation: m("Installation", "Instalasi"),
     handover: m("Handover", "Serah terima"),
 

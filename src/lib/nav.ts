@@ -156,7 +156,7 @@ export const NAV: NavSection[] = [
     title: "Settings",
     icon: Settings,
     items: [
-      { label: "General", href: "/pengaturan", icon: Settings, permission: "settings.read" },
+      { label: "General", href: "/pengaturan", icon: Settings, permission: "settings.read", badge: "new" },
     ],
   },
 ];

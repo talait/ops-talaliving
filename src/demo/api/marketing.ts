@@ -20,13 +20,14 @@ import {
   propertyView, propertyViews, pipelineMetrics, followUpQueue, repViews, marketViews,
 } from "../derive";
 import { latency, actingUser, requireModule, conflict, replayed, remember } from "./_kit";
+import { officeToday as sharedOfficeToday } from "@/lib/office";
 
 const SERVICE = "marketing" as const;
 
 /** The office day, WITA. The follow-up rule counts days, so which day it is
- *  has to be the office's (F17). */
+ *  has to be the office's (F17); one definition for the whole system (F63). */
 function officeToday(): string {
-  return new Date(Date.now() + 8 * 3_600_000).toISOString().slice(0, 10);
+  return sharedOfficeToday();
 }
 
 /** Every market the scrape has touched — country, city, district (D187). */

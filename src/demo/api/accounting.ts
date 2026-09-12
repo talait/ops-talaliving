@@ -9,7 +9,7 @@ import type {
   Direction, PaymentAllocation, EvidenceInboxRow, InboxHealth, AllocMethod,
   BankStatementView, DocumentCoverage, TransactionCoverage,
 } from "@/services/accounting/contracts";
-import { LOCALE } from "@/lib/format";
+import { getActiveLocale } from "@/lib/format";
 import { getState, apply, newId, nextDocNumber, writeAudit, writeOutbox } from "../store";
 import type { AuditRow } from "../state";
 import {
@@ -192,7 +192,7 @@ export async function postTransaction(
     if (sum !== input.amount_idr) {
       return invalid(
         SERVICE, "lines_do_not_add_up",
-        `The detail adds up to ${sum.toLocaleString(LOCALE)} but the transaction is ${input.amount_idr.toLocaleString(LOCALE)}. One of the two is wrong, and the ledger will not guess which.`,
+        `The detail adds up to ${sum.toLocaleString(getActiveLocale())} but the transaction is ${input.amount_idr.toLocaleString(getActiveLocale())}. One of the two is wrong, and the ledger will not guess which.`,
         { field: "lines", lines_total: sum, amount: input.amount_idr },
       );
     }
@@ -371,7 +371,7 @@ export async function allocate(
   if (already + input.amount > trx.amount_idr) {
     return invalid(
       SERVICE, "over_allocated",
-      `This transaction only moved Rp ${trx.amount_idr.toLocaleString(LOCALE)}; Rp ${already.toLocaleString(LOCALE)} is already allocated. A transaction never funds more than it moved.`,
+      `This transaction only moved Rp ${trx.amount_idr.toLocaleString(getActiveLocale())}; Rp ${already.toLocaleString(getActiveLocale())} is already allocated. A transaction never funds more than it moved.`,
       { field: "amount", moved: trx.amount_idr, already, attempted: input.amount },
     );
   }

@@ -11,6 +11,7 @@ import { delivery } from "@/demo/api";
 import { DELIVERY_STATUS_LABEL, type DeliveryStatus, type FulfilmentView } from "@/services/delivery/contracts";
 import { useToast } from "@/store/toast";
 import { useSession } from "@/store/session";
+import { officeToday } from "@/lib/office";
 
 const TONE: Record<DeliveryStatus, "slate" | "amber" | "green" | "red"> = {
   DRAFT: "slate", IN_TRANSIT: "amber", ARRIVED: "green", CANCELLED: "red",
@@ -204,7 +205,7 @@ function DispatchDrawer({ project, onClose, onDone }: {
     setBusy(true);
     const res = await delivery.createDelivery({
       project_code: project.project_code,
-      dispatched_on: new Date(Date.now() + 8 * 3_600_000).toISOString().slice(0, 10),
+      dispatched_on: officeToday(),
       driver: driver || null, vehicle: vehicle || null, lines,
     });
     setBusy(false);

@@ -10,12 +10,19 @@ import type {
 } from "@/services/documents/contracts";
 import { getState, apply, newId, writeAudit, writeOutbox } from "../store";
 import { latency, actingUser, conflict, replayed, remember } from "./_kit";
+import { settingNumber } from "../settings";
 
 const SERVICE = "documents" as const;
 
 /** Below the framework's own body limit on purpose, so an oversized file gets
  *  an error that names the limit instead of a connection that dies. */
+/** Default 15 MB, and a setting (D216) — how big a scan this office needs to
+ *  file is not a thing code should decide. */
 export const MAX_BYTES = 15 * 1024 * 1024;
+
+function maxBytes(): number {
+  return settingNumber(getState(), "ops.max_upload_mb", 15) * 1024 * 1024;
+}
 
 function view(att: Attachment): AttachmentView {
   const links = getState().attachment_links.filter((l) => l.attachment_id === att.id);
@@ -30,11 +37,11 @@ export async function upload(
   const cached = replayed<AttachmentView>(SERVICE, "upload", idempotencyKey);
   if (cached) return cached;
 
-  if (input.bytes > MAX_BYTES) {
+  if (input.bytes > maxBytes()) {
     return invalid(
       SERVICE, "file_too_large",
-      `File is ${(input.bytes / 1024 / 1024).toFixed(1)} MB, over the 15 MB limit.`,
-      { field: "bytes", limit: MAX_BYTES },
+      `File is ${(input.bytes / 1024 / 1024).toFixed(1)} MB, over the ${(maxBytes() / 1024 / 1024).toFixed(0)} MB limit.`,
+      { field: "bytes", limit: maxBytes() },
     );
   }
 

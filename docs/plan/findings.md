@@ -2717,3 +2717,44 @@ a road or in a house nobody wrote down.
 The general form is worth keeping: **when one number is being used to answer
 two questions, it is answering at least one of them wrongly.** The tell here
 was that the two usages subtracted it from different things.
+
+---
+
+## F63 — the office day, written down thirteen times
+
+The settings screen's first honest question was which of the system's numbers
+it could offer at all. The time zone looked like the easiest entry on the page:
+one constant, one dropdown, done.
+
+It was not one constant. `+ 8 * 3_600_000` appeared in **thirteen files** —
+five service modules, seven screens, and the fixture builder — each with its
+own small comment explaining the office day, each citing F17 and F39, each a
+faithful copy of the same idea written out again.
+
+Nothing was broken. Every copy said `8`. That is exactly what makes it worth
+recording: **this is the failure mode that does not announce itself.** The day
+somebody fixes a daylight-saving edge case, or the day M33's worldwide markets
+turn into a second office, twelve of the thirteen keep the old answer — and
+the symptom is not a crash. It is the payroll module believing a scan happened
+on a different day from the module that files it, which is a week of somebody's
+life to find.
+
+The duplication had a cause worth naming, because it will happen again: each
+copy was *four lines*. Four lines never feels like it deserves a module, and
+the comment above each one — always the same comment — was the tell that it
+did. **A constant repeated with the same explanation attached is not a
+constant that is small enough to repeat; it is one whose explanation nobody
+wanted to have to find.**
+
+It is `src/lib/office.ts` now, one definition, and the settings screen can
+point at it and say something true: this is where the office day is decided,
+and it is not changed from here — changing it does not alter what happens
+next, it alters which day every scan and every payslip already in the system
+belongs to.
+
+A smaller lesson from the same hour, and an embarrassing one: three earlier
+`FIXTURE_VERSION` bumps in this session were written with `sed -i '49s/…/'`
+and silently did nothing, because the file had grown and line 49 was no longer
+the version line. `sed` reported success each time. **An edit addressed by line
+number is an edit that stops being the edit you wrote the moment anything above
+it moves** — and unlike a failed string match, it fails quietly.

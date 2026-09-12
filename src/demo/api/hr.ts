@@ -17,6 +17,7 @@ import {
   employeeFile, leaveBalance, leaveRequestView, datesBetween,
 } from "../hr-derive";
 import { latency, actingUser, requireModule, requireLevel, requireAuthority, conflict, replayed, remember } from "./_kit";
+import { officeToday as sharedOfficeToday } from "@/lib/office";
 
 const SERVICE = "hr" as const;
 
@@ -1296,9 +1297,10 @@ export async function decideLeave(
   });
 }
 
-/** The office day, WITA. Not the browser's day (F17). */
+/** The office day, WITA. Not the browser's day (F17); one definition for the
+ *  whole system (F63). */
 function officeToday(): string {
-  return new Date(Date.now() + 8 * 3_600_000).toISOString().slice(0, 10);
+  return sharedOfficeToday();
 }
 
 /* ── Pay rules ────────────────────────────────────────────────────────────
@@ -1310,7 +1312,7 @@ function officeToday(): string {
 export async function listPayRules(): Promise<Result<PayRuleSetView[]>> {
   await latency();
   const state = getState();
-  const today = new Date(Date.now() + 8 * 3_600_000).toISOString().slice(0, 10);
+  const today = sharedOfficeToday();
   const current = activePayRules(state, today);
   return ok(SERVICE, [...state.pay_rule_sets]
     .sort((a, b) => b.effective_from.localeCompare(a.effective_from))
@@ -1365,7 +1367,7 @@ export async function savePayRules(
   /* Never into the past. Days that have already been worked were worked under
      a rule somebody could have read at the time; changing what they are worth
      afterwards is the one thing a pay system must not do quietly (D173). */
-  const today = new Date(Date.now() + 8 * 3_600_000).toISOString().slice(0, 10);
+  const today = sharedOfficeToday();
   if (input.effective_from < today) {
     return invalid(
       SERVICE, "effective_from_in_past",

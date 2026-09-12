@@ -91,7 +91,7 @@ export function logPurchaseView(state: DemoState, p: LogPurchase): LogPurchaseVi
   }
   if (yield_percent != null && yield_percent > 100) {
     warnings.push(`Papan ${sawn_m3} m³ melebihi log ${log_m3} m³ — salah ukur, atau ada papan dari log lain masuk ke sini.`);
-  } else if (yield_percent != null && yield_percent < 45) {
+  } else if (yield_percent != null && yield_percent < settingNumber(state, "ops.low_yield_percent", 45)) {
     warnings.push(`Rendemen ${yield_percent}% — di bawah yang biasa. Layak ditanyakan ke pemilik sawmill.`);
   }
 
@@ -192,6 +192,7 @@ import type {
   StockItemView, StockItemDetail, StockMoveView, StockMove,
 } from "@/services/inventory/contracts";
 import { STOCKED_CATEGORIES } from "./fixtures/reference";
+import { settingNumber } from "./settings";
 
 /** What one item's stock is worth, and how sure we are of it.
  *

@@ -13,6 +13,7 @@ import { procurement, production } from "@/demo/api";
 import { PROCESS_STAGES, STAGE_NAME, type WorkOrderView } from "@/services/production/contracts";
 import { useSession } from "@/store/session";
 import { useToast } from "@/store/toast";
+import { officeToday } from "@/lib/office";
 
 /** One work order: every stage, every entry behind it, and the deadline.
  *
@@ -49,7 +50,7 @@ export function WorkOrderDrawer({
   const [qty, setQty] = useState(1);
   const [who, setWho] = useState("");
   const [note, setNote] = useState("");
-  const [date, setDate] = useState(new Date(Date.now() + 8 * 3_600_000).toISOString().slice(0, 10));
+  const [date, setDate] = useState(officeToday());
   const [busy, setBusy] = useState(false);
   const [closing, setClosing] = useState(false);
   const [prBusy, setPrBusy] = useState(false);

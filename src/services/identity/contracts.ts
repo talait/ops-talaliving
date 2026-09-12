@@ -201,3 +201,67 @@ export interface AuditRowView {
   reason: string | null;
   detail: Record<string, unknown> | null;
 }
+
+
+/* ── Settings: the numbers somebody might think are theirs to change ──────
+ *
+ *  A settings screen is usually a drawer of knobs. This one is an **inventory
+ *  with a straight answer attached to each entry**, because the interesting
+ *  question about a setting is not what it does — it is *what it does to
+ *  figures that already exist* (D214).
+ *
+ *  Three reaches, and the third is why this screen is shaped the way it is:
+ *
+ *  - `display` — only how something is shown. Change it freely.
+ *  - `forward` — only things that happen after the change. Change it freely.
+ *  - `retroactive` — **figures already printed, already paid against, already
+ *    argued over, read differently afterwards.** A free-text box for one of
+ *    these is how a payslip from March quietly becomes a different payslip.
+ *
+ *  Retroactive settings are shown here, with what would move, and changed
+ *  somewhere that can handle a version — or not changed at all, with the
+ *  reason said out loud. A settings page that hides the distinction is worse
+ *  than one that does not exist, because it makes the dangerous change look
+ *  exactly like the safe one.
+ */
+export type SettingReach = "display" | "forward" | "retroactive";
+
+export const SETTING_REACH_LABEL: Record<SettingReach, string> = {
+  display: "Tampilan saja",
+  forward: "Berlaku ke depan",
+  retroactive: "Mengubah angka lama",
+};
+
+export type SettingKind = "text" | "number" | "choice";
+
+export type SettingGroup = "identity" | "format" | "operations" | "retention";
+
+export const SETTING_GROUP_LABEL: Record<SettingGroup, string> = {
+  identity: "Identitas",
+  format: "Format & bahasa",
+  operations: "Ambang batas operasional",
+  retention: "Waktu, retensi, dan aturan yang tidak diubah dari sini",
+};
+
+export interface AppSetting {
+  key: string;
+  group: SettingGroup;
+  label: string;
+  /** What it does, in one sentence somebody who is not a developer can act on. */
+  help: string;
+  kind: SettingKind;
+  value: string;
+  default_value: string;
+  unit: string | null;
+  choices: string[] | null;
+  reach: SettingReach;
+  /** **Null means editable here.** Otherwise a sentence saying why not — and
+   *  it is always a reason about the data, never "ask IT". */
+  locked_reason: string | null;
+  /** Where the change is actually made, when it is made somewhere else. */
+  managed_at: string | null;
+  /** What it would move, for a retroactive one. Empty for the rest. */
+  affects: string[];
+  updated_by: string | null;
+  updated_at: string | null;
+}

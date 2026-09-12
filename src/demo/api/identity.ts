@@ -1,13 +1,14 @@
 /** Implements `/api/v1/identity` from `03-api.md`. */
-import { ok, invalid, notFound, type Result } from "@/services/_shared/envelope";
+import { ok, noop, invalid, notFound, refused, type Result } from "@/services/_shared/envelope";
 import type {
   Session, Authority, ModuleName, ModuleLevel,
-  ActivityEvent, ActivityDaily, RetentionStatus, AuditRowView,
+  ActivityEvent, ActivityDaily, RetentionStatus, AuditRowView, AppSetting,
 } from "@/services/identity/contracts";
 import { expandPermissions } from "@/lib/roles";
 import { getState, apply, newId, writeAudit } from "../store";
 import type { DemoUser } from "../state";
 import { latency, actingUser, requireModule, requireLevel } from "./_kit";
+import { officeDay as sharedOfficeDay } from "@/lib/office";
 
 const SERVICE = "identity" as const;
 
@@ -107,9 +108,10 @@ export async function setAuthorities(
 export const RETENTION = { DETAIL_DAYS: 30, RECAP_MONTHS: 6 } as const;
 
 /** The office day, WITA. A log that rolls over at UTC midnight cuts the
- *  workshop's afternoon in half (F17). */
+ *  workshop's afternoon in half (F17); one definition for the whole system
+ *  (F63). */
 function officeDay(at: Date = new Date()): string {
-  return new Date(at.getTime() + 8 * 3_600_000).toISOString().slice(0, 10);
+  return sharedOfficeDay(at);
 }
 
 function daysAgo(iso: string): number {
@@ -350,4 +352,78 @@ export async function recordActivity(
     });
   });
   return ok(SERVICE, { id });
+}
+
+/* ── Settings ─────────────────────────────────────────────────────────────
+ *
+ *  The inventory of every number somebody might think is theirs to change,
+ *  with what each does to figures that already exist (D214).
+ */
+
+export async function listSettings(): Promise<Result<AppSetting[]>> {
+  await latency();
+  const denied = requireModule(SERVICE, "settings");
+  if (denied) return denied;
+  return ok(SERVICE, [...getState().app_settings]);
+}
+
+/** Changing one.
+ *
+ *  The refusal is the point of this endpoint. A locked setting is refused
+ *  **at the API**, not merely greyed out on the screen — a disabled input is a
+ *  suggestion, and the whole reason these are locked is that the change would
+ *  quietly rewrite figures somebody has already acted on (D215).
+ */
+export async function updateSetting(
+  input: { key: string; value: string; reason?: string | null },
+): Promise<Result<AppSetting>> {
+  await latency();
+  const denied = requireModule(SERVICE, "settings");
+  if (denied) return denied;
+
+  const state = getState();
+  const setting = state.app_settings.find((s) => s.key === input.key);
+  if (!setting) return notFound(SERVICE, "setting_not_found", `Tidak ada pengaturan ${input.key}.`);
+
+  if (setting.locked_reason) {
+    return refused(
+      SERVICE, "setting_locked",
+      setting.managed_at
+        ? `${setting.locked_reason} Diubah di ${setting.managed_at}.`
+        : setting.locked_reason,
+      { key: setting.key, managed_at: setting.managed_at, affects: setting.affects },
+    );
+  }
+
+  const value = input.value?.trim() ?? "";
+  if (!value) {
+    return invalid(SERVICE, "value_required", "Kosong bukan nilai. Kembalikan ke bawaan kalau memang tidak dipakai.", { field: "value" });
+  }
+  if (setting.kind === "number" && !/^\d+(\.\d+)?$/.test(value)) {
+    return invalid(SERVICE, "not_a_number", `${setting.label} diisi angka${setting.unit ? ` dalam ${setting.unit}` : ""}.`, { field: "value" });
+  }
+  if (setting.kind === "choice" && setting.choices && !setting.choices.includes(value)) {
+    return invalid(SERVICE, "not_a_choice", `Pilihannya: ${setting.choices.join(", ")}.`, { field: "value" });
+  }
+  if (value === setting.value) {
+    return noop(SERVICE, setting);
+  }
+
+  const user = actingUser();
+  apply((draft) => {
+    const row = draft.app_settings.find((s) => s.key === input.key)!;
+    const before = row.value;
+    row.value = value;
+    row.updated_by = user.email;
+    row.updated_at = new Date().toISOString();
+    writeAudit(draft, {
+      service: SERVICE, entity: "setting", entity_no: row.key,
+      action: "update", outcome: "ok", reason: input.reason?.trim() || null,
+      /* Before and after, always. A settings change is the kind of thing
+         nobody remembers making and everybody notices the effect of. */
+      detail: { before, after: value, by: user.email },
+    });
+  });
+
+  return ok(SERVICE, getState().app_settings.find((s) => s.key === input.key)!);
 }

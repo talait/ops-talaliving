@@ -1,5 +1,6 @@
 import type { ActivityEvent, ActivityDaily } from "@/services/identity/contracts";
 import type { AuditRow } from "../state";
+import { officeDay } from "@/lib/office";
 
 /** What the logs look like when somebody finally opens them (D188).
  *
@@ -17,7 +18,7 @@ import type { AuditRow } from "../state";
 const DAY = 86_400_000;
 const now = Date.now();
 const iso = (msAgo: number) => new Date(now - msAgo).toISOString();
-const day = (daysAgo: number) => new Date(now - daysAgo * DAY + 8 * 3_600_000).toISOString().slice(0, 10);
+const day = (daysAgo: number) => officeDay(now - daysAgo * DAY);
 
 export const AUDIT_SEED: AuditRow[] = [
   {

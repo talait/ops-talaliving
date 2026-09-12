@@ -13,6 +13,7 @@ import {
 } from "@/services/delivery/contracts";
 import { useToast } from "@/store/toast";
 import { useSession } from "@/store/session";
+import { officeToday } from "@/lib/office";
 
 /** Fitting on site, and what fitting it found.
  *
@@ -228,7 +229,7 @@ function VisitDrawer({ project, onClose, onDone }: {
     setBusy(true);
     const res = await delivery.recordInstallation({
       project_code: project.project_code,
-      visit_date: new Date(Date.now() + 8 * 3_600_000).toISOString().slice(0, 10),
+      visit_date: officeToday(),
       crew: crew || null, lines,
     });
     if (res.error) {

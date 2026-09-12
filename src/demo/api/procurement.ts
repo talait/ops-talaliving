@@ -11,7 +11,7 @@ import type { PrLine as PrLineRow } from "@/services/procurement/contracts";
 import { PROBLEM_CONDITIONS, COUNTING_CONDITIONS, VARIANCE_REASON_LABEL } from "@/services/procurement/contracts";
 import type { DocKind } from "@/services/documents/contracts";
 import { REQUEST_SUPPORT_KINDS } from "@/services/documents/contracts";
-import { LOCALE } from "@/lib/format";
+import { getActiveLocale } from "@/lib/format";
 import { getState, apply, newId, nextDocNumber, writeAudit, writeOutbox } from "../store";
 /* The one cross-service call in this module, and it is deliberate: confirming
    a delivery puts the goods on a rack (D170). Written as a function the
@@ -918,7 +918,7 @@ export async function answerFromChat(
   const req = state.approval_requests.find((r) => r.token === input.token);
   if (!req) return notFound(SERVICE, "request_not_found", "That approval card does not match anything — it may have been withdrawn.");
   if (req.answered_at) {
-    return conflict(SERVICE, "already_answered", `Answered already, at ${new Date(req.answered_at).toLocaleString(LOCALE)}. Nothing changed.`);
+    return conflict(SERVICE, "already_answered", `Answered already, at ${new Date(req.answered_at).toLocaleString(getActiveLocale())}. Nothing changed.`);
   }
   if (input.answered_by_email !== req.sent_to_email) {
     apply((draft) => {
@@ -1118,7 +1118,7 @@ export async function removeLine(
   if (covered > 0) {
     return conflict(
       SERVICE, "money_already_allocated",
-      `This line has already received Rp ${covered.toLocaleString(LOCALE)}. What applies now is a return, a vendor credit, or voiding the transaction — not removal.`,
+      `This line has already received Rp ${covered.toLocaleString(getActiveLocale())}. What applies now is a return, a vendor credit, or voiding the transaction — not removal.`,
       { covered },
     );
   }
@@ -1915,7 +1915,7 @@ export async function updateLine(
   if (covered > 0) {
     return conflict(
       SERVICE, "already_paid",
-      `${covered.toLocaleString(LOCALE)} has already been paid against ${lineNo}. Past that point the words are return, credit or void — never an edit.`,
+      `${covered.toLocaleString(getActiveLocale())} has already been paid against ${lineNo}. Past that point the words are return, credit or void — never an edit.`,
     );
   }
 

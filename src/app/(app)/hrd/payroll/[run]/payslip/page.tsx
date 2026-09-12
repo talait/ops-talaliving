@@ -6,7 +6,7 @@ import { formatIDR, formatNumber } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { hr } from "@/demo/api";
 import type { PayrollLine, PayslipDay } from "@/services/hr/contracts";
-import { BRAND } from "@/lib/brand";
+import { useBrand } from "@/lib/brand";
 
 /** Payslips, several to a sheet of A4.
  *
@@ -176,6 +176,7 @@ function Slip({
   from: string;
   to: string;
 }) {
+  const brand = useBrand();
   const showDays = !dense && l.days.length > 0;
   const deductions = l.adjustments.filter((a) => a.amount < 0);
   const additions = l.adjustments.filter((a) => a.amount > 0);
@@ -189,7 +190,7 @@ function Slip({
     <section className="slip border border-slate-400 p-3 text-[10px] leading-tight">
       <div className="flex items-start justify-between border-b border-slate-400 pb-1.5">
         <div>
-          <p className="text-[11px] font-bold tracking-tight">{BRAND.tagline}</p>
+          <p className="text-[11px] font-bold tracking-tight">{brand.tagline}</p>
           <p className="text-[9px] text-slate-500">SLIP GAJI · {runNo}</p>
         </div>
         <div className="text-right">

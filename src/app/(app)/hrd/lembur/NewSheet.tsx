@@ -11,6 +11,7 @@ import { hr, production } from "@/demo/api";
 import { OVERTIME_KIND_LABEL, type OvertimeKind } from "@/services/hr/contracts";
 import { PROCESS_STAGES } from "@/services/production/contracts";
 import { useToast } from "@/store/toast";
+import { officeToday } from "@/lib/office";
 
 /** Opening a sheet, and putting names on it.
  *
@@ -43,7 +44,7 @@ export function NewSheet({
   const { toast } = useToast();
   const [people] = useLoad(() => hr.listEmployees(), []);
   const [orders] = useLoad(() => production.listWorkOrders(), []);
-  const [workDate, setWorkDate] = useState(new Date(Date.now() + 8 * 3_600_000).toISOString().slice(0, 10));
+  const [workDate, setWorkDate] = useState(officeToday());
   const [purpose, setPurpose] = useState("");
   const [rows, setRows] = useState<Draft[]>([blank()]);
   const [busy, setBusy] = useState(false);

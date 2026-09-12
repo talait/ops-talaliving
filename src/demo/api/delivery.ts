@@ -24,11 +24,12 @@ import {
   deliveredFor, installedFor,
 } from "../delivery-derive";
 import { latency, actingUser, requireModule, conflict, replayed, remember } from "./_kit";
+import { officeToday } from "@/lib/office";
 
 const SERVICE = "production" as const;
 
 function today(): string {
-  return new Date(Date.now() + 8 * 3_600_000).toISOString().slice(0, 10);
+  return officeToday();
 }
 
 /* ── Reading ──────────────────────────────────────────────────────────── */

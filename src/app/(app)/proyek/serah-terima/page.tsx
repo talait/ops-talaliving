@@ -9,6 +9,7 @@ import { delivery } from "@/demo/api";
 import { FULFILMENT_STAGE_LABEL, type FulfilmentView } from "@/services/delivery/contracts";
 import { useToast } from "@/store/toast";
 import { useSession } from "@/store/session";
+import { officeToday } from "@/lib/office";
 
 /** Where every job actually stands, and the signature that ends one.
  *
@@ -190,7 +191,7 @@ function HandoverDrawer({ project, onClose, onDone }: {
     setBusy(true);
     const res = await delivery.recordHandover({
       project_code: project.project_code,
-      handed_on: new Date(Date.now() + 8 * 3_600_000).toISOString().slice(0, 10),
+      handed_on: officeToday(),
       client_rep: clientRep, our_rep: ourRep,
       /* The demo's stand-in file. What is being demonstrated is that the call
          refuses without one at all (D211). */

@@ -5,11 +5,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronDown, Factory, X } from "lucide-react";
 import { NAV } from "@/lib/nav";
-import { BRAND } from "@/lib/brand";
+import { useBrand } from "@/lib/brand";
 import { useSession } from "@/store/session";
 import { cn } from "@/lib/cn";
 
 export function Sidebar({ mobileOpen, onClose }: { mobileOpen: boolean; onClose: () => void }) {
+  const brand = useBrand();
   const pathname = usePathname();
   const { can } = useSession();
 
@@ -29,8 +30,8 @@ export function Sidebar({ mobileOpen, onClose }: { mobileOpen: boolean; onClose:
           <Factory className="h-5 w-5" strokeWidth={2.5} />
         </div>
         <div className="min-w-0">
-          <p className="truncate text-sm font-bold tracking-tight text-white">{BRAND.name}</p>
-          <p className="truncate text-[10px] uppercase tracking-wider text-brand-300">{BRAND.tagline}</p>
+          <p className="truncate text-sm font-bold tracking-tight text-white">{brand.name}</p>
+          <p className="truncate text-[10px] uppercase tracking-wider text-brand-300">{brand.tagline}</p>
         </div>
         <button
           onClick={onClose}
@@ -106,7 +107,7 @@ export function Sidebar({ mobileOpen, onClose }: { mobileOpen: boolean; onClose:
       </nav>
 
       <div className="border-t border-white/10 px-5 py-3">
-        <p className="text-[11px] text-brand-300">{BRAND.name}</p>
+        <p className="text-[11px] text-brand-300">{brand.name}</p>
       </div>
     </div>
   );

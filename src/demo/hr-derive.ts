@@ -7,6 +7,7 @@
  *  stores only the period, the status and who said yes.
  */
 import type { DemoState } from "./state";
+import { settingNumber } from "./settings";
 import type {
   Employee, TimesheetDay, DayState, ScanSlot, DayPay, DayMark,
   OvertimeSheet, OvertimeStage, PayrollLine, PayrollView, PayrollRun,
@@ -779,10 +780,13 @@ export function employeeFile(state: DemoState, employee: Employee, today: string
   });
 
   const missing = slots.filter((s) => s.required && s.documents.length === 0).map((s) => s.kind);
-  /* Already expired, or expiring inside two months. Sixty days because a PKWT
-     renewal takes a conversation, not an afternoon. */
+  /* Already expired, or expiring inside the warning window. Sixty days by
+     default, because a PKWT renewal takes a conversation, not an afternoon —
+     and it is a setting now, because how much notice this office wants is not
+     a thing code should decide (D216). */
+  const warnDays = settingNumber(state, "ops.doc_expiry_warning_days", 60);
   const expiring = slots
-    .filter((s) => s.expires_in_days != null && s.expires_in_days <= 60)
+    .filter((s) => s.expires_in_days != null && s.expires_in_days <= warnDays)
     .map((s) => ({
       kind: s.kind,
       label: s.label,

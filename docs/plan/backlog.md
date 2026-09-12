@@ -39,7 +39,7 @@ record that it is empty and the menu is what makes it look full.
 | ~~`/proyek/pengiriman`~~ | ~~delivery of finished goods to the site~~ | **built 2026-09-13 (M40)** — D209–D212 |
 | ~~`/proyek/instalasi`~~ | ~~installation on site, and what it found~~ | **built 2026-09-13 (M40)** — D209–D212 |
 | ~~`/proyek/serah-terima`~~ | ~~handover, and what the client signed~~ | **built 2026-09-13 (M40)** — D209–D212 |
-| `/pengaturan` | the settings that are today constants in `src/lib/` | open |
+| ~~`/pengaturan`~~ | ~~the settings that are today constants in `src/lib/`~~ | **built 2026-09-13 (M42)** — D214–D216. **The placeholder list is now empty.** |
 | ~~`/accounting/payslip`~~ | ~~nothing — it duplicates `/hrd/payroll`~~ | **removed** 2026-09-13 (M41) — owner: accounting does not read payslips. Deleted rather than parked: D105 parked two *working* screens over a judgement that might change; this was an empty route, and the question it was holding open has been answered (D213) |
 
 ## Asked for, not yet scheduled

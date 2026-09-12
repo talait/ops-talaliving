@@ -6,6 +6,7 @@
  *  stored, because a stored "current stage" is a field somebody forgets to
  *  move, and the piece then sits in a column it left three days ago.
  */
+import { officeDay } from "@/lib/office";
 import type { DemoState } from "./state";
 import {
   PROCESS_STAGES, type WorkOrder, type WorkOrderView, type StageProgress,
@@ -14,9 +15,10 @@ import {
 } from "@/services/production/contracts";
 
 /** Today, as an office day. The board is about deadlines, so "what day is it"
- *  has to be the workshop's day rather than UTC's (F17, F39). */
+ *  has to be the workshop's day rather than UTC's (F17, F39). One definition
+ *  for the whole system, in `src/lib/office.ts` (F63). */
 export function officeToday(now: Date = new Date()): string {
-  return new Date(now.getTime() + 8 * 3_600_000).toISOString().slice(0, 10);
+  return officeDay(now);
 }
 
 function daysBetween(from: string, to: string): number {

@@ -1,5 +1,5 @@
 import type {
-  Session, User, ModuleGrant, Authority, ActivityEvent, ActivityDaily,
+  Session, User, ModuleGrant, Authority, ActivityEvent, ActivityDaily, AppSetting,
 } from "@/services/identity/contracts";
 import type {
   Vendor, Uom, UomConversion, ItemCategory, Item, Project, ProjectLine,
@@ -164,6 +164,9 @@ export interface DemoState {
    *  the quantity is the sum of the moves (D170). */
   stock_locations: StockLocation[];
   stock_settings: StockSetting[];
+  /* The inventory of numbers somebody might think are theirs to change, with
+     what each one does to figures that already exist (D214). */
+  app_settings: AppSetting[];
   /** Append-only. A mistake is another move with a reason (A5, D171). */
   stock_moves: StockMove[];
 

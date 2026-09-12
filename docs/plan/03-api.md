@@ -98,6 +98,13 @@ All three or none. Never a business row without its audit row.
 | PUT | `/users/{id}/authorities` | grant or revoke `approve_goods` · `approve_funds` · `approve_overtime` · `post_ledger` · `resolve_inbox`. **Separate from modules, deliberately** (D24). **`it` at `admin`** |
 | GET | `/modules`, `/authorities` | the catalogs, read from the database |
 
+### Settings
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/settings` | every setting, each carrying its **reach** — `display`, `forward`, or `retroactive` — plus what it would move and where it is really changed (D214). `settings` at `read` |
+| PUT | `/settings/{key}` | **403 `setting_locked`** for anything retroactive, with the reason about the data rather than about permissions (D215) — refused at the API, because a disabled input is a suggestion. 422 on a value of the wrong kind or outside the choices; `noop` when the value is unchanged. The audit row carries **before and after**, always: a settings change is the kind of thing nobody remembers making and everybody notices the effect of. `settings` at `write` |
+
 ### The two trails
 
 | Method | Path | Notes |

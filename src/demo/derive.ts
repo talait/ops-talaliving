@@ -35,7 +35,8 @@ import type {
 } from "@/services/accounting/contracts";
 import type { DocKind } from "@/services/documents/contracts";
 import { REQUEST_SUPPORT_KINDS } from "@/services/documents/contracts";
-import { LOCALE } from "@/lib/format";
+import { getActiveLocale } from "@/lib/format";
+import { settingNumber } from "./settings";
 
 /** One definition, read from settings — never a literal repeated in three
  *  files, which is how `john-lau` ended up with three different tolerances. */
@@ -527,7 +528,7 @@ export function vendorJourney(state: DemoState, vendorId: string): VendorJourney
 function formatShort(n: number): string {
   if (n >= 1_000_000_000) return `Rp ${(n / 1_000_000_000).toFixed(1)} B`;
   if (n >= 1_000_000) return `Rp ${(n / 1_000_000).toFixed(1)} M`;
-  return `Rp ${n.toLocaleString(LOCALE)}`;
+  return `Rp ${n.toLocaleString(getActiveLocale())}`;
 }
 
 /* ------------------------------------------------------------------ */
@@ -1022,7 +1023,7 @@ const dueDateOf = (month: string, day: number) =>
 
 const monthLabel = (month: string) => {
   const [y, m] = month.split("-").map(Number);
-  return new Date(y, m - 1, 1).toLocaleDateString(LOCALE, { month: "short", year: "numeric" });
+  return new Date(y, m - 1, 1).toLocaleDateString(getActiveLocale(), { month: "short", year: "numeric" });
 };
 
 /** Twelve months starting with the one we are in. */
@@ -1487,7 +1488,7 @@ export function poDetail(state: DemoState, poId: string): PoDetail | null {
   const amendments = superseded.map((old) => {
     const now = state.po_lines.find((l) => l.id === old.superseded_by);
     const say = (l: typeof old | undefined) => l
-      ? `${l.qty.toLocaleString(LOCALE)} ${l.uom} × ${formatShort(l.unit_price)}`
+      ? `${l.qty.toLocaleString(getActiveLocale())} ${l.uom} × ${formatShort(l.unit_price)}`
       : "removed";
     return {
       line_no: old.line_no,
@@ -1683,14 +1684,16 @@ function daysApartIso(from: string, to: string): number {
  *  somebody has to remember to fill in, and a column somebody has to remember
  *  is a column that is wrong by Friday.
  */
-const MOVE_ON_DAYS = 7;
+/** Seven days by default, and a setting (D216): it is derived on read, so
+ *  moving it moves today's follow-up queue rather than rewriting anything. */
+const MOVE_ON_DAYS_DEFAULT = 7;
 
-function agentView(a: PropertyAgent, today: string): PropertyAgentView {
+function agentView(state: DemoState, a: PropertyAgent, today: string): PropertyAgentView {
   const waiting = a.sent_on && !a.replied_on ? daysApartIso(a.sent_on, today) : null;
   return {
     ...a,
     waiting_days: waiting,
-    move_on: waiting != null && waiting >= MOVE_ON_DAYS
+    move_on: waiting != null && waiting >= settingNumber(state, "ops.agent_move_on_days", MOVE_ON_DAYS_DEFAULT)
       && a.stage !== "RECYCLED" && a.stage !== "SKIP" && a.stage !== "DEAL",
     due: !!a.next_action_on && a.next_action_on <= today
       && a.stage !== "RECYCLED" && a.stage !== "SKIP" && a.stage !== "DEAL",
@@ -1747,7 +1750,7 @@ export function propertyView(state: DemoState, property: Property, today: string
   const agents = state.property_agents
     .filter((a) => a.property_id === property.id)
     .sort((a, b) => a.slot - b.slot)
-    .map((a) => agentView(a, today));
+    .map((a) => agentView(state, a, today));
 
   /* The furthest any agent reached. A property with one agent at DEAL is not
      also a property at QUEUED, and counting it twice is how a funnel stops

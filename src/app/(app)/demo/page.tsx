@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Database, ShieldAlert, Wallet, ListChecks, FileStack, GitBranch, RotateCcw, Footprints,
@@ -66,7 +66,21 @@ export default function DemoDiagnosticsPage() {
 
   /* Every one of these is a rule from `00-context.md` §A or a decision from
    * `06-decisions.md`, exercised against the demo API rather than described. */
+  /** The probes switch the acting user as they go, so **two of them running at
+   *  once corrupt each other**: one run's `actAs(original)` lands in the middle
+   *  of the other's, and a check that expected the CEO gets refused for not
+   *  being the CEO. It happens because `reactStrictMode` invokes the mount
+   *  effect twice in development — so the self-check ran twice, raced itself,
+   *  and reported a failure that was not there, intermittently (F79).
+   *
+   *  The guard is a **ref, not the `running` state**: state updates land on the
+   *  next render, and the second caller is already inside the function by
+   *  then. */
+  const inFlight = useRef(false);
+
   async function runProbes() {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setRunning(true);
     const results: Probe[] = [];
     const original = state.session_user_id;
@@ -182,9 +196,38 @@ export default function DemoDiagnosticsPage() {
       pass: emptyRelease.error?.status === 422 && emptyRelease.error.code === "note_required",
     });
 
+    /* The layered BOM (D257). A wardrobe contains drawer boxes; a drawer box
+       cannot contain the wardrobe, and the walk must terminate on data that
+       says otherwise. */
+    const cycle = await production.saveBomComponent({
+      product_code: "PRD-SUB-LACI", kind: "product",
+      ref_code: "PRD-LM-3P", qty: 1, uom: "unit",
+    });
+    results.push({
+      name: "D257 — a BOM component that would close a loop",
+      expect: "422 bom_cycle",
+      got: cycle.error ? `${cycle.error.status} ${cycle.error.code}` : "accepted",
+      pass: cycle.error?.status === 422 && cycle.error.code === "bom_cycle",
+    });
+
+    /* And the walk itself: the wardrobe's materials must contain the plywood
+       its drawer boxes are made of, which a one-level read never returned. */
+    const walked = await production.materialsFor({ product_code: "PRD-LM-3P", qty: 1 });
+    const hasSubMaterial = !walked.error
+      && walked.data.lines.some((l) => l.via.length > 0 && l.via.some((v) => v.includes("PRD-SUB-LACI")));
+    results.push({
+      name: "D257 — a run's materials include what its sub-assemblies are made of",
+      expect: "lines reached through PRD-SUB-LACI",
+      got: walked.error
+        ? `${walked.error.status} ${walked.error.code}`
+        : `${walked.data.lines.length} baris, ${walked.data.sub_assemblies.length} sub-rakitan`,
+      pass: hasSubMaterial,
+    });
+
     await identity.actAs(original);
     setProbes(results);
     setRunning(false);
+    inFlight.current = false;
     const failed = results.filter((r) => !r.pass).length;
     if (failed === 0) toast("success", "Every refusal behaved correctly", `${results.length} checks passed.`);
     else toast("critical", `${failed} check(s) failed`, "See the table below.");

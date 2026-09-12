@@ -1725,6 +1725,8 @@ erDiagram
         int height_mm
         text dimension_note "diameter, thickness, anything not an axis"
         int lead_time_days "a hint; the work order carries the promise"
+        bigint labour_cost "TYPED by a person, never derived (D239). NULL = nobody has worked it out"
+        text labour_note "the working behind it - required with the figure"
         boolean active
         text note
     }

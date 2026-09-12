@@ -11,6 +11,7 @@ import { formatIDR, formatNumber } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { procurement, production } from "@/demo/api";
 import { STAGE_NAME, type WorkOrderView } from "@/services/production/contracts";
+import { UNITS, type UomCode } from "@/services/procurement/contracts";
 import { useSession } from "@/store/session";
 import { useToast } from "@/store/toast";
 import { officeToday } from "@/lib/office";
@@ -155,17 +156,32 @@ export function WorkOrderDrawer({
     setPrBusy(true);
     const res = await procurement.createPr({
       project_code: w.project_code,
-      lines: needs.data.lines
-        .filter((l) => l.kind === "material")
-        .map((l) => ({
+      /* **Every line of the exploded list** (D257). This used to filter to
+         `kind === "material"`, which silently dropped the sub-assemblies — a
+         wardrobe needing two drawer boxes raised a request with none of the
+         plywood or runners inside them, and nothing on the screen said so
+         (F78). The list is now already walked down to purchasable things;
+         what could not be walked is listed as itself and says so in its
+         purpose line, because something that has to be obtained somehow is
+         not nothing. */
+      lines: needs.data.lines.map((l) => {
+        const unexploded = needs.data!.unexploded.includes(l.ref_code);
+        const via = l.via[0]?.length ? ` (lewat ${l.via.map((v) => v.join(" → ")).join("; ")})` : "";
+        return {
           description: l.ref_name ?? l.ref_code,
           qty: l.qty,
-          uom: null,
+          /* The BOM's unit is free text; a request line's is a closed list.
+             Passing it through only where it matches keeps the request's own
+             vocabulary intact and leaves the rest for a person to pick. */
+          uom: (UNITS as readonly string[]).includes(l.uom) ? (l.uom as UomCode) : null,
           unit_price: l.subtotal != null && l.qty > 0 ? Math.round(l.subtotal / l.qty) : null,
-          purpose: `BOM ${w.wo_no} — ${w.item_name}${w.project_code ? ` · proyek ${w.project_code}` : ""}`,
+          purpose: `BOM ${w.wo_no} rev ${needs.data!.rev ?? "—"} — ${w.item_name}${
+            w.project_code ? ` · proyek ${w.project_code}` : ""}${via}${
+            unexploded ? " · sub-rakitan tanpa BOM, periksa apakah dibeli atau dibuat" : ""}`,
           need_by: w.due_date,
           source_wo_no: w.wo_no,
-        })),
+        };
+      }),
     });
     setPrBusy(false);
     if (res.error) {
@@ -479,10 +495,40 @@ export function WorkOrderDrawer({
                           </p>
                         ) : (
                           <>
-                            <dl className="mt-2 grid grid-cols-2 gap-2 text-[12px] sm:grid-cols-4">
+                            {/* The walk, said plainly: what it went through and
+                                what it could not get into (D257). */}
+                            {need.cycle && (
+                              <p className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] text-rose-900">
+                                <strong>BOM ini memuat dirinya sendiri:</strong>{" "}
+                                {need.cycle.join(" → ")}. Kebutuhan bahannya tidak terhingga, jadi tidak
+                                dihitung — bukan nol. Perbaiki BOM-nya dulu.
+                              </p>
+                            )}
+                            {need.sub_assemblies.length > 0 && (
+                              <p className="mt-2 text-[12px] text-slate-600">
+                                Lewat {need.sub_assemblies.length} sub-rakitan:{" "}
+                                {need.sub_assemblies.map((sa) => (
+                                  `${formatNumber(sa.qty)}× ${sa.name ?? sa.product_code}`
+                                )).join(" · ")}
+                                {" "}— yang di bawah ini sudah bahan yang benar-benar dibeli, bukan
+                                nama rakitannya.
+                              </p>
+                            )}
+                            {need.unexploded.length > 0 && (
+                              <p className="mt-1 text-[12px] text-amber-800">
+                                {need.unexploded.join(", ")} belum punya BOM yang dirilis, jadi tetap
+                                tercantum sebagai dirinya sendiri — harus diperiksa apakah dibeli atau
+                                dibuat.
+                              </p>
+                            )}
+                            <dl className="mt-2 grid grid-cols-2 gap-2 text-[12px] sm:grid-cols-3 lg:grid-cols-5">
                               {([
-                                ["Proyeksi BOM", need.total == null ? "—" : formatIDR(need.total),
+                                ["Proyeksi bahan", need.total == null ? "—" : formatIDR(need.total),
                                   `${formatNumber(w.qty)} ${w.uom}${need.unpriced > 0 ? ` · ${need.unpriced} tanpa harga` : ""}`],
+                                ["Tenaga kerja", need.labour_total == null ? "—" : formatIDR(need.labour_total),
+                                  need.labour_total == null
+                                    ? "belum pernah dihitung orang"
+                                    : "diketik, bukan dihitung sistem"],
                                 ["Diminta (PR)", live.length === 0 ? "—" : formatIDR(asked), `${live.length} baris`],
                                 ["Disetujui", live.length === 0 ? "—" : formatIDR(approved), "dari yang diminta"],
                                 ["Terbayar", live.length === 0 ? "—" : formatIDR(paid), "sudah keluar uangnya"],

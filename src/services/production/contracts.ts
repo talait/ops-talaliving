@@ -327,6 +327,17 @@ export interface Product {
   /** Working days from start to finished, for promising a date. A hint, never
    *  a schedule: the work order carries the date that was actually promised. */
   lead_time_days: number | null;
+  /** What the workshop's own time on one unit costs, **typed by a person**
+   *  (D239). Null until somebody types it, and null stays null: the owner was
+   *  explicit that this comes from *perumusan manual*, and labour is where an
+   *  invented number does the most damage because it flows straight into a
+   *  quoted price. Nothing in this system derives it — not from the pay rules,
+   *  not from recorded hours, not from a rate × a guess. */
+  labour_cost: number | null;
+  /** How the figure above was arrived at. Required alongside it: a labour cost
+   *  with no working behind it is a number the next person cannot check or
+   *  update. */
+  labour_note: string | null;
   active: boolean;
   note: string | null;
 }
@@ -436,6 +447,63 @@ export interface BomLineView extends BomComponent {
   subtotal: number | null;
 }
 
+/** One purchasable material, after the sub-assemblies have been walked through.
+ *
+ *  The BOM itself stays **one level** — that is what somebody authored, and it
+ *  is what the catalogue screen shows. This is the other question: *what do I
+ *  actually have to buy for this run*, which is a walk rather than a sum
+ *  (D257). A wardrobe needs two drawer boxes; a purchase request needs the
+ *  plywood and the runners that a drawer box is made of.
+ */
+export interface BomExplodedLine {
+  ref_code: string;
+  ref_name: string | null;
+  /** For the whole run, with waste applied **at every level it passed
+   *  through**. Ten per cent more drawer boxes means ten per cent more of the
+   *  plywood inside each one. */
+  qty: number;
+  uom: string;
+  unit_price: number | null;
+  price_source: "standard" | "last" | "none";
+  subtotal: number | null;
+  /** Every chain of parents this material arrived by, product code by product
+   *  code. The same screw reached through two different sub-assemblies is one
+   *  line with two paths — merged, because a purchase request wants one row per
+   *  thing to buy, and named, because *why do I need 40 screws* is the next
+   *  question. */
+  via: string[][];
+  /** 0 when the material sits directly on the product's own BOM. */
+  depth: number;
+}
+
+export interface BomExplosion {
+  product_code: string;
+  qty: number;
+  /** The revision walked. A work order passes its own pinned one (D256). */
+  rev: number | null;
+  lines: BomExplodedLine[];
+  total: number | null;
+  unpriced: number;
+  /** The sub-assemblies the walk went through, with how many of each the run
+   *  needs — the things the workshop has to **make** rather than buy. */
+  sub_assemblies: { product_code: string; name: string | null; qty: number; rev: number | null }[];
+  /** Sub-assemblies with no released BOM. They stay in `lines` as themselves,
+   *  because a thing that has to be obtained somehow is not nothing — and the
+   *  screen says they could not be broken down rather than implying they were.
+   *  Missing, never quietly wrong. */
+  unexploded: string[];
+  /** A product that contains itself, however indirectly. Null normally; the
+   *  chain when it happens, so somebody can see where the loop closes rather
+   *  than being told the BOM is "invalid" (D257). */
+  cycle: string[] | null;
+  /** Typed, never derived (D239). `labour_total` is `labour_cost × qty`, and
+   *  null the moment the per-unit figure is null: a run of twelve costs twelve
+   *  times an unknown, which is still unknown. */
+  labour_cost: number | null;
+  labour_total: number | null;
+  labour_note: string | null;
+}
+
 /** A drawing, as the product screen needs it. */
 export interface ProductDrawing {
   attachment_id: string;
@@ -472,8 +540,15 @@ export interface ProductView extends Product {
    *  rather than left to be discovered: ukuran, gambar kerja, gambar jadi,
    *  BOM. */
   missing: string[];
-  /** Material cost for one unit, from the components that have a price. */
+  /** Material cost for one unit, from the components that have a price.
+   *  Sub-assemblies are costed by **walking into them** (D257), so a wardrobe
+   *  is priced from the plywood its drawer boxes are made of. */
   material_cost: number | null;
+  /** The typed figure and the two of them together. `total_cost` is null when
+   *  either half is — half a number is not a number, and a product priced at
+   *  its materials alone would be quoted at a loss. */
+  labour_cost: number | null;
+  total_cost: number | null;
   /** How many components could not be priced — the figure above is only worth
    *  what this number says it is. */
   unpriced: number;

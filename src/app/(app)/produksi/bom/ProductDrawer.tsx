@@ -1,11 +1,12 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Calculator, FileText, GitBranch, ImageIcon, Lock, Paperclip, Plus, Ruler, Save, Trash2 } from "lucide-react";
+import { Calculator, Clock, FileText, GitBranch, ImageIcon, Lock, Paperclip, Plus, Ruler, Save, Trash2 } from "lucide-react";
 import { Drawer } from "@/components/ui/drawer";
 import { Badge, Button } from "@/components/ui/primitives";
 import { Loaded, useLoad } from "@/components/ui/loaded";
 import { NumberInput } from "@/components/ui/number-input";
+import { MoneyInput } from "@/components/ui/money-input";
 import { formatIDR, formatNumber } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { documents, procurement, production } from "@/demo/api";
@@ -50,6 +51,27 @@ export function ProductDrawer({
   const [lead, setLead] = useState(14);
   const [busy, setBusy] = useState(false);
   const [releaseNote, setReleaseNote] = useState("");
+  const [labour, setLabour] = useState(0);
+  const [labourNote, setLabourNote] = useState("");
+
+  /* Typed by a person, with the working beside it (D239). Zero clears it back
+     to *nobody has worked this out*, which is a different state from zero
+     rupiah of labour and the API treats it as such. */
+  async function saveLabour(p: ProductView) {
+    setBusy(true);
+    const res = await production.setLabourCost({
+      product_code: p.product_code,
+      labour_cost: labour > 0 ? labour : null,
+      note: labourNote || null,
+    });
+    setBusy(false);
+    if (res.error) {
+      toast(res.error.status === 403 ? "critical" : "warning", "Tidak tersimpan", res.error.message);
+      return;
+    }
+    toast("success", "Biaya tenaga kerja disimpan", labour > 0 ? formatIDR(labour) : "dikosongkan");
+    reload();
+  }
 
   async function releaseRev(p: ProductView) {
     setBusy(true);
@@ -527,6 +549,62 @@ export function ProductDrawer({
                   </tfoot>
                 )}
               </table>
+            </div>
+
+            {/* Labour: **typed, never derived** (D239). Its own box, below the
+                materials, because the two are different kinds of number and a
+                single total containing both would hide which half is measured
+                and which half somebody worked out. */}
+            <div className={cn(
+              "rounded-xl border px-4 py-3",
+              p.labour_cost == null ? "border-amber-200 bg-amber-50/60" : "border-slate-200",
+            )}>
+              <p className="flex items-center gap-2 text-[13px] font-medium text-slate-800">
+                <Clock className="h-4 w-4 text-slate-400" /> Biaya tenaga kerja per {p.uom}
+              </p>
+              {p.labour_cost == null ? (
+                <p className="mt-0.5 text-[12px] text-amber-900">
+                  Belum pernah dihitung orang. Sistem <strong>tidak</strong> mengarangnya: angka ini
+                  masuk langsung ke harga penawaran, dan itu tempat angka karangan paling mahal.
+                </p>
+              ) : (
+                <>
+                  <p className="mt-0.5 text-[15px] font-bold tabular-nums text-slate-900">
+                    {formatIDR(p.labour_cost)}
+                  </p>
+                  {p.labour_note && <p className="text-[12px] text-slate-500">{p.labour_note}</p>}
+                </>
+              )}
+              <p className="mt-1 text-[12px] text-slate-600">
+                Bahan + tenaga kerja ={" "}
+                {p.total_cost == null ? (
+                  <span className="text-amber-800">
+                    belum bisa dijumlahkan — {p.material_cost == null ? "bahannya" : "tenaga kerjanya"}{" "}
+                    belum lengkap
+                  </span>
+                ) : (
+                  <strong className="tabular-nums text-slate-800">{formatIDR(p.total_cost)}</strong>
+                )}
+              </p>
+              {mayEdit && (
+                <div className="mt-2 flex flex-wrap items-end gap-2">
+                  <label className="text-[11px] text-slate-500">
+                    Rupiah per {p.uom}
+                    <div className="mt-0.5 w-[150px]">
+                      <MoneyInput value={labour} onChange={setLabour} />
+                    </div>
+                  </label>
+                  <input
+                    value={labourNote} onChange={(e) => setLabourNote(e.target.value)}
+                    placeholder="Dari mana angkanya — sample berapa unit, berapa tukang, berapa hari"
+                    className="h-9 min-w-[240px] flex-1 rounded-lg border border-slate-200 px-2 text-sm focus:border-brand-400 focus:outline-none"
+                  />
+                  <Button size="sm" disabled={busy || (labour > 0 && !labourNote.trim())}
+                    onClick={() => saveLabour(p)}>
+                    Simpan
+                  </Button>
+                </div>
+              )}
             </div>
 
             {mayEdit && (

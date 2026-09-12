@@ -3292,3 +3292,86 @@ Three findings in two days now share one sentence — F73 (two sums), F75 (two
 booleans), this (two reads of one state). **If two things must agree, one of
 them has to be derived from the other.** Keeping them in step by remembering to
 is not a design, it is a promise nobody can keep.
+
+## F78 — the purchase request that quietly left out half the wardrobe
+
+`Buat PR dari BOM` has existed since M23. It turns a work order's material
+projection into a draft purchase request, one line per thing to buy. It built
+those lines like this:
+
+```ts
+lines: needs.data.lines
+  .filter((l) => l.kind === "material")
+```
+
+Sensible-looking: a BOM line is either a purchased material or another product,
+and you cannot buy another product, so filter to the ones you can buy.
+
+Six wardrobes need twelve drawer boxes. A drawer box is 0,5 sheets of plywood
+and a set of runners. The request raised for those six wardrobes contained
+**none of that** — no plywood, no runners, no screws — and nothing anywhere
+said a line had been dropped. The workshop would have discovered it at the
+bench.
+
+The filter was not wrong when it was written. The BOM was flat in practice, and
+one level was a deliberate decision with a comment explaining it. What changed
+is the owner's answer to Q5 — *bom berlapis* — and the filter went on doing
+exactly what it always did.
+
+Two things worth keeping.
+
+**A filter that excludes a kind is a decision about that kind**, and it needs to
+say what happens to it. `filter(x => x.kind === "material")` says nothing about
+the products; `.map(explode)` would have. A dropped row and a handled row look
+identical downstream, which is why this survived.
+
+**The screen showed the total, not the lines.** *Proyeksi BOM Rp 3.338.600* was
+right — `material_cost` costed the drawer box through `subAssemblyCost`, one
+level down — so the summary agreed with the BOM while the request built from it
+did not. **A correct total is not evidence that the list behind it is
+complete**, and the summary is the thing everybody looks at.
+
+## F79 — the self-check that raced itself
+
+`/demo` proves the refusals are real by exercising them against the demo API:
+approve without the authority, allocate more than the transfer moved, and so
+on. Twelve checks, and one of them started failing about one run in four:
+
+```
+D125 — approving a request with no document behind it
+expected 422 support_required   got 403 authority_required
+```
+
+403 means *you are not the CEO*. The probe becomes the CEO on the line before.
+
+Polling the acting user through a run showed it:
+
+```
+run 1  putri → made → putri → evin → andi → …          12/12
+run 2  putri → made → putri → evin → putri → andi → …  FAIL
+```
+
+An extra `putri` between `evin` and `andi`. The only code that sets Putri is a
+run's own `actAs(original)` at the end — so **a second run was finishing while
+the first was still going**. `reactStrictMode` invokes the mount effect twice in
+development, and the probes mutate a single global acting user, so the two runs
+interleaved their `actAs` calls and stole the identity out from under each
+other.
+
+The guard has to be a **ref**, not the existing `running` state: a state update
+lands on the next render, and by then the second caller is already past the
+check.
+
+What makes this worth writing down is not the race. It is which thing broke.
+The failing check was **the mechanism that demonstrates the rules are
+enforced**, and it failed *intermittently* and *convincingly* — with a real
+status code, a real error code, and a message that reads like a genuine
+regression. Someone would reasonably have spent an hour looking for a bug in
+`approveLine`.
+
+That is F74's lesson arriving somewhere more expensive. There, a counting bug
+manufactured warnings about mis-keys nobody had made, and the risk was that
+people learn to ignore warnings. Here a test manufactures a failure, and the
+risk is that people learn to ignore the test — or worse, "fix" the thing it
+accuses. **A check that can be wrong about the system is worse than no check,
+because it spends the credibility of every check beside it.**

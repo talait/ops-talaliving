@@ -13,6 +13,7 @@ import {
   type WorkOrder, type WorkOrderView, type StageProgress,
   type Product, type ProductView, type BomLineView, type ProductDrawing,
   type BomRevision, type BomRevisionView, type BomDiff, type BomDiffLine,
+  type BomExplosion, type BomExplodedLine,
   type BomComponent,
   type DesignTask, type DesignTaskView, type DesignKind,
 } from "@/services/production/contracts";
@@ -419,6 +420,9 @@ export function productView(state: DemoState, product: Product, rev?: number | n
 
   const priced = components.filter((c) => c.subtotal != null);
   const unpriced = components.length - priced.length;
+  const materialCost = priced.length > 0
+    ? priced.reduce((a, c) => a + (c.subtotal ?? 0), 0)
+    : null;
   const broken_refs = components.filter((c) => c.ref_name === null).length;
 
   const warnings: string[] = [];
@@ -470,7 +474,14 @@ export function productView(state: DemoState, product: Product, rev?: number | n
     gambar_kerja,
     gambar_jadi,
     missing,
-    material_cost: priced.length > 0 ? priced.reduce((a, c) => a + (c.subtotal ?? 0), 0) : null,
+    material_cost: materialCost,
+    labour_cost: product.labour_cost,
+    /* Null the moment either half is. A product priced at its materials alone
+       would be quoted at a loss, and a total that silently drops labour is
+       exactly the figure that reaches a customer (D239). */
+    total_cost: materialCost == null || product.labour_cost == null
+      ? null
+      : materialCost + product.labour_cost,
     unpriced,
     broken_refs,
     warnings,
@@ -479,21 +490,197 @@ export function productView(state: DemoState, product: Product, rev?: number | n
 
 /** The material cost of a sub-assembly, one level down. Null when any part of
  *  it cannot be priced — half a number is not a number. */
-function subAssemblyCost(state: DemoState, product: Product): number | null {
+/** What one unit of a sub-assembly costs in materials — **by walking into it**,
+ *  however deep it goes (D257).
+ *
+ *  It used to stop at one level, on the grounds that a sub-assembly of a
+ *  sub-assembly was a thing this business did not have. The owner's answer to
+ *  Q5 was *bom berlapis*, so it does now, and the guard that one level made
+ *  unnecessary becomes necessary: `seen` carries the chain of product codes
+ *  currently being walked, and a product that reappears in its own chain is a
+ *  cycle. Returning null there is not a fudge — a product that contains itself
+ *  has no finite cost, and saying so is the only true answer.
+ *
+ *  Null also where **anything** inside cannot be priced. Half a number is not a
+ *  number, and a sub-assembly priced at the sum of the parts that happened to
+ *  have prices would quietly understate every product above it.
+ */
+function subAssemblyCost(
+  state: DemoState,
+  product: Product,
+  seen: string[] = [],
+): number | null {
+  if (seen.includes(product.product_code)) return null;
   /* The **released** revision. Reading every line ever written would sum a
      draft and the version it was copied from and price the sub-assembly at
      roughly twice what it costs (F76). */
   const rows = bomAt(state, product, currentBomRev(state, product));
   if (rows.length === 0) return null;
+  const chain = [...seen, product.product_code];
   let total = 0;
   for (const b of rows) {
-    if (b.kind !== "material") return null;
+    const each = 1 + b.waste_percent / 100;
+    if (b.kind === "product") {
+      const sub = state.products.find((p) => p.product_code === b.ref_code);
+      if (!sub) return null;
+      const cost = subAssemblyCost(state, sub, chain);
+      if (cost == null) return null;
+      total += cost * b.qty * each;
+      continue;
+    }
     const item = state.items.find((i) => i.code === b.ref_code);
     const price = item?.standard_price ?? item?.last_price ?? null;
     if (price == null) return null;
-    total += price * b.qty * (1 + b.waste_percent / 100);
+    total += price * b.qty * each;
   }
   return Math.round(total);
+}
+
+/** Would adding `refCode` as a component of `product` make a loop?
+ *
+ *  `saveBomComponent` already refused a product naming **itself**. That was
+ *  enough while the BOM was read one level deep; it is not enough now that the
+ *  walk is recursive, because *A contains B, B contains A* is a loop nobody
+ *  typed in one place and which no single edit looks wrong (D257).
+ *
+ *  Refused at the point of writing, and still detected on read: the write guard
+ *  is what keeps it from happening here, and the read guard is what keeps the
+ *  walk terminating on data that arrived some other way.
+ */
+export function bomWouldCycle(state: DemoState, product: Product, refCode: string): string[] | null {
+  if (refCode === product.product_code) return [product.product_code, refCode];
+  const target = state.products.find((p) => p.product_code === refCode);
+  if (!target) return null;
+
+  /* Walk down from the candidate child. If the parent turns up anywhere
+     beneath it, adding the child closes a loop. */
+  const seek = (p: Product, chain: string[]): string[] | null => {
+    if (chain.includes(p.product_code)) return null;
+    const here = [...chain, p.product_code];
+    for (const b of bomAt(state, p, currentBomRev(state, p))) {
+      if (b.kind !== "product") continue;
+      if (b.ref_code === product.product_code) return [product.product_code, ...here, b.ref_code];
+      const sub = state.products.find((x) => x.product_code === b.ref_code);
+      if (!sub) continue;
+      const found = seek(sub, here);
+      if (found) return found;
+    }
+    return null;
+  };
+  return seek(target, []);
+}
+
+/** Every purchasable material a run needs, with the sub-assemblies walked
+ *  through (D257).
+ *
+ *  Three things it does that a flat read cannot. Waste **compounds**: ten per
+ *  cent more drawer boxes is ten per cent more of the plywood inside each one.
+ *  The same material reached by two routes is **one line**, because a purchase
+ *  request wants one row per thing to buy — with both routes named, because
+ *  *why do I need forty screws* is the next question. And a sub-assembly with
+ *  no released BOM stays in the list **as itself**, listed under `unexploded`:
+ *  something that has to be obtained somehow is not nothing, and dropping it
+ *  would be the silent kind of wrong.
+ */
+export function explodeBom(
+  state: DemoState,
+  product: Product,
+  qty: number,
+  rev?: number | null,
+): BomExplosion {
+  const startRev = rev !== undefined ? rev : (draftBomRev(state, product) ?? currentBomRev(state, product));
+  const merged = new Map<string, BomExplodedLine>();
+  const subs = new Map<string, { product_code: string; name: string | null; qty: number; rev: number | null }>();
+  const unexploded = new Set<string>();
+  let cycle: string[] | null = null;
+
+  const priceOf = (code: string): { price: number | null; source: BomExplodedLine["price_source"] } => {
+    const item = state.items.find((i) => i.code === code);
+    if (item?.standard_price != null) return { price: item.standard_price, source: "standard" };
+    if (item?.last_price != null) return { price: item.last_price, source: "last" };
+    return { price: null, source: "none" };
+  };
+
+  const addLine = (
+    code: string, name: string | null, uom: string, amount: number,
+    path: string[], depth: number,
+  ) => {
+    const { price, source } = priceOf(code);
+    const existing = merged.get(code);
+    if (existing) {
+      existing.qty = round4(existing.qty + amount);
+      existing.subtotal = existing.unit_price == null ? null : Math.round(existing.unit_price * existing.qty);
+      existing.depth = Math.max(existing.depth, depth);
+      if (!existing.via.some((v) => v.join(">") === path.join(">"))) existing.via.push(path);
+      return;
+    }
+    merged.set(code, {
+      ref_code: code, ref_name: name, qty: round4(amount), uom,
+      unit_price: price, price_source: source,
+      subtotal: price == null ? null : Math.round(price * amount),
+      via: [path], depth,
+    });
+  };
+
+  const walk = (p: Product, atRev: number | null, multiplier: number, chain: string[]) => {
+    if (chain.includes(p.product_code)) {
+      cycle = [...chain, p.product_code];
+      return;
+    }
+    const here = [...chain, p.product_code];
+    for (const b of bomAt(state, p, atRev)) {
+      const amount = multiplier * b.qty * (1 + b.waste_percent / 100);
+      const path = here.slice(1);
+      if (b.kind === "product") {
+        const sub = state.products.find((x) => x.product_code === b.ref_code);
+        const subRev = sub ? currentBomRev(state, sub) : null;
+        const prior = subs.get(b.ref_code);
+        subs.set(b.ref_code, {
+          product_code: b.ref_code,
+          name: sub?.name ?? null,
+          qty: round4((prior?.qty ?? 0) + amount),
+          rev: subRev,
+        });
+        /* No released BOM — or no product at all behind the code. It cannot be
+           broken down, so it stays a line of its own and is named as
+           unexploded rather than silently dropped from the list. */
+        if (!sub || subRev === null || bomAt(state, sub, subRev).length === 0) {
+          unexploded.add(b.ref_code);
+          addLine(b.ref_code, sub?.name ?? null, b.uom, amount, path, here.length - 1);
+          continue;
+        }
+        walk(sub, subRev, amount, here);
+        continue;
+      }
+      const item = state.items.find((i) => i.code === b.ref_code);
+      addLine(b.ref_code, item?.name ?? null, b.uom, amount, path, here.length - 1);
+    }
+  };
+
+  walk(product, startRev, qty, []);
+
+  const lines = [...merged.values()].sort((a, b) => a.depth - b.depth || a.ref_code.localeCompare(b.ref_code));
+  const priced = lines.filter((l) => l.subtotal != null);
+  return {
+    product_code: product.product_code,
+    qty,
+    rev: startRev,
+    lines,
+    total: priced.length > 0 ? priced.reduce((a, l) => a + (l.subtotal ?? 0), 0) : null,
+    unpriced: lines.length - priced.length,
+    sub_assemblies: [...subs.values()].sort((a, b) => a.product_code.localeCompare(b.product_code)),
+    unexploded: [...unexploded].sort(),
+    cycle,
+    labour_cost: product.labour_cost,
+    /* Null the moment the per-unit figure is: a run of twelve costs twelve
+       times an unknown, which is still unknown (D239). */
+    labour_total: product.labour_cost == null ? null : Math.round(product.labour_cost * qty),
+    labour_note: product.labour_note,
+  };
+}
+
+function round4(n: number): number {
+  return Math.round(n * 10_000) / 10_000;
 }
 
 export function productViews(state: DemoState): ProductView[] {

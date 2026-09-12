@@ -3,12 +3,12 @@ import { refused, ok, invalid, notFound, noop, type Result } from "@/services/_s
 import {
   PROCESS_STAGES, DESIGN_KIND_LABEL, ROUTE, STAGE_NAME, goodsOnSite,
   type WorkOrder, type WorkOrderView, type ProgressEntry, type ProductView,
-  type DesignKind, type DesignTaskView, type RouteCode,
+  type DesignKind, type DesignTaskView, type RouteCode, type BomExplosion,
 } from "@/services/production/contracts";
 import { getState, apply, newId, nextDocNumber, writeAudit, writeOutbox } from "../store";
 import {
   workOrderView, workOrderViews, productView, productViews,
-  currentBomRev, draftBomRev, bomAt, bomDiff, bomRevisions, bomRepinnable,
+  currentBomRev, draftBomRev, bomAt, bomDiff, bomRevisions, bomRepinnable, explodeBom, bomWouldCycle,
   designQueue, designTaskView, designGaps, officeToday,
 } from "../production-derive";
 import {
@@ -544,6 +544,7 @@ export async function saveProduct(
         height_mm: input.height_mm ?? null,
         dimension_note: input.dimension_note?.trim() || null,
         lead_time_days: input.lead_time_days ?? null,
+        labour_cost: null, labour_note: null,
         active: input.active ?? true,
         note: input.note?.trim() || null,
       });
@@ -602,12 +603,21 @@ export async function saveBomComponent(
   if (!input.qty || input.qty <= 0) {
     return invalid(SERVICE, "qty_required", "Jumlah per unit harus lebih dari nol.", { field: "qty" });
   }
-  if (input.kind === "product" && ref === product.product_code) {
-    return invalid(
-      SERVICE, "self_reference",
-      "Sebuah produk tidak bisa menjadi komponen dirinya sendiri.",
-      { field: "ref_code" },
-    );
+  if (input.kind === "product") {
+    /* Not just *itself* — anywhere in the loop (D257). A contains B and B
+       contains A is a cycle nobody typed in one place, and neither edit looks
+       wrong on its own. The message names where the loop closes, because
+       *invalid BOM* is not something anybody can act on. */
+    const loop = bomWouldCycle(state, product, ref);
+    if (loop) {
+      return invalid(
+        SERVICE, "bom_cycle",
+        loop.length === 2
+          ? "Sebuah produk tidak bisa menjadi komponen dirinya sendiri."
+          : `Ini membuat lingkaran: ${loop.join(" → ")}. Sebuah rakitan yang memuat dirinya sendiri tidak punya kebutuhan bahan yang terhingga.`,
+        { field: "ref_code", cycle: loop },
+      );
+    }
   }
   const dup = bomAt(state, product, targetRev).find(
     (b) => b.ref_code === ref && b.id !== input.component_id,
@@ -916,14 +926,7 @@ export async function materialsFor(
      *  it wants to see. */
     rev?: number | null;
   },
-): Promise<Result<{
-  product_code: string;
-  qty: number;
-  rev: number | null;
-  lines: { ref_code: string; ref_name: string | null; kind: string; qty: number; uom: string; subtotal: number | null }[];
-  total: number | null;
-  unpriced: number;
-}>> {
+): Promise<Result<BomExplosion>> {
   await latency();
   const state = getState();
   const product = state.products.find((p) => p.product_code === input.product_code);
@@ -931,27 +934,62 @@ export async function materialsFor(
   if (!input.qty || input.qty <= 0) {
     return invalid(SERVICE, "qty_required", "Berapa unit?", { field: "qty" });
   }
-
-  const view = productView(state, product, input.rev);
-  const lines = view.components.map((c) => ({
-    ref_code: c.ref_code,
-    ref_name: c.ref_name,
-    kind: c.kind,
-    qty: Math.round(c.qty_with_waste * input.qty * 10_000) / 10_000,
-    uom: c.uom,
-    subtotal: c.subtotal == null ? null : c.subtotal * input.qty,
-  }));
-  const priced = lines.filter((l) => l.subtotal != null);
-  return ok(SERVICE, {
-    product_code: product.product_code,
-    qty: input.qty,
-    rev: view.viewing_rev,
-    lines,
-    total: priced.length > 0 ? priced.reduce((a, l) => a + (l.subtotal ?? 0), 0) : null,
-    unpriced: lines.length - priced.length,
-  });
+  /* The walk, not the flat list (D257): a purchase request needs the plywood a
+     drawer box is made of, not a line reading "2 drawer boxes". */
+  return ok(SERVICE, explodeBom(state, product, input.qty, input.rev));
 }
 
+/** The workshop's own time on one unit, **typed by a person** (D239).
+ *
+ *  Its own endpoint rather than a field on `saveProduct`, because it is a
+ *  different kind of act: the rest of a product record describes the thing,
+ *  and this is a costing somebody worked out and is answerable for. The note is
+ *  required with the figure for the same reason a deduction needs a sentence —
+ *  a labour cost with no working behind it is one the next person can neither
+ *  check nor update.
+ *
+ *  Nothing here derives it. Not from the pay rules, not from recorded hours,
+ *  not from a rate times a guess. The owner said *perumusan manual*, and labour
+ *  is where an invented figure does the most damage: it flows straight into a
+ *  quoted price.
+ */
+export async function setLabourCost(
+  input: { product_code: string; labour_cost: number | null; note?: string | null },
+): Promise<Result<ProductView>> {
+  await latency();
+  const denied = requireModule(SERVICE, "production");
+  if (denied) return denied;
+
+  const state = getState();
+  const product = state.products.find((p) => p.product_code === input.product_code);
+  if (!product) return notFound(SERVICE, "product_not_found", `No product ${input.product_code}.`);
+
+  if (input.labour_cost != null && input.labour_cost < 0) {
+    return invalid(SERVICE, "negative_cost", "Biaya tenaga kerja tidak bisa negatif.", { field: "labour_cost" });
+  }
+  if (input.labour_cost != null && !input.note?.trim()) {
+    return invalid(
+      SERVICE, "note_required",
+      "Tulis dari mana angkanya. Biaya tenaga kerja tanpa perhitungan di belakangnya adalah angka yang tidak bisa diperiksa maupun diperbarui orang berikutnya — dan angka inilah yang masuk ke harga penawaran.",
+      { field: "note" },
+    );
+  }
+
+  const user = actingUser();
+  apply((draft) => {
+    const row = draft.products.find((p) => p.product_code === input.product_code);
+    if (!row) return;
+    const before = row.labour_cost;
+    row.labour_cost = input.labour_cost == null ? null : Math.round(input.labour_cost);
+    row.labour_note = input.labour_cost == null ? null : (input.note?.trim() ?? null);
+    writeAudit(draft, {
+      service: SERVICE, entity: "product", entity_no: row.product_code,
+      action: "set_labour_cost", outcome: "ok", reason: row.labour_note,
+      detail: { before, after: row.labour_cost, by: user.email },
+    });
+  });
+  return getProduct(product.product_code);
+}
 
 /** Filing a drawing against a product.
  *

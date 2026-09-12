@@ -22,9 +22,11 @@ import type {
 } from "@/services/assistant/contracts";
 import { getState, apply, newId, writeAudit } from "../store";
 import { latency, actingUser, requireModule, replayed, remember } from "./_kit";
-import { TOOLS, findTool } from "../assistant/catalogue";
+import { TOOLS, findTool, resolveTool } from "../assistant/catalogue";
+import { settingText } from "../settings";
+import type { Lang } from "@/lib/i18n";
 import { route } from "../assistant/router";
-import { GUIDES } from "../assistant/guides";
+import { GUIDES, resolveGuide } from "../assistant/guides";
 import { accountBalances, approvalQueue, vendorJourney } from "../derive";
 import { stockItems } from "../inventory-derive";
 import { workOrderViews } from "../production-derive";
@@ -34,9 +36,17 @@ import * as procurement from "./procurement";
 
 const SERVICE = "procurement" as const;
 
+/** The language in force, from the setting (D216, D224). Resolved here so a
+ *  Phase-2 HTTP client receives finished sentences, and the language of a
+ *  refusal is decided in the same place as the refusal. */
+function lang(): Lang {
+  return settingText(getState(), "format.language", "en") === "id" ? "id" : "en";
+}
+
 export async function listTools(): Promise<Result<AssistantTool[]>> {
   await latency();
-  return ok(SERVICE, TOOLS);
+  const l = lang();
+  return ok(SERVICE, TOOLS.map((t) => resolveTool(t, l)));
 }
 
 export async function listTurns(limit = 50): Promise<Result<AssistantTurn[]>> {
@@ -80,8 +90,9 @@ export async function ask(prompt: string): Promise<Result<AssistantReply>> {
   const match = route(prompt);
   if (!match) {
     const turn = newTurn(prompt, "unknown");
-    turn.text =
-      "Saya tidak mengerti maksudnya. Saya sengaja tidak menebak — jawaban yang salah dengan yakin lebih buruk daripada tidak menjawab. Yang bisa saya kerjakan ada di daftar di bawah.";
+    turn.text = lang() === "id"
+      ? "Saya tidak mengerti maksudnya. Saya sengaja tidak menebak — jawaban yang salah dengan yakin lebih buruk daripada tidak menjawab. Yang bisa saya kerjakan ada di daftar di bawah."
+      : "I do not understand that. I deliberately do not guess — a confident wrong answer is worse than no answer. What I can do is in the list below.";
     store(turn);
     return ok(SERVICE, { turn, understood_as: "tidak dikenali" });
   }
@@ -94,7 +105,7 @@ export async function ask(prompt: string): Promise<Result<AssistantReply>> {
     const turn = newTurn(prompt, "refused");
     turn.refused_because = "closed";
     turn.tools_used = [tool.name];
-    turn.text = tool.blocked_reason ?? "Ini tidak bisa lewat prompt.";
+    turn.text = tool.blocked_reason?.[lang()] ?? "";
     turn.route = tool.instead_at;
     store(turn);
     apply((draft) => {
@@ -121,9 +132,14 @@ export async function ask(prompt: string): Promise<Result<AssistantReply>> {
       const turn = newTurn(prompt, "refused");
       turn.refused_because = "permission";
       turn.tools_used = [tool.name];
+      const id = lang() === "id";
       turn.text = held
-        ? `Akun Anda punya akses ${held.level} ke modul ${tool.module}; ini butuh ${tool.level}. Saya bekerja dengan hak Anda, bukan hak saya sendiri.`
-        : `Akun Anda tidak punya akses ke modul ${tool.module}. Saya bekerja dengan hak Anda, bukan hak saya sendiri — kalau saya bisa membacanya untuk Anda, izin di aplikasi ini tidak berarti apa-apa.`;
+        ? (id
+          ? `Akun Anda punya akses ${held.level} ke modul ${tool.module}; ini butuh ${tool.level}. Saya bekerja dengan hak Anda, bukan hak saya sendiri.`
+          : `Your account has ${held.level} access to the ${tool.module} module; this needs ${tool.level}. I work with your rights, not my own.`)
+        : (id
+          ? `Akun Anda tidak punya akses ke modul ${tool.module}. Saya bekerja dengan hak Anda, bukan hak saya sendiri — kalau saya bisa membacanya untuk Anda, izin di aplikasi ini tidak berarti apa-apa.`
+          : `Your account has no access to the ${tool.module} module. I work with your rights, not my own — if I could read it for you, permissions in this app would mean nothing.`);
       turn.route = tool.instead_at;
       store(turn);
       return ok(SERVICE, { turn, understood_as: match.understood_as });
@@ -132,7 +148,7 @@ export async function ask(prompt: string): Promise<Result<AssistantReply>> {
 
   /* Guidance. */
   if (tool.effect === "guide") {
-    const guide = GUIDES[tool.name];
+    const guide = resolveGuide(GUIDES[tool.name], lang());
     const turn = newTurn(prompt, "guide");
     turn.tools_used = [tool.name];
     turn.text = guide.title;
@@ -147,7 +163,9 @@ export async function ask(prompt: string): Promise<Result<AssistantReply>> {
     const draft = buildDraft(tool.name, match.args);
     const turn = newTurn(prompt, "draft");
     turn.tools_used = [tool.name];
-    turn.text = "Ini yang akan saya tulis. Belum ada apa pun yang tersimpan — periksa tiap barisnya, lalu konfirmasi.";
+    turn.text = lang() === "id"
+      ? "Ini yang akan saya tulis. Belum ada apa pun yang tersimpan — periksa tiap barisnya, lalu konfirmasi."
+      : "This is what I would write. Nothing is saved yet — check every field, then confirm.";
     turn.draft = draft;
     turn.route = tool.instead_at;
     store(turn);
@@ -170,7 +188,7 @@ export async function ask(prompt: string): Promise<Result<AssistantReply>> {
       id: newId("act"), at: new Date().toISOString(),
       actor_id: actingUser().id, actor_email: actingUser().email,
       kind: "view", target: tool.instead_at ?? tool.name,
-      label: `John Lau — ${tool.label}`,
+      label: `John Lau — ${tool.label[lang()]}`,
     });
   });
 
@@ -180,13 +198,14 @@ export async function ask(prompt: string): Promise<Result<AssistantReply>> {
 /** The figures, each from the same computation the screen uses. */
 function readFor(tool: string): { text: string; facts: AnswerFact[] } {
   const state = getState();
+  const id = lang() === "id";
   const today = officeToday();
 
   switch (tool) {
     case "accounting.balances": {
       const rows = accountBalances(state);
       return {
-        text: "Saldo tiap rekening, dihitung dari transaksi yang tercatat — sama dengan yang ada di buku besar.",
+        text: id ? "Saldo tiap rekening, dihitung dari transaksi yang tercatat — sama dengan yang ada di buku besar." : "The balance of each account, computed from the recorded transactions — the same figures the ledger shows.",
         facts: rows.map((a) => ({
           label: a.code, value: `Rp ${Math.round(a.balance).toLocaleString("en-US")}`,
           source: tool, href: "/accounting/ledger",
@@ -197,8 +216,8 @@ function readFor(tool: string): { text: string; facts: AnswerFact[] } {
       const lines = approvalQueue(state);
       return {
         text: lines.length === 0
-          ? "Tidak ada baris yang menunggu persetujuan."
-          : `${lines.length} baris menunggu persetujuan.`,
+          ? (id ? "Tidak ada baris yang menunggu persetujuan." : "No lines are waiting for approval.")
+          : (id ? `${lines.length} baris menunggu persetujuan.` : `${lines.length} lines are waiting for approval.`),
         facts: lines.slice(0, 8).map((l) => ({
           label: `${l.line_no_full} · ${l.description}`,
           value: l.item_total != null ? `Rp ${l.item_total.toLocaleString("en-US")}` : "nilai belum ada",
@@ -210,8 +229,8 @@ function readFor(tool: string): { text: string; facts: AnswerFact[] } {
       const low = stockItems(state).filter((s) => s.below_min);
       return {
         text: low.length === 0
-          ? "Tidak ada barang di bawah stok minimum."
-          : `${low.length} barang sudah di bawah minimum.`,
+          ? (id ? "Tidak ada barang di bawah stok minimum." : "Nothing is below its minimum.")
+          : (id ? `${low.length} barang sudah di bawah minimum.` : `${low.length} items are below their minimum.`),
         facts: low.slice(0, 10).map((s) => ({
           label: s.item_name, value: `${s.on_hand} ${s.uom} (min ${s.min_qty ?? "—"})`,
           source: tool, href: "/inventory/material",
@@ -222,8 +241,8 @@ function readFor(tool: string): { text: string; facts: AnswerFact[] } {
       const late = workOrderViews(state, today).filter((w) => w.late && w.status === "OPEN");
       return {
         text: late.length === 0
-          ? "Tidak ada SPK yang lewat tanggal janji."
-          : `${late.length} SPK sudah lewat tanggal janji.`,
+          ? (id ? "Tidak ada SPK yang lewat tanggal janji." : "No work order is past its promised date.")
+          : (id ? `${late.length} SPK sudah lewat tanggal janji.` : `${late.length} work orders are past their promised date.`),
         facts: late.map((w) => ({
           label: `${w.wo_no} · ${w.item_name}`,
           value: `lewat ${-w.days_left} hari, ${w.percent}% selesai`,
@@ -234,7 +253,7 @@ function readFor(tool: string): { text: string; facts: AnswerFact[] } {
     case "delivery.fulfilment": {
       const rows = fulfilmentViews(state, today);
       return {
-        text: "Sejauh mana tiap pesanan klien sampai ke mereka.",
+        text: id ? "Sejauh mana tiap pesanan klien sampai ke mereka." : "How far each client order has reached them.",
         facts: rows.map((f) => ({
           label: f.project_name,
           value: f.installed_percent == null
@@ -252,8 +271,8 @@ function readFor(tool: string): { text: string; facts: AnswerFact[] } {
         .sort((a, b) => b.j.outstanding - a.j.outstanding);
       return {
         text: rows.length === 0
-          ? "Tidak ada vendor dengan sisa kewajiban."
-          : `${rows.length} vendor masih punya sisa kewajiban.`,
+          ? (id ? "Tidak ada vendor dengan sisa kewajiban." : "No vendor has an outstanding balance.")
+          : (id ? `${rows.length} vendor masih punya sisa kewajiban.` : `${rows.length} vendors still have an outstanding balance.`),
         facts: rows.slice(0, 8).map((x) => ({
           label: x.v.name,
           value: `Rp ${Math.round(x.j.outstanding).toLocaleString("en-US")} belum dibayar`,
@@ -262,26 +281,31 @@ function readFor(tool: string): { text: string; facts: AnswerFact[] } {
       };
     }
     default:
-      return { text: "Belum ada perhitungan untuk ini.", facts: [] };
+      return { text: id ? "Belum ada perhitungan untuk ini." : "There is no computation for this yet.", facts: [] };
   }
 }
 
 function buildDraft(tool: string, args: Record<string, string>): AssistantDraft {
   const now = new Date().toISOString();
+  const id = lang() === "id";
+  const blank = id ? "— belum diisi —" : "— not filled in —";
   if (tool === "procurement.draft_po") {
     return {
       id: newId("dft"), tool,
-      headline: "Purchase order baru",
+      headline: id ? "Purchase order baru" : "New purchase order",
       fields: [
-        { label: "Vendor", value: args.name ?? "— belum diisi —" },
-        { label: "Barang", value: args.item ?? "— belum diisi —" },
-        { label: "Jumlah", value: args.qty ? `${args.qty} ${args.uom ?? ""}`.trim() : "— belum diisi —" },
-        { label: "Harga satuan", value: args.unit_price ?? "— belum diisi —" },
-        { label: "Status awal", value: "DRAFT — belum dikirim ke vendor" },
+        { label: "Vendor", value: args.name ?? blank },
+        { label: id ? "Barang" : "Item", value: args.item ?? blank },
+        { label: id ? "Jumlah" : "Quantity", value: args.qty ? `${args.qty} ${args.uom ?? ""}`.trim() : blank },
+        { label: id ? "Harga satuan" : "Unit price", value: args.unit_price ?? blank },
+        { label: id ? "Status awal" : "Initial status", value: id ? "DRAFT — belum dikirim ke vendor" : "DRAFT — not sent to the vendor" },
       ],
-      warnings: [
+      warnings: id ? [
         "Saya mengambil apa yang bisa saya baca dari kalimat Anda dan tidak menebak sisanya. Yang bertanda belum diisi harus Anda lengkapi sebelum konfirmasi.",
         "PO ini dibuat sebagai draft. Sebelum di-issue tidak ada kewajiban apa pun ke vendor.",
+      ] : [
+        "I took what I could read from your sentence and did not guess the rest. Anything marked not filled in is yours to complete before confirming.",
+        "This PO is created as a draft. Until it is issued there is no obligation to the vendor at all.",
       ],
       args: { ...args },
       idempotency_key: newId("idem"), created_at: now,
@@ -289,14 +313,16 @@ function buildDraft(tool: string, args: Record<string, string>): AssistantDraft 
   }
   return {
     id: newId("dft"), tool,
-    headline: "Baris permintaan pembelian baru",
+    headline: id ? "Baris permintaan pembelian baru" : "New purchase request line",
     fields: [
-      { label: "Barang", value: args.name ?? "— belum diisi —" },
-      { label: "Jumlah", value: args.qty ? `${args.qty} ${args.uom ?? ""}`.trim() : "— belum diisi —" },
-      { label: "Keperluan", value: args.purpose ?? "— belum diisi —" },
+      { label: id ? "Barang" : "Item", value: args.name ?? blank },
+      { label: id ? "Jumlah" : "Quantity", value: args.qty ? `${args.qty} ${args.uom ?? ""}`.trim() : blank },
+      { label: id ? "Keperluan" : "Purpose", value: args.purpose ?? blank },
     ],
-    warnings: [
+    warnings: id ? [
       "Baris ini masuk sebagai permintaan, bukan sebagai persetujuan. Yang menyetujui tetap orang, di papan rapat.",
+    ] : [
+      "This goes in as a request, not as an approval. Approving it stays a person's act, on the meeting board.",
     ],
     args: { ...args },
     idempotency_key: newId("idem"), created_at: now,

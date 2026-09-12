@@ -37,6 +37,15 @@ export const APP_SETTINGS: AppSetting[] = [
     updated_by: null, updated_at: null,
   },
 
+  {
+    key: "format.language", group: "format", label: "Bahasa",
+    help: "Menerjemahkan menu, kata-kata umum, dan seluruh John Lau — termasuk panduan dan alasan penolakannya. Isi tiap layar tetap seperti sekarang, dan kosakata perusahaan (MSG SENT, SP NORTH, PKWT, kode akun, status) tidak pernah diterjemahkan: itu nama, bukan kata (D224).",
+    kind: "choice", value: "en", default_value: "en",
+    unit: null, choices: ["en", "id"], reach: "display",
+    locked_reason: null, managed_at: null, affects: [],
+    updated_by: null, updated_at: null,
+  },
+
   /* ── Operational thresholds: safe to move, and they only look forward ── */
   {
     key: "ops.doc_expiry_warning_days", group: "operations",

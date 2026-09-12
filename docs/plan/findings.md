@@ -2810,3 +2810,82 @@ second is fixed by asking IT; the first never is. One shared header sends
 somebody to argue with the wrong person, so the turn now records **why** it
 refused and the panel says the two differently — red for the boundary, amber
 for the grant.
+
+---
+
+## F65 — three responsive faults that measured clean
+
+The first pass was a script: every screen at 390, 768 and 1280, reporting any
+element whose right edge crossed the viewport, ignoring anything inside a
+deliberate horizontal scroller. Twenty-one routes, three widths, sixty-three
+measurements.
+
+Nothing. Not one overflow.
+
+Then the screenshots, and three real faults, none of which a measurement of
+horizontal overflow could ever have caught:
+
+**The floating launcher sat on the last row of every list.** John Lau's button
+is fixed to the bottom-right corner, the page's content ends where the content
+ends, and on a 390-wide screen the two overlap permanently. Nothing overflowed;
+a row was simply unreachable, on every list in the app. Fixed with bottom
+padding on the shell that only exists below `sm` — the launcher's own space,
+reserved by the layout rather than negotiated with each page.
+
+**Badges broke mid-phrase.** *Di jalan* rendered as *Di* over *jalan* inside
+one rounded pill, which reads as two broken pills. `whitespace-nowrap` on the
+badge, and the rule behind it: a badge is a short label, and if it does not fit
+on a line the layout around it is wrong, not the badge.
+
+**And the one that mattered.** The handover board is five columns — ordered,
+made, despatched, arrived, installed — and the whole screen exists for the
+**gaps between them**. On a phone the table sat in a horizontal scroller, which
+my script correctly skipped as intentional, and which showed exactly one
+column. The screen was not broken. It was *technically usable* and had lost its
+entire argument: you could read *4 set ordered* and nothing else, and the
+comparison the module was built to make was three swipes away and invisible.
+
+Narrow screens now get a stacked card with all five numbers in one row of
+their own — `4 · 3 · 2 · 0 · 0` — which is smaller than the table and says the
+thing the table was for.
+
+**The lesson is about the test, not the CSS.** An overflow check asks *does
+this fit*. Every one of these three fitted. What none of them did was **still
+mean what the screen means**, and that is not a property you can measure with a
+bounding box. The horizontal scroller is the sharpest case: it is the standard
+answer to a wide table on a phone, it is what my own checker was written to
+forgive, and on a comparison table it is the wrong answer — because a
+comparison you can only see one column of is not a comparison.
+
+---
+
+## F66 — the language switch that broke the assistant's own examples
+
+Switching the interface to English worked on the first try: the menu turned
+over, John Lau's opening paragraph turned over, his suggestion chips turned
+over into English. Then clicking one of them:
+
+```
+"How do I create a PO?"  →  I do not understand that.
+```
+
+All five. The router's keywords were Indonesian, every one of them, and the
+English interface offered five English prompts that could not possibly match.
+
+It is F64 again in a new costume — *the app's own worked example failing* — and
+the second time is the useful one, because it says something about the shape of
+the mistake rather than about the instance. Both times the failure was at the
+**seam between a thing that was translated and a thing that was not**. The
+labels moved and the matcher did not. The chips moved and the rules did not.
+
+So the fix is not *add English keywords*, though that is what the diff does.
+The fix is the rule: **the router understands both languages at all times,
+regardless of which one the interface is showing.** Not because of tidiness —
+because in this office somebody will type Indonesian into an English screen on
+the first afternoon, and a matcher keyed to the interface language would refuse
+them for having the wrong menu setting.
+
+That also resolves where the resolution belongs. John Lau's catalogue holds
+both languages and the **dispatcher** picks one, so the language of a refusal
+is decided in the same place as the refusal, and understanding is decided
+nowhere near either.

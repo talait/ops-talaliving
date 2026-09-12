@@ -68,7 +68,48 @@ export default function HandoverPage() {
                   }
                 />
 
-                <div className="overflow-x-auto">
+                {/* Below `sm` the five columns live in a horizontal scroller,
+                    which technically works and loses the entire argument: the
+                    point of this screen is the **gaps between** ordered, made,
+                    despatched, arrived and installed, and a phone showed only
+                    the first of them (F65). So narrow screens get a stacked
+                    card where all five sit in one row of their own. */}
+                <ul className="divide-y divide-slate-100 sm:hidden">
+                  {f.lines.map((l) => (
+                    <li key={l.project_line_id} className="px-4 py-3">
+                      <p className="text-[13px] text-slate-800">{l.description}</p>
+                      {l.is_service ? (
+                        <p className="text-[11px] text-slate-400">
+                          jasa — tidak ada barang yang dibuat atau dikirim
+                        </p>
+                      ) : (
+                        <dl className="mt-1.5 grid grid-cols-5 gap-1 text-center">
+                          {([
+                            ["Pesan", String(l.ordered)],
+                            ["Buat", l.made == null ? "?" : String(l.made)],
+                            ["Jalan", String(l.delivered)],
+                            ["Sampai", String(l.arrived)],
+                            ["Pasang", String(l.installed)],
+                          ] as [string, string][]).map(([k, v], i) => (
+                            <div key={k} className={cn(
+                              "rounded-lg py-1",
+                              i === 4 && l.installed >= l.ordered ? "bg-emerald-50" : "bg-slate-50",
+                            )}>
+                              <dt className="text-[9px] uppercase tracking-wide text-slate-400">{k}</dt>
+                              <dd className={cn(
+                                "text-[13px] font-semibold tabular-nums",
+                                v === "?" ? "text-slate-300"
+                                  : i === 4 && l.installed >= l.ordered ? "text-emerald-700" : "text-slate-800",
+                              )}>{v}</dd>
+                            </div>
+                          ))}
+                        </dl>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+
+                <div className="hidden overflow-x-auto sm:block">
                   <table className="w-full min-w-[720px] border-collapse text-[13px]">
                     <thead>
                       <tr className="border-b border-slate-200 bg-slate-50/70 text-[11px] uppercase tracking-wide text-slate-500">

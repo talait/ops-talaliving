@@ -12,6 +12,8 @@ import { assistant } from "@/demo/api";
 import type { AssistantTurn } from "@/services/assistant/contracts";
 import { useToast } from "@/store/toast";
 import { useSession } from "@/store/session";
+import { useT, useLang } from "@/lib/i18n";
+import { MESSAGES, EXAMPLES } from "@/lib/messages";
 
 /** John Lau, docked.
  *
@@ -31,6 +33,7 @@ export function JohnLauDock() {
   const [busy, setBusy] = useState(false);
   const { toast } = useToast();
   const { ready } = useSession();
+  const t = useT();
   const router = useRouter();
 
   async function send(text: string) {
@@ -54,7 +57,7 @@ export function JohnLauDock() {
           data-dock-open="john-lau" aria-label="Buka John Lau"
           className="fixed bottom-5 right-5 z-30 flex items-center gap-2 rounded-full bg-brand-700 px-4 py-3 text-sm font-medium text-white shadow-lg hover:bg-brand-800 print:hidden"
         >
-          <MessageSquare className="h-4 w-4" /> John Lau
+          <MessageSquare className="h-4 w-4" /> {t(MESSAGES.johnLau.launcher)}
         </button>
       )}
 
@@ -64,7 +67,7 @@ export function JohnLauDock() {
             <MessageSquare className="h-4 w-4 text-brand-700" />
             <span className="text-[13px] font-semibold text-slate-800">John Lau</span>
             <Badge tone="slate">demo</Badge>
-            <button onClick={() => setOpen(false)} aria-label="Tutup" className="ml-auto rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+            <button onClick={() => setOpen(false)} aria-label={t(MESSAGES.common.close)} className="ml-auto rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
               <X className="h-4 w-4" />
             </button>
           </header>
@@ -87,11 +90,11 @@ export function JohnLauDock() {
           >
             <input
               value={prompt} onChange={(e) => setPrompt(e.target.value)}
-              placeholder="Tanya, atau minta dibuatkan sesuatu…"
-              aria-label="Pertanyaan untuk John Lau"
+              placeholder={t(MESSAGES.johnLau.placeholder)}
+              aria-label={t(MESSAGES.johnLau.ariaPrompt)}
               className="h-9 flex-1 rounded-lg border border-slate-200 px-2.5 text-sm focus:border-brand-400 focus:outline-none"
             />
-            <Button size="sm" icon={Send} disabled={busy || !prompt.trim()}>Kirim</Button>
+            <Button size="sm" icon={Send} disabled={busy || !prompt.trim()}>{t(MESSAGES.common.send)}</Button>
           </form>
         </aside>
       )}
@@ -99,28 +102,15 @@ export function JohnLauDock() {
   );
 }
 
-const EXAMPLES = [
-  "Bagaimana cara membuat PO?",
-  "Saldo rekening berapa?",
-  "Barang apa yang stoknya menipis?",
-  "Berapa hutang kita ke vendor?",
-  "Berapa gaji Karjo?",
-];
-
 function Opening({ onPick }: { onPick: (s: string) => void }) {
+  const t = useT();
+  const lang = useLang();
   return (
     <div className="space-y-2">
-      <p className="text-[13px] text-slate-700">
-        Saya menjalankan perintah bernama di sistem ini dan menunjukkan apa yang dikembalikannya.
-        Saya tidak mengarang angka: setiap angka yang saya sebut punya nama perhitungannya dan
-        layar tempat Anda bisa mengeceknya sendiri.
-      </p>
-      <p className="text-[12px] text-slate-500">
-        Ada yang tidak bisa lewat saya sama sekali — berkas 201 dan modul IT. Coba tanyakan yang
-        terakhir di bawah untuk melihat bagaimana saya menolak.
-      </p>
+      <p className="text-[13px] text-slate-700">{t(MESSAGES.johnLau.opening)}</p>
+      <p className="text-[12px] text-slate-500">{t(MESSAGES.johnLau.openingClosed)}</p>
       <div className="flex flex-wrap gap-1.5 pt-1">
-        {EXAMPLES.map((e) => (
+        {EXAMPLES[lang].map((e) => (
           <button
             key={e} onClick={() => onPick(e)}
             className="rounded-full border border-slate-200 px-2.5 py-1 text-[12px] text-slate-600 hover:border-brand-300 hover:bg-brand-50"
@@ -139,6 +129,7 @@ function Turn({ turn, onNavigate, onChanged }: {
   onChanged: (t: AssistantTurn) => void;
 }) {
   const { toast } = useToast();
+  const t = useT();
   const [fields, setFields] = useState<Record<string, string>>(
     Object.fromEntries((turn.draft?.fields ?? []).map((f) => [f.label, f.value.startsWith("—") ? "" : f.value])),
   );
@@ -173,12 +164,12 @@ function Turn({ turn, onNavigate, onChanged }: {
             person is what one shared header would do (F64). */}
         {turn.refused_because === "closed" && (
           <p className="mb-1 flex items-center gap-1.5 text-[12px] font-medium text-rose-800">
-            <ShieldAlert className="h-3.5 w-3.5" /> Tertutup lewat prompt — tidak ada izin yang membukanya
+            <ShieldAlert className="h-3.5 w-3.5" /> {t(MESSAGES.johnLau.refusedClosed)}
           </p>
         )}
         {turn.refused_because === "permission" && (
           <p className="mb-1 flex items-center gap-1.5 text-[12px] font-medium text-amber-900">
-            <KeyRound className="h-3.5 w-3.5" /> Akses Anda belum cukup
+            <KeyRound className="h-3.5 w-3.5" /> {t(MESSAGES.johnLau.refusedPermission)}
           </p>
         )}
         <p className="text-[13px] text-slate-700">{turn.text}</p>
@@ -211,7 +202,7 @@ function Turn({ turn, onNavigate, onChanged }: {
                     {s.text}
                     {s.href && (
                       <button onClick={() => onNavigate(s.href!)} className="ml-1 inline-flex items-center gap-0.5 font-medium text-brand-700 hover:underline">
-                        buka <ArrowUpRight className="h-3 w-3" />
+                        {t(MESSAGES.johnLau.openHere)} <ArrowUpRight className="h-3 w-3" />
                       </button>
                     )}
                   </span>
@@ -243,19 +234,19 @@ function Turn({ turn, onNavigate, onChanged }: {
               <p key={w} className="mt-1.5 text-[11px] text-amber-900">{w}</p>
             ))}
             <div className="mt-2 flex gap-2">
-              <Button size="sm" icon={Check} disabled={busy} onClick={confirm}>Ya, tulis</Button>
-              <Button size="sm" variant="ghost" onClick={abandon}>Batal</Button>
+              <Button size="sm" icon={Check} disabled={busy} onClick={confirm}>{t(MESSAGES.johnLau.writeIt)}</Button>
+              <Button size="sm" variant="ghost" onClick={abandon}>{t(MESSAGES.common.cancel)}</Button>
             </div>
           </div>
         )}
 
         {turn.draft_outcome === "confirmed" && (
           <p className="mt-2 text-[12px] text-emerald-700">
-            Tersimpan{turn.produced_ref ? ` sebagai ${turn.produced_ref}` : ""}.
+            {t(MESSAGES.johnLau.savedAs)}{turn.produced_ref ? ` — ${turn.produced_ref}` : ""}.
           </p>
         )}
         {turn.draft_outcome === "abandoned" && (
-          <p className="mt-2 text-[12px] text-slate-500">Dibatalkan. Tidak ada yang ditulis.</p>
+          <p className="mt-2 text-[12px] text-slate-500">{t(MESSAGES.johnLau.abandoned)}</p>
         )}
 
         <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-slate-200 pt-1.5 text-[10px] text-slate-400">
@@ -267,7 +258,7 @@ function Turn({ turn, onNavigate, onChanged }: {
           ))}
           {turn.route && (
             <Link href={turn.route} className="ml-auto text-brand-700 hover:underline">
-              buka layarnya
+              {t(MESSAGES.johnLau.openScreen)}
             </Link>
           )}
         </div>

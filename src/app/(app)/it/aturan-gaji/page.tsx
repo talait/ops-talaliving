@@ -154,7 +154,7 @@ export default function PayRulesPage() {
 
                       <Field
                         label="Hari kerja efektif setahun"
-                        hint="Enam hari seminggu = 312 hari, dikurangi tanggal merah dan cuti bersama. 288 sama dengan 24 hari sebulan. Angkanya milik perusahaan, bukan hitungan layar ini."
+                        hint={`Enam hari seminggu = 312 hari, dikurangi tanggal merah dan cuti bersama. Angkanya milik perusahaan, bukan hitungan layar ini — IT yang mengisi, HRD dan payroll membacanya (Q45). Rata-rata per bulan: ${(rules.effective_days_per_year / 12).toFixed(1)} hari, diturunkan dari angka setahun dan tidak pernah disimpan terpisah.`}
                         value={rules.effective_days_per_year}
                         onChange={(v) => set({ effective_days_per_year: v })}
                         disabled={!mayEdit}
@@ -304,10 +304,24 @@ export default function PayRulesPage() {
                       />
                       <div className="grid gap-3 sm:grid-cols-2">
                         <Field
-                          label="Jam kerja mulai (menit dari tengah malam)"
-                          hint="480 = jam 08.00."
+                          label="Jam kerja mulai — kantor (menit dari tengah malam)"
+                          hint="480 = jam 08.00. Ini juga jawaban untuk unit yang belum punya jamnya sendiri."
                           value={rules.day_starts_minutes}
                           onChange={(v) => set({ day_starts_minutes: v })}
+                          disabled={!mayEdit}
+                        />
+                        <Field
+                          label="Jam kerja mulai — produksi"
+                          hint="450 = jam 07.30 (Q44). Satu perusahaan, dua jadwal: dengan satu jam masuk untuk semua, bengkel diukur dengan jam kantor dan — ditambah toleransi 15 menit — tidak ada seorang pun yang pernah bisa terlambat."
+                          value={rules.day_start_by_unit?.Workshop ?? rules.day_starts_minutes}
+                          onChange={(v) => set({ day_start_by_unit: { ...rules.day_start_by_unit, Workshop: v } })}
+                          disabled={!mayEdit}
+                        />
+                        <Field
+                          label="Istirahat (menit)"
+                          hint="45 menit (Q44). Dibandingkan dengan tap istirahat dan dilaporkan di hari yang lewat jatah — tidak pernah dipotong, sama seperti keterlambatan."
+                          value={rules.break_minutes ?? 0}
+                          onChange={(v) => set({ break_minutes: v || null })}
                           disabled={!mayEdit}
                         />
                         <Field

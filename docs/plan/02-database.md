@@ -554,6 +554,23 @@ fill the column is a wrong number in a costing report (D204).
 `inv.log_purchases.nota_attachment_id` links the load to the paper it was
 entered from (D201). Nullable only for loads recorded before that rule.
 
+`hr.pay_rule_sets` gains `day_start_by_unit` and `break_minutes` (D270), and
+the selector that reads it now orders by **`effective_from` and then
+`version`**. Sorting by date alone was fine until two books shared a date —
+which happens the first time a correction is dated to the version it corrects —
+and a dated rule book whose answer depends on row order is not a dated rule
+book (F89).
+
+`effective_days_per_month` is **not a column**. It is
+`effective_days_per_year / 12`, computed where it is shown (D271): two stored
+numbers that must agree is exactly how bruto and diterima drifted apart (F73).
+
+`hr` timesheet days carry `notes` beside `issues`. An entry in `issues` means
+the reader could not describe the day, so it cannot be paid until a person
+opens it (D141); `notes` is for a day the rule read perfectly well that still
+has something worth saying — a break that ran past its 45 minutes. Folding the
+two together stopped somebody's wages over five minutes (F90).
+
 `procure.purchase_orders` carries `approval_sent_to` and `approval_token` for
 the chat road, and **`self_confirmed` as a stored column** (D267). It is not
 derived from `created_by = approved_by`: *approved by Evin* and *written and

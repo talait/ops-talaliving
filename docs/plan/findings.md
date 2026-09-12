@@ -3691,3 +3691,68 @@ codebase: **anything a screen asserts about a file should be one tap from the
 file.** Not because users want to click, but because a claim that can be
 checked is a claim that gets checked — by whoever is reading the screen, for
 free, every day.
+
+---
+
+## F89 — a rule that changed mid-window was applied to the whole window
+
+The KPI screen takes a date range. Punctuality was computed like this:
+
+```ts
+const rules = activePayRules(state, from).rules;   // the book on the FIRST day
+```
+
+— and then every day in the range was judged against it. Correct for every
+window that sits inside one version of the rule book, which is every window
+anybody had tried, and wrong the moment one spans a change.
+
+It surfaced the same day Q44 was answered, because Q44 *is* a rule change: with
+the workshop's start time corrected from 1 September, a window of 29 August to
+7 September holds days under two different books. The screen read the September
+days against August's 08.00 and reported a workshop that was never late — which
+is the exact illusion F70 was raised about, arriving a second time through a
+different door.
+
+Each day is now judged by `activePayRules(state, d.work_date)`, and the basis
+line names **every** threshold it used rather than one: *5 dari 5 hari tepat
+waktu (masuk 08.00+0m dan 07.30+15m)*. A window spanning a change says so
+instead of averaging it invisibly.
+
+Two things came out of it.
+
+**This is F68's shape again.** There, `cashPlan(state, now)` used one argument
+for *where the window starts* and *what counts as today*; here one date decided
+*which window* and *which rule book*. Both were correct until something asked a
+question the second job had never been asked. When one value is doing two jobs,
+the bug is not in the value — it is in the day somebody needs the two to
+differ.
+
+**And the tie-break was undefined.** `activePayRules` sorted by
+`effective_from` alone and took the last: with two versions sharing a date —
+which happens the moment a correction is dated to the version it corrects — the
+winner depended on the order the rows happened to be written in. A dated rule
+book whose answer depends on array order is not a dated rule book. It now sorts
+by date **and version**.
+
+---
+
+## F90 — a note that stopped a day being paid
+
+The 45-minute break allowance was added to `issues`, which is the list a day
+carries when the reader could not describe it. An entry there sends the day to
+`review`, and a day in review cannot be paid until a person opens it.
+
+So a break that ran five minutes long stopped somebody's wages.
+
+`issues` and the new `notes` do different work and the difference is the whole
+point: *the rule could not fit the taps* is a blocker, *something here is worth
+a second look* is not. They had never needed separating because everything that
+had ever been written to `issues` genuinely was a reading failure — a missing
+pulang, a tap the rule could not place. The break is the first thing this
+system has wanted to say about a day it understood perfectly well.
+
+Worth noticing: **the count was the only symptom.** The screen's *days to read*
+went from 32 to 50 and nothing else looked different — no error, no wrong
+figure, just more amber. The number was the thing that asked the question, and
+it was worth chasing rather than accepting, which is also how the 50 turned out
+to be a mid-edit artifact once it was measured properly against the baseline.

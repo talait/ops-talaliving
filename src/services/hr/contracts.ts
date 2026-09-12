@@ -197,8 +197,19 @@ export interface TimesheetDay {
   day_value: number;
   /** Why it is worth that, and what would change it (D144). */
   pay: DayPay;
-  /** What a person has to resolve, in words. */
+  /** What a person has to **resolve**, in words. An entry here means the rule
+   *  could not describe the day, so it goes to `review` and cannot be paid
+   *  until somebody reads it (D141). */
   issues: string[];
+  /** What is worth **saying** about a day the rule read perfectly well.
+   *
+   *  Separate from `issues` because the two do different work, and folding
+   *  them together was caught the day the break allowance arrived (D270): a
+   *  break that ran five minutes long is a readable day with a note on it, and
+   *  putting it in `issues` sent it to review and stopped the day being paid.
+   *  *The rule could not fit the taps* and *something here is worth a second
+   *  look* are different sentences, and only the first one blocks. */
+  notes: string[];
 }
 
 /** Overtime arrives as a **sheet**, and there are two kinds of sheet.
@@ -1077,6 +1088,11 @@ export interface PayRules {
    *  Six days a week is 312 before a single national holiday comes off it, and
    *  what comes off it here is this company's own calendar. */
   effective_days_per_year: number;
+  /** The same figure per month, and **derived, never stored** (Q45, D271):
+   *  `effective_days_per_year / 12`. The owner asked for the monthly average
+   *  because that is the number a person checks a payslip against, and two
+   *  stored figures that must agree are how F73 happened. It is computed
+   *  wherever it is shown. */
   /** Whether the tunjangan counts towards an hour of somebody's time.
    *
    *  **True**, on the owner's instruction: *pakai pokok+allowance untuk
@@ -1103,6 +1119,29 @@ export interface PayRules {
    *  again (F62), and the one it was not answering is the one the owner
    *  actually set: fifteen minutes. */
   day_starts_minutes: number;
+  /** When a **particular unit's** day starts, where it is not the figure
+   *  above. Workshop 07:30, office 08:00 (Q44, D270).
+   *
+   *  Q44 was raised because the two could not be told apart: one start time
+   *  meant the workshop tapped in at 06:49 and 07:02 against an 08:00 rule, so
+   *  with the owner's fifteen-minute grace on top **nobody in the business was
+   *  ever late** — including the man carrying a hand-typed Rp 45.000 lateness
+   *  deduction (F70). A map rather than a column on the employee, because it
+   *  is a rule about a unit and it belongs in the rule book that is versioned
+   *  by date (D173): changing the workshop's start time next March must not
+   *  rewrite what last March's lateness was measured against.
+   *
+   *  A unit that is not in the map uses `day_starts_minutes`. That is the
+   *  honest default here — an unlisted unit is one nobody has set a time for,
+   *  and the office time is the company's stated one. */
+  day_start_by_unit: Record<string, number>;
+  /** How long the break is supposed to be, in minutes. 45 (Q44, D270).
+   *
+   *  Measured against the taps, and **reported rather than deducted**: a break
+   *  that ran long is a fact about a day, and turning it into money is the
+   *  same decision lateness is waiting on (D251). Null where the business has
+   *  not set one, which is not the same as a break of zero. */
+  break_minutes: number | null;
   /** Minutes after the start of the day before lateness counts at all. The
    *  owner's figure is 15 (Q41, D251) and it is a rule rather than a constant
    *  precisely because he said *atau bisa di custom*. */

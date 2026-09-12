@@ -34,6 +34,10 @@ export const PAY_RULE_SETS: PayRuleSet[] = [
       undertime_mode: "off",
       undertime_grace_minutes: 15,
       day_starts_minutes: 8 * 60,
+      /* Belum ada aturan per unit dan belum ada durasi istirahat
+         tertulis waktu buku ini berlaku (D270). */
+      day_start_by_unit: {},
+      break_minutes: null,
       late_grace_minutes: 0,
       late_mode: "manual",
       late_forfeits_allowance: false,
@@ -68,6 +72,10 @@ export const PAY_RULE_SETS: PayRuleSet[] = [
       undertime_mode: "off",
       undertime_grace_minutes: 15,
       day_starts_minutes: 8 * 60,
+      /* Belum ada aturan per unit dan belum ada durasi istirahat
+         tertulis waktu buku ini berlaku (D270). */
+      day_start_by_unit: {},
+      break_minutes: null,
       late_grace_minutes: 0,
       late_mode: "manual",
       late_forfeits_allowance: false,
@@ -107,6 +115,10 @@ export const PAY_RULE_SETS: PayRuleSet[] = [
       undertime_mode: "off",
       undertime_grace_minutes: 15,
       day_starts_minutes: 8 * 60,
+      /* Belum ada aturan per unit dan belum ada durasi istirahat
+         tertulis waktu buku ini berlaku (D270). */
+      day_start_by_unit: {},
+      break_minutes: null,
       /* Pemilik: *terlambat baru dipotong setelah 15 menit* (D251). */
       late_grace_minutes: 15,
       /* Masih manual: aturannya sudah ada, keputusan menyalakannya belum
@@ -118,5 +130,60 @@ export const PAY_RULE_SETS: PayRuleSet[] = [
     },
     created_by: "usr_shared",
     created_at: "2026-09-12T10:00:00+08:00",
+  },
+  {
+    /* Q44 terjawab: bengkel mulai 07.30, kantor tetap 08.00, istirahat 45
+       menit (D270).
+       
+       Versi baru, berlaku dari hari pemilik mengatakannya — bukan disurutkan
+       ke belakang. Bengkel memang selalu masuk 07.30; yang baru adalah
+       **tertulisnya**. Menyurutkan tanggalnya akan mengubah terhadap apa
+       keterlambatan bulan-bulan lalu diukur, dan itulah satu hal yang justru
+       dicegah oleh buku aturan bertanggal (D173). Yang benar adalah mencatat
+       aturannya dari sekarang dan mengatakan terus terang bahwa sebelum ini
+       jam masuk bengkel tidak pernah tercatat — layar aturan menuliskannya. */
+    id: "prs_04", version: 4,
+    /* Bertanggal sama dengan v3, bukan hari ini. Ini **koreksi, bukan
+       perubahan kebijakan**: bengkel memang selalu masuk 07.30, dan 08.00
+       untuk mereka tidak pernah jadi aturan — itu pertanyaan yang belum pernah
+       ditanyakan. Menanggalkannya dari hari ini akan membuat sistem menyatakan
+       bahwa sepanjang September bengkel mulai jam 08.00, dan itu tidak benar.
+       Yang membuat penyurutan ini aman adalah `late_mode: "manual"`: tidak ada
+       satu rupiah pun yang pernah dihitung dari aturan ini, jadi tidak ada
+       keputusan yang ditulis ulang — hanya angka yang selama ini salah. v3
+       tetap ada di catatan dan tidak diubah (A5). */
+    effective_from: "2026-09-01",
+    note: "Koreksi atas v3, berlaku dari tanggal yang sama. Jawaban pemilik atas Q44: produksi masuk 07.30, kantor tetap 08.00, istirahat 45 menit. Sebelumnya satu jam masuk dipakai untuk semua unit — bukan kebijakan, melainkan pertanyaan yang belum ditanyakan.",
+    rules: {
+      overtime_mode: "statutory",
+      workday_tiers: [
+        { after_hours: 0, multiplier: 1.5 },
+        { after_hours: 1, multiplier: 2 },
+      ],
+      restday_tiers: [
+        { after_hours: 0, multiplier: 2 },
+        { after_hours: 7, multiplier: 3 },
+        { after_hours: 8, multiplier: 4 },
+      ],
+      flat_multiplier: 1,
+      monthly_divisor: 173,
+      hourly_basis: "company",
+      effective_days_per_year: 288,
+      hourly_includes_allowance: true,
+      week_pattern: "6day",
+      overtime_rounding_minutes: 0,
+      undertime_mode: "off",
+      undertime_grace_minutes: 15,
+      /* Jam kantor, dan tetap jadi jawaban untuk unit yang belum diatur. */
+      day_starts_minutes: 8 * 60,
+      day_start_by_unit: { Workshop: 7 * 60 + 30 },
+      /* Dilaporkan, bukan dipotong — sama seperti keterlambatan (D251). */
+      break_minutes: 45,
+      late_grace_minutes: 15,
+      late_mode: "manual",
+      late_forfeits_allowance: false,
+    },
+    created_by: "usr_shared",
+    created_at: "2026-09-13T09:00:00+08:00",
   },
 ];

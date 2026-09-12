@@ -226,6 +226,23 @@ export function DayDrawer({
               </div>
             )}
 
+            {/* Read fine, and still worth saying. Its own box, in slate rather
+                than amber, because *the rule could not fit the taps* and
+                *something here is worth a look* are different sentences and
+                only the first one stops the day being paid (D270). */}
+            {d.notes.length > 0 && (
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <p className="text-[13px] font-semibold text-slate-700">Catatan hari ini</p>
+                <ul className="mt-1 space-y-0.5 text-[12px] text-slate-600">
+                  {d.notes.map((n) => <li key={n}>· {n}</li>)}
+                </ul>
+                <p className="mt-1.5 text-[11px] text-slate-400">
+                  Tidak memengaruhi pembayaran hari ini. Istirahat yang lewat jatah dilaporkan, tidak
+                  pernah dipotong — sama seperti keterlambatan, sampai ada yang memutuskan sebaliknya.
+                </p>
+              </div>
+            )}
+
             {/* The six slots, holes included. */}
             <div>
               <p className="mb-1.5 text-[11px] uppercase tracking-wide text-slate-400">The six taps of a full day</p>

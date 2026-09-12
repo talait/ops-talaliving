@@ -168,6 +168,10 @@ export function timesheetDay(
   employee: Employee,
   workDate: string,
 ): TimesheetDay {
+  /* The book in force **on the day being read**, not today's — a day in August
+     is read against August's rules, which is the whole reason the rule book is
+     dated (D173). */
+  const rules = activePayRules(state, workDate).rules;
   const taps = tapsOf(state, employee.id, workDate);
   const mark = state.day_marks.find(
     (m) => m.work_date === workDate
@@ -177,6 +181,9 @@ export function timesheetDay(
   const slots: Partial<Record<ScanSlot, string>> = {};
   const assigned = new Map<string, ScanSlot>();
   const issues: string[] = [];
+  /* Things worth saying about a day the rule read fine. Never `issues`: an
+     entry there means the reading failed and the day cannot be paid (D141). */
+  const notes: string[] = [];
 
   const rest = [...taps];
   const take = (slot: ScanSlot, pick: (t: typeof taps[number]) => boolean) => {
@@ -214,6 +221,16 @@ export function timesheetDay(
   if (taps.length > 0) {
     if (!slots.out) issues.push("No pulang — the day has no end");
     if (!slots.break_out || !slots.break_in) issues.push("Istirahat incomplete");
+    /* The allowance the owner set is 45 minutes (Q44, D270), and a break that
+       ran past it is **reported, never deducted** — it is a fact about a day,
+       and turning it into money is the same decision lateness has been waiting
+       on since D251. Null means the business has not set one, which is not a
+       break of zero, so nothing is said at all. */
+    if (rules.break_minutes != null && break_hours * 60 > rules.break_minutes) {
+      notes.push(
+        `Istirahat ${Math.round(break_hours * 60)} menit, lewat ${Math.round(break_hours * 60 - rules.break_minutes)} menit dari jatah ${rules.break_minutes} menit`,
+      );
+    }
     if (slots.ot_start && !slots.ot_end) issues.push("Lembur started and never finished");
   }
 
@@ -267,6 +284,7 @@ export function timesheetDay(
     day_value,
     pay,
     issues,
+    notes,
   };
 }
 
@@ -461,7 +479,7 @@ export function payrollLine(
     const inAt = d.slots.in;
     if (!inAt || d.mark) return 0;
     const mins = Number(inAt.slice(11, 13)) * 60 + Number(inAt.slice(14, 16));
-    return Math.max(mins - rules.day_starts_minutes - rules.late_grace_minutes, 0);
+    return Math.max(mins - dayStartFor(rules, employee.unit) - rules.late_grace_minutes, 0);
   };
   const late_minutes = days.reduce((s, d) => s + lateBy(d), 0);
   const late_days = days.filter((d) => lateBy(d) > 0).length;
@@ -494,9 +512,11 @@ export function payrollLine(
      the business works, and loses it the way the owner said they should — HRD
      deciding, with a reason.
 
-     A **half day is present**. The person came in; the owner's correction was
-     explicit that presence is what earns it and that losing it is HRD's
-     separate call (D250). Sakit, cuti and tanggal merah are not presence. */
+     A **half day is present**, and since Q46 that is the owner's ruling rather
+     than our reading of one: *tunjangan penuh kecuali HR mengabaikan* (D272).
+     The person came in; presence is what earns it, and taking it away is
+     HRD's separate decision with its own reason (D250). Sakit, cuti and
+     tanggal merah are not presence. */
   const earnsAllowance = (d: (typeof days)[number]): boolean =>
     d.mark ? d.mark.kind === "half_day" : d.day_value > 0;
   const presentDays = employee.pay_basis === "monthly"
@@ -634,7 +654,14 @@ export function payrollLine(
  *  what a person who has already been paid would expect.
  */
 export function activePayRules(state: DemoState, onDate: string): PayRuleSet {
-  const sets = [...state.pay_rule_sets].sort((a, b) => a.effective_from.localeCompare(b.effective_from));
+  /* Sorted by date **and then by version**. Sorting by date alone left the
+     winner depending on the order the rows happened to arrive in, which is
+     fine until two books share an effective date — and one does, because v4
+     corrects v3 from the day v3 itself began rather than changing policy from
+     today (D270). A rule book whose answer depends on array order is not a
+     dated rule book. */
+  const sets = [...state.pay_rule_sets].sort((a, b) =>
+    a.effective_from.localeCompare(b.effective_from) || a.version - b.version);
   const found = sets.filter((r) => r.effective_from <= onDate).pop();
   /* Before the first version there is no policy, and the honest fallback is
      the earliest one somebody wrote down rather than an invented default. */
@@ -721,6 +748,26 @@ export interface HourlyRate {
 
 /* ── Tugas, dan mengukur orang ─────────────────────────────────────────────── */
 
+/** When this person's day starts, in minutes from midnight.
+ *
+ *  One business, two schedules: the workshop taps in at 07.30 and the office at
+ *  08.00 (Q44, D270). A single start time meant the workshop was measured
+ *  against the office's — which, with the owner's fifteen-minute grace on top,
+ *  made it arithmetically impossible for anybody in the building to be late
+ *  (F70). A unit nobody has set a time for falls back to the stated company
+ *  time, which is the honest default: unset is not a licence to arrive whenever.
+ */
+/** Minutes-from-midnight as a clock face. Not `hhmm` — that name is already
+ *  taken above by the one that slices a tap's ISO string, and two functions
+ *  with one name is how a wrong number gets formatted correctly. */
+export function clockOf(minutes: number): string {
+  return `${String(Math.floor(minutes / 60)).padStart(2, "0")}.${String(minutes % 60).padStart(2, "0")}`;
+}
+
+export function dayStartFor(rules: PayRules, unit: string): number {
+  return rules.day_start_by_unit?.[unit] ?? rules.day_starts_minutes;
+}
+
 export function taskView(state: DemoState, t: Task, today = officeToday()): TaskView {
   const emp = state.employees.find((e) => e.id === t.assignee_id);
   const by = state.users.find((u) => u.id === t.assigned_by);
@@ -795,11 +842,26 @@ export function kpiView(
 
   /* ── Ketepatan waktu, from the taps ─────────────────────────────────── */
   const tapped = days.filter((d) => d.slots.in && !d.mark);
-  const lateDays = tapped.filter((d) => {
+  /* Each day against **the book in force on that day**, not the one in force
+     when the window opens. The period here is chosen by the reader and can sit
+     across a rule change — and reading a September day against August's start
+     time is the same shape of error as F68: one value doing a job it was never
+     asked to do, correct until somebody picks a range that spans the boundary
+     (F89). The threshold each day was judged by is printed in the basis below,
+     so a reader can see which book they are looking at. */
+  const lateOn = (d: (typeof days)[number]): boolean => {
     const inAt = d.slots.in!;
     const mins = Number(inAt.slice(11, 13)) * 60 + Number(inAt.slice(14, 16));
-    return mins - rules.day_starts_minutes - rules.late_grace_minutes > 0;
-  }).length;
+    const r = activePayRules(state, d.work_date).rules;
+    return mins - dayStartFor(r, employee.unit) - r.late_grace_minutes > 0;
+  };
+  const lateDays = tapped.filter(lateOn).length;
+  /* The thresholds actually applied across the window — usually one, and named
+     as several when the window spans a change rather than quietly averaged. */
+  const startsUsed = [...new Set(tapped.map((d) => {
+    const r = activePayRules(state, d.work_date).rules;
+    return `${clockOf(dayStartFor(r, employee.unit))}+${r.late_grace_minutes}m`;
+  }))];
   const minDaysTaps = settingNumber(state, "kpi.min_days_recorded", 5);
   const thinTaps = tapped.length < minDaysTaps;
   const punctuality: KpiMeasure = {
@@ -812,7 +874,11 @@ export function kpiView(
         : `Baru ${tapped.length} hari dengan tap, di bawah ambang ${minDaysTaps} hari.`,
     basis: thinTaps
       ? `${tapped.length} hari dengan tap`
-      : `${tapped.length - lateDays} dari ${tapped.length} hari tepat waktu (toleransi ${rules.late_grace_minutes} menit)`,
+      /* The start time is part of the basis, not a constant behind it: with two
+         schedules in one business, *tepat waktu* means a different clock for
+         the workshop and the office, and a figure whose threshold is invisible
+         cannot be argued with (D261, D270). */
+      : `${tapped.length - lateDays} dari ${tapped.length} hari tepat waktu (masuk ${startsUsed.join(" dan ")})`,
     source: "Mesin absensi · aturan penggajian yang berlaku",
     weight: settingNumber(state, "kpi.weight_punctuality", 25),
   };

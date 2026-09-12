@@ -7,7 +7,7 @@ import type {
 import { expandPermissions } from "@/lib/roles";
 import { getState, apply, newId, writeAudit } from "../store";
 import type { DemoUser } from "../state";
-import { latency, actingUser, requireModule } from "./_kit";
+import { latency, actingUser, requireModule, requireLevel } from "./_kit";
 
 const SERVICE = "identity" as const;
 
@@ -59,6 +59,8 @@ export async function setModules(
   modules: { module: ModuleName; level: ModuleLevel }[],
 ): Promise<Result<Session>> {
   await latency();
+  const denied = requireLevel(SERVICE, "it", "admin");
+  if (denied) return denied;
   let updated: DemoUser | undefined;
   apply((draft) => {
     const user = draft.users.find((u) => u.id === userId);
@@ -79,6 +81,8 @@ export async function setAuthorities(
   authorities: Authority[],
 ): Promise<Result<Session>> {
   await latency();
+  const denied = requireLevel(SERVICE, "it", "admin");
+  if (denied) return denied;
   let updated: DemoUser | undefined;
   apply((draft) => {
     const user = draft.users.find((u) => u.id === userId);
@@ -209,7 +213,9 @@ export async function rollUpActivity(
   input: { day?: string } = {},
 ): Promise<Result<{ day: string; written: number; skipped: number }>> {
   await latency();
-  const denied = requireModule(SERVICE, "it");
+  /* Writing, not reading — so leadership's `it: read` does not reach it. In
+     Phase 2 this is a nightly job and nobody presses it at all (D190). */
+  const denied = requireLevel(SERVICE, "it", "write");
   if (denied) return denied;
 
   const state = getState();
@@ -283,7 +289,9 @@ export async function rollUpActivity(
  */
 export async function purgeActivity(): Promise<Result<{ events_removed: number; recaps_removed: number; blocked_days: string[] }>> {
   await latency();
-  const denied = requireModule(SERVICE, "it");
+  /* The only deletion in the system sits at the top level of the only module
+     that has one. Leadership may read this log; nobody outside IT may end it. */
+  const denied = requireLevel(SERVICE, "it", "admin");
   if (denied) return denied;
 
   const state = getState();

@@ -93,20 +93,31 @@ All three or none. Never a business row without its audit row.
 | GET | `/me` | user, **module grants**, **authorities**, resolved permission list. The frontend `can()` is the union of these (D23, D24) |
 | GET | `/users` | `it.manage_users` |
 | POST | `/users` | invite; Supabase Auth handles the credential |
-| PUT | `/users/{id}/modules` | grant or revoke a module and its level. `it.manage_roles`; append-only history in audit |
-| PUT | `/users/{id}/authorities` | grant or revoke `approve_goods` · `approve_funds` · `post_ledger` · `resolve_inbox`. **Separate from modules, deliberately** (D24) |
+| PUT | `/users/{id}/modules` | grant or revoke a module and its level. **`it` at `admin`**; append-only history in audit. In Phase 1 this had no guard at all until M35 — anybody acting could grant themselves anything |
+| PUT | `/users/{id}/authorities` | grant or revoke `approve_goods` · `approve_funds` · `approve_overtime` · `post_ledger` · `resolve_inbox`. **Separate from modules, deliberately** (D24). **`it` at `admin`** |
 | GET | `/modules`, `/authorities` | the catalogs, read from the database |
 
 ### The two trails
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/audit` | the change trail. Filters: actor, entity, action, `outcome` (`ok` · `refused` · `duplicate` · `noop`), date range. **Refusals are listed beside successes**, not hidden — a trail of only what worked is missing the half people argue about. `it.read`. **No delete route exists at any level** |
-| GET | `/activity` | the read trail, detail. Last `DETAIL_DAYS` (30) only; older days answer from `/activity/daily`, and the endpoint says which it is answering from rather than returning an empty list. `it.read`, or your own rows |
-| GET | `/activity/daily` | the recap, last `RECAP_MONTHS` (6). One row per person per day: events, modules touched, changes and refusals taken from the audit trail, first and last activity, a one-line headline |
-| GET | `/activity/retention` | the two edges as dates, the days holding detail, the days holding a recap, and **the days that have detail but no recap yet** — the number both buttons below depend on |
-| POST | `/activity/roll-up` | `{day}` → writes the recap for that day. Idempotent: a second call is `duplicate`, not a second row. This is a nightly job in Phase 2; the button exists so the rule is visible rather than magic |
-| POST | `/activity/purge` | `{before}` → deletes detail rows older than the retention edge. **422 `blocked_days`** naming every day in the range that has no recap yet — it refuses the whole call rather than purging around them (D189). The only deleting endpoint in the API |
+**Who may open any of this: IT and leadership, and nobody else** (owner,
+Q22 → D190). The verb the owner used is the one enforced — *baca*. Leadership
+holds `it: read` and can open both trails; every write below needs more than
+that. There is no `is_leadership` field: deriving leadership from
+`approve_goods` or `approve_funds` would hand a week-long stand-in the right to
+read everyone's activity log, which is the fusion D24 exists to prevent.
+
+Levels are checked with `requireLevel`, not `requireModule` — the older guard
+asked only whether a door was open, which would have let a read grant call the
+purge (D191). Its refusal names the level held as well as the level needed.
+
+| GET | `/audit` | the change trail. Filters: actor, entity, action, `outcome` (`ok` · `refused` · `duplicate` · `noop`), date range. **`it` at `read`.** **Refusals are listed beside successes**, not hidden — a trail of only what worked is missing the half people argue about. **No delete route exists at any level** |
+| GET | `/activity` | the read trail, detail. Last `DETAIL_DAYS` (30) only; older days answer from `/activity/daily`, and the endpoint says which it is answering from rather than returning an empty list. **`it` at `read`** — and *only* that: the owner named two groups, and a person reading their own log is neither (D190) |
+| GET | `/activity/daily` | the recap, last `RECAP_MONTHS` (6). One row per person per day: events, modules touched, changes and refusals taken from the audit trail, first and last activity, a one-line headline. **`it` at `read`** |
+| GET | `/activity/retention` | the two edges as dates, the days holding detail, the days holding a recap, and **the days that have detail but no recap yet** — the number both buttons below depend on. **`it` at `read`** |
+| POST | `/activity/roll-up` | **`it` at `write`.** `{day}` → writes the recap for that day. Idempotent: a second call is `duplicate`, not a second row. This is a nightly job in Phase 2; the button exists so the rule is visible rather than magic |
+| POST | `/activity/purge` | **`it` at `admin`** — the only deleting endpoint in the API sits at the top level of the only module that has one. `{before}` → deletes detail rows older than the retention edge. **422 `blocked_days`** naming every day in the range that has no recap yet — it refuses the whole call rather than purging around them (D189) |
 
 `POST /activity/roll-up` is a **precondition** of the purge, not a convenience:
 purging first would destroy the day and leave the system answering *0

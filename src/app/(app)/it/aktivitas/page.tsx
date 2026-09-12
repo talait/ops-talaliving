@@ -35,7 +35,11 @@ export default function ActivityPage() {
   const [daily, reloadDaily] = useLoad(() => identity.listActivityDaily(), []);
   const [retention, reloadRetention] = useLoad(() => identity.getRetention(), []);
   const [busy, setBusy] = useState(false);
-  const mayManage = can("it.manage_users");
+  /* Two different rights, deliberately not one. Leadership may read this log
+     (owner, Q22 — *baca*); rolling a day up is a write, and purging it is the
+     only deletion the system performs, so it sits at IT's admin level (D190). */
+  const mayRollUp = can("it.update");
+  const mayPurge = can("it.purge_activity");
 
   function reloadAll() { reloadEvents(); reloadDaily(); reloadRetention(); }
 
@@ -72,15 +76,18 @@ export default function ActivityPage() {
         actions={
           <div className="flex items-center gap-2">
             <SourceBadge state={events} />
-            {mayManage && (
-              <>
-                <Button size="sm" variant="outline" icon={RefreshCw} disabled={busy} onClick={rollUp}>
-                  Rekap kemarin
-                </Button>
-                <Button size="sm" variant="outline" icon={Trash2} disabled={busy} onClick={purge}>
-                  Jalankan retensi
-                </Button>
-              </>
+            {mayRollUp && (
+              <Button size="sm" variant="outline" icon={RefreshCw} disabled={busy} onClick={rollUp}>
+                Rekap kemarin
+              </Button>
+            )}
+            {mayPurge && (
+              <Button size="sm" variant="outline" icon={Trash2} disabled={busy} onClick={purge}>
+                Jalankan retensi
+              </Button>
+            )}
+            {can("it.read") && !mayRollUp && !mayPurge && (
+              <span className="text-xs text-slate-500">Baca saja — retensi dijalankan IT</span>
             )}
           </div>
         }

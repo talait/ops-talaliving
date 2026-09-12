@@ -7,7 +7,7 @@ import { cn } from "@/lib/cn";
 import { identity } from "@/demo/api";
 import {
   MODULES, MODULE_LABEL, LEVELS, LEVEL_LABEL, AUTHORITIES, AUTHORITY_LABEL,
-  PERMISSION_CATALOG, describeGrant,
+  PERMISSION_CATALOG, describeGrant, IT_ACCESS_RULE,
 } from "@/lib/roles";
 
 /** What each level actually unlocks, and who holds which decision.
@@ -32,6 +32,37 @@ export default function RolesPage() {
         description="Katalog akses: apa yang dibuka tiap level, dan siapa memegang wewenang apa. Tidak ada peran yang bisa diedit — grant diberikan per orang."
         actions={<SourceBadge state={users} />}
       />
+
+      {/* The one module whose readership is a policy rather than a convenience,
+          stated where the catalogue is read as well as where a grant is made. */}
+      <Card className="mb-4">
+        <CardHeader title="Siapa boleh membuka modul IT" subtitle="Jawaban pemilik atas Q22" icon={KeyRound} />
+        <div className="px-4 py-3 text-[13px] text-slate-700">
+          <p>{IT_ACCESS_RULE}</p>
+          <Loaded state={users}>
+            {(rows) => {
+              const holders = rows.filter((u) => u.modules.some((m) => m.module === "it"));
+              return (
+                <ul className="mt-2 space-y-1">
+                  {holders.map((u) => {
+                    const level = u.modules.find((m) => m.module === "it")!.level;
+                    return (
+                      <li key={u.user.id} className="flex items-center gap-2 text-[12px]">
+                        <span className="text-slate-800">{u.user.full_name}</span>
+                        <Badge tone={level === "admin" ? "brand" : "slate"}>{LEVEL_LABEL[level]}</Badge>
+                        <span className="text-slate-500">
+                          {level === "admin" ? "mengelola dan menghapus" : "membaca saja"}
+                        </span>
+                      </li>
+                    );
+                  })}
+                  {holders.length === 0 && <li className="text-[12px] text-slate-500">Belum ada yang diberi akses.</li>}
+                </ul>
+              );
+            }}
+          </Loaded>
+        </div>
+      </Card>
 
       <Card className="mb-4">
         <CardHeader

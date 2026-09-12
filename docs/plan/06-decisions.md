@@ -14,6 +14,9 @@ gets had twice.
 
 | # | Date | Decision | Why |
 |---|---|---|---|
+| 190 | 2026-09-12 | **The IT module is open to IT and to leadership, and the verb the owner used is enforced: leadership holds `it: read`, and administering the module stays at `admin`.** Reading the two trails is a read; rolling a day up is a write; purging is admin; so is moving anybody's grants — which until now had no gate at all | owner, answering the half of Q22 left open: *yang boleh baca module IT hanya IT dan pimpinan*. **Leadership is not derived from an authority and there is no `is_leadership` flag**: the two candidates for deriving it, `approve_goods` and `approve_funds`, are exactly what D24 forbids, and a stand-in appointed to approve payments while the Direktur travels would silently gain the right to read everyone's activity log for that week. So the grant stays the only door and the rule is written beside it, on the screen where a grant is made and on the catalogue where it is read |
+| 191 | 2026-09-12 | **`requireModule` was not enough and is no longer the only guard.** `requireLevel(service, module, level)` checks how far the grant goes, and its refusal names the level held as well as the level needed | the gate asked only whether a door was open. Give leadership `it: read` under the old guard and they could purge the activity log — the one deleting call in the system — because nothing looked past the module name. The refusal message matters as much as the check: *needs admin, your account has read* is actionable, *forbidden* is not (A7) |
+| 192 | 2026-09-12 | **`Aturan penggajian` moved out of the IT menu and under Payroll.** Its gate was always `payroll.read` and it is unchanged; the route is unchanged | once the IT heading means *IT and leadership only*, a screen inside it that HRD can open makes the heading untrue. A menu group is a claim about who the screens under it are for, and the cheapest way to keep that claim honest is to put each screen under the permission it actually uses |
 | 188 | 2026-09-12 | **Two trails, two rules. The audit log is never deleted; the activity log keeps 30 days of detail and six months of daily recap** — and the daily recap is the one derived figure this project stores, because it has to outlive the rows it was computed from | owner (Q22): *activity log secara detil bisa dijaga dalam rentang 30 hari sementara tiap hari harus di rekap user ini ngapain aja seharian. Lalu rekapan harian ini di jaga selama 6 bulan*. They answer different questions and so they cannot share a rule: the audit log says what changed and is the evidence behind every figure in the system, so deleting a row of it would make a past number unexplainable; the activity log says what a person did with their day, which is useful for a season and becomes surveillance for a decade. The recap breaks D-derived-on-read (D63) on purpose and it is the only place that does: the detail is gone at day 31, so a recap computed on read would return zero for every day older than a month — a figure that is not missing but wrong, which is the one thing forbidden here |
 | 189 | 2026-09-12 | **Purging is the only deletion in the system, it runs as a rule rather than as a correction, and it refuses any day that has no recap yet** — `purgeActivity` returns the blocked days by name instead of taking the nearest number | every other removal in this system is a VOID that leaves the row (D9). This one genuinely deletes, so it is fenced: it deletes only `activity_events`, only past the retention edge, and only for days already summarised. Rolling up is therefore a precondition and not a convenience — a purge that ran first would destroy the day and answer *0 aktivitas* about it forever. The screen shows the count of days in that state (*5 hari punya detail tapi belum punya rekap*) before either button is pressed |
 | 1 | 2026-09-10 | **Phase 1 is a frontend on demo data, deployed to Vercel.** No database until it is walked and signed off | ADR-009. The rules were never specified; you find them by walking a workflow, not by designing a schema |
@@ -206,13 +209,14 @@ gets had twice.
 
 ---
 
-**Q22 — answered 2026-09-12, half of it.** *How long is the access log kept,
-and who may read it?* The owner answered the retention half exactly: 30 days
-of detail, six months of daily recap (D188). **The readership half was not
-answered**, and the module now defaults to `it.read` plus a person seeing
-their own row — a default taken, not a decision made, and it is the kind of
-default D47 warned about being set by accident. It stays cheap to change:
-one scope check in `listActivity`.
+**Q22 — answered in full, 2026-09-12.** *How long is the access log kept, and
+who may read it?* Both halves are now the owner's own: **30 days of detail and
+six months of daily recap** (D188), and **only IT and leadership may open the
+module** (D190). The default I had taken in the meantime — `it.read` plus a
+person seeing their own row — is gone: the self-view half was never built, and
+it is not being built now, because the owner named two groups and a person
+reading their own log is neither. If that turns out to be wanted it is one
+branch in `listActivity`; it is not something to assume.
 
 ## Open questions — with the default we take until told otherwise
 

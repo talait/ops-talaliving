@@ -50,6 +50,12 @@ export const NAV: NavSection[] = [
       { label: "Leave & Permits", href: "/hrd/cuti", icon: CalendarClock, permission: "hrd.read", badge: "new" },
       { label: "Payroll", href: "/hrd/payroll", icon: Wallet, permission: "payroll.read" },
       { label: "Gajian mingguan", href: "/hrd/payroll/minggu", icon: CalendarRange, permission: "payroll.read", badge: "new" },
+      /* Under Payroll, not under IT. Its gate has always been `payroll.read`
+       * — HRD owns the rule book — and once the IT heading means "IT and
+       * leadership only" (owner, Q22), a payroll screen sitting inside it
+       * made the heading say something untrue. Nobody gained or lost
+       * access; the route is unchanged (D190). */
+      { label: "Aturan penggajian", href: "/it/aturan-gaji", icon: Scale, permission: "payroll.read", badge: "new" },
     ],
   },
   {
@@ -124,7 +130,6 @@ export const NAV: NavSection[] = [
       { label: "Audit Log", href: "/it/audit", icon: ScrollText, permission: "it.read", badge: "new" },
       { label: "Activity Log", href: "/it/aktivitas", icon: Activity, permission: "it.read", badge: "new" },
       { label: "Users", href: "/it/pengguna", icon: UserCog, permission: "it.manage_users", badge: "new" },
-      { label: "Aturan penggajian", href: "/it/aturan-gaji", icon: Scale, permission: "payroll.read", badge: "new" },
       { label: "Roles & Permissions", href: "/it/peran", icon: KeyRound, permission: "it.manage_roles", badge: "new" },
     ],
   },

@@ -9,7 +9,7 @@ import { cn } from "@/lib/cn";
 import { identity } from "@/demo/api";
 import {
   MODULES, MODULE_LABEL, LEVELS, LEVEL_LABEL, AUTHORITIES, AUTHORITY_LABEL,
-  describeGrant, type ModuleName, type ModuleLevel, type Authority,
+  describeGrant, IT_ACCESS_RULE, type ModuleName, type ModuleLevel, type Authority,
 } from "@/lib/roles";
 import { useSession } from "@/store/session";
 import { useToast } from "@/store/toast";
@@ -132,6 +132,11 @@ export default function UsersPage() {
                                         <span className="text-[11px] text-slate-400">
                                           {grant ? describeGrant(m, grant.level) : "tidak punya akses"}
                                         </span>
+                                        {m === "it" && (
+                                          <span className="basis-full pl-[118px] text-[11px] text-amber-700">
+                                            {IT_ACCESS_RULE}
+                                          </span>
+                                        )}
                                       </li>
                                     );
                                   })}

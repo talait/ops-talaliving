@@ -22,6 +22,11 @@ export const USERS: DemoUser[] = [
       { module: "inventory", level: "read" },
       { module: "project", level: "read" },
       { module: "settings", level: "read" },
+      /* Read, not admin. The owner's answer to Q22: the IT module is open to
+       * IT and to leadership, and what leadership was given is the right to
+       * **read** it. Purging the activity log and moving people's grants stay
+       * with IT, which is what the level split enforces (D190). */
+      { module: "it", level: "read" },
     ],
     /* The Direktur holds both leadership decisions: goods, and now overtime
      * (D145). Which person should hold `approve_overtime` is the owner's to

@@ -2384,3 +2384,40 @@ So: **a placeholder is a finding, not a file.** When a route is created to hold
 a place, the same commit adds it to the backlog's placeholder list — otherwise
 the menu is the only record that it is empty, and the menu is the one artefact
 that makes it look full.
+
+---
+
+## F55 — the guard that only knew whether the door was open
+
+The owner's answer was one sentence — *yang boleh baca module IT hanya IT dan
+pimpinan* — and the work it implied looked like one line: give the Direktur an
+`it` grant. Writing that line is what exposed the hole.
+
+`requireModule(service, module)` had been the gate on every IT endpoint since
+the module was built, and it asks exactly one question: does this person hold a
+grant on this module. Not how far it goes. So the moment leadership holds
+`it: read`, they can also call `purgeActivity` — the one call in this system
+that genuinely deletes — because the guard never looked at the level. Reading a
+log and ending it were the same permission.
+
+Worse was next door. `setModules` and `setAuthorities` had **no guard at all**.
+They were written in M2 as the demo's act-as machinery, marked *demo only*, and
+they stayed that way through thirty-three milestones while the module around
+them became real. Anybody acting could have granted themselves every module and
+every authority, and the audit row would have recorded it going through.
+
+Both are the same mistake in two sizes: **a permission model is only as good as
+the narrowest question its guard can ask.** The catalogue had three levels from
+day one and the guard could not see them, so every endpoint that needed a level
+either over-granted silently or was written without a gate because the gate
+available would not have said anything useful.
+
+`requireLevel(service, module, level)` is the fix, and its refusal message is
+half of it: *this needs admin access to it; your account has read* tells a
+person what to ask for. `module_required` told them a door existed.
+
+What made this findable was the owner drawing a line. The permission had been
+wrong since it was written; nothing surfaced it, because everyone who held the
+IT module held it at `admin` and the two questions gave the same answer for
+every person in the seed. **A guard is untested while exactly one kind of
+person passes it.**

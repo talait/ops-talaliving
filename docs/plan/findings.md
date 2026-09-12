@@ -2519,3 +2519,53 @@ what happened and what was stopped describes neither.
 Both are the project's oldest rule in a new costume: a figure is allowed to be
 missing, never allowed to be quietly wrong. Provenance you did not establish is
 missing; provenance you inferred from the presence of a number is wrong.
+
+---
+
+## F58 — the nota's own date, read as a plank twenty metres long
+
+The timber reader worked on the first try, which should have been the warning.
+Four notas went through it — a board nota in centimetres, one in millimetres, a
+log nota, and a hardware nota that had to be rejected — and all four came back
+right. Then the dump of what it had actually read:
+
+```
+lines: P 120x90x20260mm x1 | P 30x200x3000mm x8 | P 30x220x2800mm x9 | …
+signals: 5 baris berbentuk ukuran papan ; menyebut Jati
+```
+
+The first row is `Nota 2209 - 12/09/2026`. Three numbers separated by slashes
+is the shape of a board size and it is also the shape of a date, so the header
+of the nota was read as a plank 12 cm thick, 9 cm wide and **202 metres**
+long — the year, in centimetres.
+
+The answer was still *yes, this is a timber nota*, and it was still the right
+answer, which is exactly what made this worth stopping for. The header had
+become one of the five lines the decision counted. A nota with two real size
+rows and a date would have been pushed over the three-row threshold by its own
+letterhead — and the failure would have been a **wrong routing decision, taken
+confidently, on evidence displayed to a person who would have had no reason to
+doubt it**, because the screen would have said *3 baris berbentuk ukuran papan*
+and been counting one that did not exist.
+
+Two guards, and the second matters more than the first.
+
+A date pattern on the line disqualifies the size match. That fixes this case.
+
+Then: a board's dimensions have to be **possible**. Thickness 5–150 mm, width
+30–1500 mm, length 300–6500 mm — and anything outside goes to the unread list
+where a person looks at it, rather than into the yard. This catches the whole
+family the date belongs to: invoice numbers, phone numbers, a misread unit, a
+row where the OCR dropped a digit. `12/09/2026` fails it twice over.
+
+The rule underneath: **a parser that only rejects the shapes you thought of
+will accept the ones you did not.** The date guard is a list of known enemies.
+The plausibility range is a statement of what the domain actually contains, and
+it is the one that will still be working when a nota arrives in a format nobody
+here has seen.
+
+The same run produced a smaller lesson about honesty in the evidence itself.
+The log nota — whole logs, no boards — was reported as timber with *tidak ada
+baris berbentuk ukuran papan* listed against it. Both true, and together they
+make the reader look like it is arguing with itself. A nota of logs is not
+missing its board rows. It is a nota of logs.

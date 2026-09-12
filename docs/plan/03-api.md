@@ -450,10 +450,14 @@ names no catalogue item stocks nothing and says so.
 | GET | `/timber/purchases` | every load, newest first, with volumes, yield and both prices per m³ |
 | GET | `/timber/purchases/{purchase_no}` | one load: each log measured, each board reported |
 | GET | `/timber/by-vendor` | **per vendor and species**: log m³, board m³, yield, rupiah per log m³ and **per board m³** — the last column is the one that decides (D153) |
-| POST | `/timber/purchases` | a load arriving. **422 with no invoice value**: without it there is no price per m³, which is the only reason the record exists. The seller's claimed m³ is stored beside our own measurement, never instead of it |
+| POST | `/timber/nota/read` | **a read that writes nothing.** Returns `is_timber`, the signals for and against **in words**, the species and total it found, the rows it made sense of, and the rows it could not. Nothing is filed from this — the routing decision is a proposal a person accepts (D200) |
+| POST | `/timber/purchases` | a load arriving, **from its nota** (D201). Board and log rows read off the paper are filed here as timber and **never as transaction lines** — the nota contributes exactly one figure to accounting, its total. **422 with no invoice value**: without it there is no price per m³, which is the only reason the record exists. The seller's claimed m³ is stored beside our own measurement, never instead of it |
 | POST | `/timber/purchases/{no}/logs` | one log: tag, Ø in cm, length in cm. 409 on a duplicate tag |
 | POST | `/timber/purchases/{no}/boards` | boards off the saw: t × w × l in mm, and how many. Naming the log is optional — a day's sawing is usually one pile — and reporting boards off a log also marks that log sawn |
 | POST | `/timber/purchases/{no}/logs/{tag}/sawn` | for the log that split and yielded nothing. It still counts against the yield, which is the point |
+| GET | `/timber/boards` | **the rack**: one row per species and size, with what is on it, what was sawn, what was issued, m³, rupiah per m³ of board and a value. Computed from the sawing reports and the movements — no quantity is stored (A3, D203) |
+| GET | `/timber/boards/moves` | one timeline, sawing included. The `sawn` rows are derived from the sawing reports rather than stored twice, so the rack cannot disagree with the rendemen |
+| POST | `/timber/boards/moves` | `issue` · `return` · `scrap` · `adjust`. **409 `not_enough_boards`** on an issue or scrap larger than the rack — one of the few places this system blocks rather than warns, because a stack reading −4 is a count nobody can use again (D205); the message names the way through, an opname with a reason. **422** on an issue with no work order, on an adjust or scrap with no reason, and on `sawn`, which is reported through the sawing endpoint so the two can never differ. `purchase_no` is optional and **left null rather than guessed** — it decides what the issue cost (D204) |
 
 Volumes are computed on read: `bulat` is π/4 × d² × L, `persegi` is d² × L, and
 the purchase records which convention produced its number (Q39). Yield and

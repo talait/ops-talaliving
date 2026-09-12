@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, Users, CalendarCheck, FileBadge, Wallet,
   ShoppingCart, ClipboardList, FileText, PackageCheck, Boxes, TreePine,
-  Layers, Landmark, BookOpen, TrendingUp, PiggyBank, Receipt,
+  Landmark, BookOpen, TrendingUp, PiggyBank, Receipt,
   Megaphone, UserRound, Target, HandCoins,
   FolderKanban, Hammer, Truck, Wrench, Stamp,
   PencilRuler, ListTree, CalendarClock, CalendarRange,
@@ -83,8 +83,10 @@ export const NAV: NavSection[] = [
     title: "Inventory",
     icon: Boxes,
     items: [
-      { label: "Logs", href: "/inventory/log", icon: TreePine, permission: "inventory.read", badge: "core" },
-      { label: "Sawn Boards", href: "/inventory/papan", icon: Layers, permission: "inventory.read" },
+      /* One entry, not two. Logs and boards are the same wood either side of
+       * the saw, and the board rack only became stock at all once usage was
+       * recorded (D202, D203). */
+      { label: "Timber", href: "/inventory/log", icon: TreePine, permission: "inventory.read", badge: "core" },
       { label: "Materials & Hardware", href: "/inventory/material", icon: Boxes, permission: "inventory.read", badge: "new" },
       { label: "Stock Adjustments", href: "/inventory/penyesuaian", icon: Wrench, permission: "inventory.adjust", badge: "new" },
     ],

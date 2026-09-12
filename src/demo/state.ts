@@ -17,7 +17,7 @@ import type {
   Market, Property, PropertyAgent, SalesRep, Referral, ScrapeRow,
 } from "@/services/marketing/contracts";
 import type {
-  LogPurchase, LogPiece, SawnBoard,
+  LogPurchase, LogPiece, SawnBoard, BoardMove,
   StockLocation, StockMove, StockSetting,
 } from "@/services/inventory/contracts";
 import type {
@@ -170,6 +170,10 @@ export interface DemoState {
   log_purchases: LogPurchase[];
   log_pieces: LogPiece[];
   sawn_boards: SawnBoard[];
+  /* What happened to the boards after the saw — issues, returns, scrap,
+     opname. The `sawn` side is derived from `sawn_boards` rather than copied
+     here, so no fact is stored twice (D203). */
+  board_moves: BoardMove[];
 
   /* --- marketing: the Package programme ---------------------------- */
   /** Scraped, enriched, scored — then three agents each, approached in order

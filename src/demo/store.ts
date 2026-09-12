@@ -116,7 +116,7 @@ export function officeDay(at: Date = new Date()): string {
  *  is only one candidate now. */
 export function nextDocNumber(
   draft: DemoState,
-  prefix: "pr" | "fund" | "trx" | "pay" | "po" | "ask" | "pyr" | "spk" | "lbr" | "kyu" | "stk" | "izn" | "dsn" | "rkk" | "agn" | "lead",
+  prefix: "pr" | "fund" | "trx" | "pay" | "po" | "ask" | "pyr" | "spk" | "lbr" | "kyu" | "stk" | "izn" | "dsn" | "rkk" | "agn" | "lead" | "ppn",
   at: Date = new Date(),
 ): string {
   const day = officeDay(at);

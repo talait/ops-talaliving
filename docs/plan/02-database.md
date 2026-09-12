@@ -543,6 +543,17 @@ it in Phase 2, and both are about what the row must **not** contain:
 - `activity_daily.reveals` counts these separately from `changes`, because a
   reveal changes nothing and folding it in would inflate every recap.
 
+**`inv.board_moves`** — what happened to the boards after the saw: `issue`,
+`return`, `scrap`, `adjust`, signed, each with the work order or the reason
+behind it. **There is no `sawn` row in this table**: the incoming side is
+derived from `inv.sawn_boards`, which the yield figures already divide, so the
+rack and the rendemen read the same rows and cannot drift (D203). `purchase_id`
+is nullable on purpose — it decides what an issue cost, and a load guessed to
+fill the column is a wrong number in a costing report (D204).
+
+`inv.log_purchases.nota_attachment_id` links the load to the paper it was
+entered from (D201). Nullable only for loads recorded before that rule.
+
 `core.audit_log` has no retention at all. It is the evidence behind every
 figure the system prints, and a purged audit row is a past number nobody can
 explain.

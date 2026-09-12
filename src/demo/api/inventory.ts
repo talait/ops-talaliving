@@ -9,13 +9,16 @@ import { ok, noop, invalid, notFound, type Result } from "@/services/_shared/env
 import type {
   LogPurchaseView, LogMeasure, TimberVendorSummary,
   StockItemView, StockItemDetail, StockLocation, StockMove, StockMoveView,
+  BoardStockView, BoardMoveView, BoardMoveKind, NotaScan,
 } from "@/services/inventory/contracts";
 import type { DemoState } from "../state";
 import { getState, apply, newId, nextDocNumber, writeAudit, writeOutbox } from "../store";
 import {
   logPurchaseView, logPurchaseViews, timberVendorSummaries,
   stockItems, stockItemDetail, stockMoveViews,
+  boardStock, boardMoveViews,
 } from "../inventory-derive";
+import { scanNota } from "../nota-kayu";
 import { STOCKED_CATEGORIES } from "../fixtures/reference";
 import { latency, actingUser, requireModule, conflict, replayed, remember } from "./_kit";
 
@@ -58,7 +61,12 @@ export async function receiveLogs(
     measure?: LogMeasure;
     trx_no?: string | null;
     pr_line_no?: string | null;
+    nota_attachment_id?: string | null;
     note?: string | null;
+    /** Board rows read off the nota, already confirmed by a person. They are
+     *  filed as boards here and **never as transaction lines** (D200). */
+    boards?: { thickness_mm: number; width_mm: number; length_mm: number; qty: number; grade?: string | null }[];
+    logs?: { tag?: string; diameter_cm: number; length_cm: number }[];
   },
   idempotencyKey?: string,
 ): Promise<Result<LogPurchaseView>> {
@@ -98,13 +106,40 @@ export async function receiveLogs(
       total_cost: Math.round(input.total_cost),
       claimed_m3: input.claimed_m3 ?? null,
       measure: input.measure ?? "round",
+      nota_attachment_id: input.nota_attachment_id ?? null,
       note: input.note?.trim() || null,
       created_at: new Date().toISOString(), created_by: user.id,
     });
+    const purchaseId = draft.log_purchases[draft.log_purchases.length - 1].id;
+    for (const l of input.logs ?? []) {
+      draft.log_pieces.push({
+        id: newId("lgs"), purchase_id: purchaseId,
+        tag: l.tag?.trim() || `#${draft.log_pieces.length + 1}`,
+        diameter_cm: l.diameter_cm, length_cm: l.length_cm,
+        sawn_on: null, note: null,
+      });
+    }
+    for (const b of input.boards ?? []) {
+      draft.sawn_boards.push({
+        id: newId("swb"), purchase_id: purchaseId, log_id: null,
+        thickness_mm: b.thickness_mm, width_mm: b.width_mm, length_mm: b.length_mm,
+        qty: b.qty, sawn_on: input.received_on,
+        grade: b.grade ?? null,
+        note: "Dari nota.",
+      });
+    }
     writeAudit(draft, {
       service: SERVICE, entity: "log_purchase", entity_no: no,
       action: "receive", outcome: "ok", reason: null,
-      detail: { vendor: input.vendor_id, cost: input.total_cost, claimed_m3: input.claimed_m3 ?? null, by: user.email },
+      detail: {
+        vendor: input.vendor_id, cost: input.total_cost,
+        claimed_m3: input.claimed_m3 ?? null,
+        nota: input.nota_attachment_id ?? null,
+        /* What the nota contributed, and where it went. The point of the row:
+           these sizes became boards, not ledger lines (D200). */
+        from_nota: { boards: (input.boards ?? []).length, logs: (input.logs ?? []).length },
+        by: user.email,
+      },
     });
   });
   const view = await getLogPurchase(no);
@@ -588,4 +623,143 @@ export function stockFromReceipt(
     reason: null,
   }, userId, userEmail);
   return { stocked: true };
+}
+
+/* ── The rack: boards as stock, and what leaves it ────────────────────────
+ *
+ *  Q40 answered (D203). Until now the board list only ever grew, and the
+ *  screen said so plainly rather than pretend it was stock. The owner has
+ *  asked for the other half, so here it is: what is on the rack is the sum of
+ *  what came off the saw and everything that happened afterwards.
+ */
+
+export async function listBoardStock(): Promise<Result<BoardStockView[]>> {
+  await latency();
+  return ok(SERVICE, boardStock(getState()));
+}
+
+export async function listBoardMoves(
+  filter: { board_key?: string; ref_no?: string; limit?: number } = {},
+): Promise<Result<BoardMoveView[]>> {
+  await latency();
+  const rows = boardMoveViews(getState(), filter);
+  return ok(SERVICE, rows.slice(0, filter.limit ?? 300));
+}
+
+/** Taking boards to the floor, bringing them back, scrapping them, or counting
+ *  them and finding something else.
+ *
+ *  One function for all four because they differ in one field. What they share
+ *  is the part worth guarding: **the rack is not allowed to go negative** on
+ *  an issue or a scrap. Elsewhere this system warns rather than blocks (A6),
+ *  and here it refuses — a stack that reads −4 is not a warning anybody can
+ *  act on, it is a count nobody can use again until somebody works out which
+ *  of the last twenty movements was wrong. An opname is the way a real
+ *  surplus gets recorded, and it carries a reason.
+ */
+export async function moveBoards(
+  input: {
+    board_key: string;
+    kind: BoardMoveKind;
+    qty: number;
+    ref_no?: string | null;
+    purchase_no?: string | null;
+    reason?: string | null;
+  },
+  idempotencyKey?: string,
+): Promise<Result<BoardStockView[]>> {
+  await latency();
+  const cached = replayed<BoardStockView[]>(SERVICE, "moveBoards", idempotencyKey);
+  if (cached) return cached;
+
+  const denied = requireModule(SERVICE, "inventory");
+  if (denied) return denied;
+  if (input.kind === "sawn") {
+    return invalid(
+      SERVICE, "sawn_is_reported",
+      "Papan masuk lewat laporan gergajian, bukan lewat sini — supaya rendemen dan isi rak tidak pernah berbeda.",
+      { field: "kind" },
+    );
+  }
+
+  const state = getState();
+  const stack = boardStock(state).find((b) => b.board_key === input.board_key);
+  if (!stack) return notFound(SERVICE, "board_not_found", "Ukuran itu tidak ada di rak.");
+  if (!input.qty || input.qty <= 0) {
+    return invalid(SERVICE, "qty_required", "Berapa lembar?", { field: "qty" });
+  }
+
+  const outward = input.kind === "issue" || input.kind === "scrap";
+  if (outward && input.qty > stack.qty) {
+    return conflict(
+      SERVICE, "not_enough_boards",
+      `Di rak ada ${stack.qty} lembar ${stack.size} ${stack.species}, diminta ${input.qty}. Kalau fisiknya memang ada, catat sebagai penyesuaian opname dengan alasannya — bukan dengan mengeluarkan lebih dari yang tercatat.`,
+      { on_hand: stack.qty, asked: input.qty },
+    );
+  }
+  if (input.kind === "issue" && !input.ref_no?.trim()) {
+    return invalid(
+      SERVICE, "ref_required",
+      "Dipakai untuk pekerjaan yang mana? Papan yang keluar tanpa tujuan tidak bisa dibandingkan dengan BOM-nya.",
+      { field: "ref_no" },
+    );
+  }
+  if ((input.kind === "adjust" || input.kind === "scrap") && !input.reason?.trim()) {
+    return invalid(
+      SERVICE, "reason_required",
+      "Tulis alasannya. Selisih tanpa keterangan adalah selisih yang ditemukan lagi bulan depan.",
+      { field: "reason" },
+    );
+  }
+
+  const purchase = input.purchase_no
+    ? state.log_purchases.find((p) => p.purchase_no === input.purchase_no)
+    : null;
+  if (input.purchase_no && !purchase) {
+    return notFound(SERVICE, "purchase_not_found", `Tidak ada kiriman ${input.purchase_no}.`);
+  }
+
+  const user = actingUser();
+  let no = "";
+  apply((draft) => {
+    no = nextDocNumber(draft, "ppn");
+    draft.board_moves.push({
+      id: newId("bmv"), move_no: no, at: new Date().toISOString(),
+      board_key: input.board_key,
+      species: stack.species,
+      thickness_mm: stack.thickness_mm, width_mm: stack.width_mm, length_mm: stack.length_mm,
+      qty: outward ? -Math.abs(input.qty) : Math.abs(input.qty),
+      kind: input.kind,
+      /* Left null when nobody knows which load — it decides what the issue
+         cost, and a load picked to make the arithmetic work is a wrong number
+         in a costing report (D204). */
+      purchase_id: purchase?.id ?? null,
+      ref_no: input.ref_no?.trim() || null,
+      reason: input.reason?.trim() || null,
+      by: user.id,
+    });
+    writeAudit(draft, {
+      service: SERVICE, entity: "board_move", entity_no: no,
+      action: input.kind, outcome: "ok", reason: input.reason?.trim() || null,
+      detail: {
+        board: `${stack.species} ${stack.size}`, qty: input.qty,
+        ref: input.ref_no ?? null, purchase: input.purchase_no ?? null, by: user.email,
+      },
+    });
+  });
+
+  const rows = boardStock(getState());
+  remember(SERVICE, "moveBoards", idempotencyKey, rows);
+  return ok(SERVICE, rows);
+}
+
+/** Reading a nota, without writing anything.
+ *
+ *  Deliberately a read: the answer to *is this a timber nota* is a proposal
+ *  that a person accepts or rejects, and a reader that filed as it read would
+ *  be the thing this whole design exists to prevent (D200).
+ */
+export async function readNota(text: string): Promise<Result<NotaScan>> {
+  await latency();
+  return ok(SERVICE, scanNota(text));
 }
